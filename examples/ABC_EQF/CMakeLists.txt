@@ -7,6 +7,7 @@ add_executable(ABC_EqF
         Direction.cpp
         Measurements.cpp
         utilities.cpp
+        runEQF_withcsv.h
 )
 
 target_link_libraries(ABC_EqF gtsam)

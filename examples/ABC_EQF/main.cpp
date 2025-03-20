@@ -7,6 +7,7 @@
 #include "Direction.h"
 #include "Measurements.h"
 #include "Data.h"
+#include "runEQF_withcsv.h"
 #include "utilities.h"
 #include <iostream>
 #include <fstream>
@@ -158,38 +159,65 @@ void runSimulation(EqF& filter, const std::vector<Data>& data) {
     std::cout << "Average calibration error (deg): " << (avg_cal_error * 180.0/M_PI) << std::endl;
 }
 
+// int main(int argc, char** argv) {
+//     std::cout << "ABC-EqF: Attitude-Bias-Calibration Equivariant Filter" << std::endl;
+//     std::cout << "========================================================" << std::endl;
+//
+//     // Initialize filter
+//     int n_cal = 1;      // Number of calibration states
+//     int n_sensors = 2;  // Number of sensors
+//
+//     // Initial covariance - larger values for higher uncertainty
+//     Matrix initialSigma = Matrix::Identity(6 + 3*n_cal, 6 + 3*n_cal);
+//     initialSigma.diagonal().head<3>() = Vector3::Constant(0.5); // Attitude uncertainty
+//     initialSigma.diagonal().segment<3>(3) = Vector3::Constant(0.1); // Bias uncertainty
+//     initialSigma.diagonal().tail<3>() = Vector3::Constant(0.5); // Calibration uncertainty
+//
+//     std::cout << "Creating filter with " << n_cal << " calibration states..." << std::endl;
+//
+//     try {
+//         // Create filter
+//         EqF filter(initialSigma, n_cal, n_sensors);
+//
+//         // Generate simulated data
+//         std::cout << "Generating simulated data..." << std::endl;
+//         std::vector<Data> data = loadSimulatedData();
+//
+//         // Run simulation
+//         runSimulation(filter, data);
+//
+//     } catch (const std::exception& e) {
+//         std::cerr << "Error: " << e.what() << std::endl;
+//         return 1;
+//     }
+//
+//     std::cout << "Done." << std::endl;
+//     return 0;
 int main(int argc, char** argv) {
     std::cout << "ABC-EqF: Attitude-Bias-Calibration Equivariant Filter" << std::endl;
     std::cout << "========================================================" << std::endl;
-
-    // Initialize filter
-    int n_cal = 1;      // Number of calibration states
-    int n_sensors = 2;  // Number of sensors
-
-    // Initial covariance - larger values for higher uncertainty
-    Matrix initialSigma = Matrix::Identity(6 + 3*n_cal, 6 + 3*n_cal);
-    initialSigma.diagonal().head<3>() = Vector3::Constant(0.5); // Attitude uncertainty
-    initialSigma.diagonal().segment<3>(3) = Vector3::Constant(0.1); // Bias uncertainty
-    initialSigma.diagonal().tail<3>() = Vector3::Constant(0.5); // Calibration uncertainty
-
-    std::cout << "Creating filter with " << n_cal << " calibration states..." << std::endl;
-
+    
+    std::string csvFilePath;
+    
+    // Check if CSV file path is provided as command line argument
+    if (argc > 1) {
+        csvFilePath = argv[1];
+    } else {
+        std::cout << "Please enter the path to your CSV data file: ";
+        std::cin >> csvFilePath;
+    }
+    
+    std::cout << "Using CSV data from: " << csvFilePath << std::endl;
+    
     try {
-        // Create filter
-        EqF filter(initialSigma, n_cal, n_sensors);
-
-        // Generate simulated data
-        std::cout << "Generating simulated data..." << std::endl;
-        std::vector<Data> data = loadSimulatedData();
-
-        // Run simulation
-        runSimulation(filter, data);
-
+        // Run with CSV data
+        runEqFWithCSVData(csvFilePath);
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
-
+    
     std::cout << "Done." << std::endl;
     return 0;
+
 }

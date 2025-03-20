@@ -152,23 +152,43 @@ void EqF::propagation(const Input& u, double dt) {
     __Sigma = Phi_DT * __Sigma * Phi_DT.transpose() + M_DT;
 }
 
+bool hasNaN(const Vector3& vec) {
+    return std::isnan(vec[0]) || std::isnan(vec[1]) || std::isnan(vec[2]);
+}
+
 void EqF::update(const Measurement& y) {
-    if (y.cal_idx > __n_cal) {
-        throw std::invalid_argument("Calibration index out of range");
+  if (y.cal_idx > __n_cal) {
+    throw std::invalid_argument("Calibration index out of range");
+  }
+
+  // Get vector representations for checking
+  Vector3 y_vec = y.y.d.unitVector();
+  Vector3 d_vec = y.d.d.unitVector();
+
+  // Skip update if any NaN values are present
+  if (std::isnan(y_vec[0]) || std::isnan(y_vec[1]) || std::isnan(y_vec[2]) ||
+      std::isnan(d_vec[0]) || std::isnan(d_vec[1]) || std::isnan(d_vec[2])) {
+    return;  // Skip this measurement
     }
+  static int update_count = 0;
+  if (update_count < 5) {
+    std::cout << "Update " << update_count << ":\n";
+    std::cout << "y_vec: " << y_vec.transpose() << "\n";
+    std::cout << "d_vec: " << d_vec.transpose() << "\n";
+    update_count++;
+  }
 
-    Matrix Ct = __measurementMatrixC(y.d, y.cal_idx);
 
-    Vector3 action_result = outputAction(__X_hat.inv(), y.y, y.cal_idx);
-    Vector3 delta_vec = wedge(y.d.d.unitVector()) * action_result;
 
-    Matrix Dt = __outputMatrixDt(y.cal_idx);
-    Matrix S = Ct * __Sigma * Ct.transpose() + Dt * y.Sigma * Dt.transpose();
-    Matrix K = __Sigma * Ct.transpose() * S.inverse();
-
-    Vector Delta = __InnovationLift * K * delta_vec;
-    __X_hat = G::exp(Delta) * __X_hat;
-    __Sigma = (Matrix::Identity(__dof, __dof) - K * Ct) * __Sigma;
+  Matrix Ct = __measurementMatrixC(y.d, y.cal_idx);
+  Vector3 action_result = outputAction(__X_hat.inv(), y.y, y.cal_idx);
+  Vector3 delta_vec = wedge(y.d.d.unitVector()) * action_result;  // Ensure this is the right operation
+  Matrix Dt = __outputMatrixDt(y.cal_idx);
+  Matrix S = Ct * __Sigma * Ct.transpose() + Dt * y.Sigma * Dt.transpose();
+  Matrix K = __Sigma * Ct.transpose() * S.inverse();
+  Vector Delta = __InnovationLift * K * delta_vec;
+  __X_hat = G::exp(Delta) * __X_hat;
+  __Sigma = (Matrix::Identity(__dof, __dof) - K * Ct) * __Sigma;
 }
 
 Matrix EqF::__stateMatrixA(const Input& u) const {
@@ -229,20 +249,27 @@ Matrix EqF::__inputMatrixBt() const {
 }
 
 Matrix EqF::__measurementMatrixC(const Direction& d, int idx) const {
-    Matrix Cc = Matrix::Zero(3, 3 * __n_cal);
+  Matrix Cc = Matrix::Zero(3, 3 * __n_cal);
 
-    // If the measurement is related to a sensor that has a calibration state
-    if (idx >= 0) {
-        Cc.block<3, 3>(0, 3 * idx) = wedge(d.d.unitVector());
-    }
+  // If the measurement is related to a sensor that has a calibration state
+  if (idx >= 0) {
+    // Cc.block<3, 3>(0, 3 * idx) = wedge(d.d.unitVector()); // WRONG
+    // Set the correct 3x3 block in Cc
+    Cc.block<3, 3>(0, 3 * idx) = wedge(d.d.unitVector());
+  }
 
-    Matrix3 wedge_d = wedge(d.d.unitVector());
-    Matrix result(3, __dof);
-    result.block<3, 3>(0, 0) = wedge_d;
-    result.block<3, 3>(0, 3) = Matrix3::Zero();
-    result.block(0, 6, 3, 3 * __n_cal) = Cc;
+  Matrix3 wedge_d = wedge(d.d.unitVector());
 
-    return result;
+  // This Matrix concatenation was different from the Python version
+  // Create the equivalent of:
+  // Rot3.Hat(d.d.unitVector()) @ np.hstack((Rot3.Hat(d.d.unitVector()), np.zeros((3, 3)), Cc))
+
+  Matrix temp(3, 6 + 3 * __n_cal);
+  temp.block<3, 3>(0, 0) = wedge_d;
+  temp.block<3, 3>(0, 3) = Matrix3::Zero();
+  temp.block(0, 6, 3, 3 * __n_cal) = Cc;
+
+  return wedge_d * temp;
 }
 
 Matrix EqF::__outputMatrixDt(int idx) const {
