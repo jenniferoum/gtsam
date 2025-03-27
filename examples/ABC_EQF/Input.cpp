@@ -5,6 +5,7 @@
 #include "utilities.h"
 #include <Eigen/Dense>
 #include <stdexcept>
+#include "gtsam/geometry/Rot3.h"
 
 Input::Input(const Vector3& w, const Matrix& Sigma)
     : w(w), Sigma(Sigma) {
@@ -20,7 +21,7 @@ Input::Input(const Vector3& w, const Matrix& Sigma)
 }
 
 Matrix3 Input::W() const {
-    return wedge(w);
+    return Rot3::Hat(w);
 }
 
 Input Input::random() {

@@ -19,7 +19,7 @@ G G::operator*(const G& other) const {
     }
     
     return G(A * other.A,
-            a + wedge(A.matrix() * vee(other.a)),
+            a + Rot3::Hat(A.matrix() * Rot3::Vee(other.a)),
             new_B);
 }
 
@@ -32,7 +32,7 @@ G G::inv() const {
     }
     
     return G(A.inverse(), 
-            -wedge(A_inv * vee(a)),
+            -Rot3::Hat(A_inv * Rot3::Vee(a)),
             B_inv);
 }
 
@@ -50,7 +50,7 @@ G G::exp(const Vector& x) {
     Rot3 A = Rot3::Expmap(x.head<3>());
     
     Vector3 a_vee = Rot3::ExpmapDerivative(-x.head<3>()) * x.segment<3>(3);
-    Matrix3 a = wedge(a_vee);
+    Matrix3 a = Rot3::Hat(a_vee);
     
     std::vector<Rot3> B;
     for (int i = 0; i < n; i++) {

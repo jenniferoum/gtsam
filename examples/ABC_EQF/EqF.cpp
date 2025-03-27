@@ -38,12 +38,12 @@ State stateAction(const G& X, const State& xi) {
     }
 
     return State(xi.R * X.A,
-                X.A.inverse().matrix() * (xi.b - vee(X.a)),
+                X.A.inverse().matrix() * (xi.b - Rot3::Vee(X.a)),
                 new_S);
 }
 
 Input velocityAction(const G& X, const Input& u) {
-    return Input(X.A.inverse().matrix() * (u.w - vee(X.a)), u.Sigma);
+    return Input(X.A.inverse().matrix() * (u.w - Rot3::Vee(X.a)), u.Sigma);
 }
 
 Vector3 outputAction(const G& X, const Direction& y, int idx) {
@@ -182,7 +182,7 @@ void EqF::update(const Measurement& y) {
 
   Matrix Ct = __measurementMatrixC(y.d, y.cal_idx);
   Vector3 action_result = outputAction(__X_hat.inv(), y.y, y.cal_idx);
-  Vector3 delta_vec = wedge(y.d.d.unitVector()) * action_result;  // Ensure this is the right operation
+  Vector3 delta_vec = Rot3::Hat(y.d.d.unitVector()) * action_result;  // Ensure this is the right operation
   Matrix Dt = __outputMatrixDt(y.cal_idx);
   Matrix S = Ct * __Sigma * Ct.transpose() + Dt * y.Sigma * Dt.transpose();
   Matrix K = __Sigma * Ct.transpose() * S.inverse();
@@ -255,10 +255,10 @@ Matrix EqF::__measurementMatrixC(const Direction& d, int idx) const {
   if (idx >= 0) {
     // Cc.block<3, 3>(0, 3 * idx) = wedge(d.d.unitVector()); // WRONG
     // Set the correct 3x3 block in Cc
-    Cc.block<3, 3>(0, 3 * idx) = wedge(d.d.unitVector());
+    Cc.block<3, 3>(0, 3 * idx) = Rot3::Hat(d.d.unitVector());
   }
 
-  Matrix3 wedge_d = wedge(d.d.unitVector());
+  Matrix3 wedge_d = Rot3::Hat(d.d.unitVector());
 
   // This Matrix concatenation was different from the Python version
   // Create the equivalent of:

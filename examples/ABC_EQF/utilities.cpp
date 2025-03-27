@@ -5,26 +5,8 @@
 #include <cmath>
 
 // Global configuration
-const std::string COORDINATE = "EXPONENTIAL";
+const std::string COORDINATE = "EXPONENTIAL";  // Alternative: "NORMAL"
 
-Matrix3 wedge(const Vector3& vec) {
-    Matrix3 mat;
-    mat << 0.0, -vec(2), vec(1),
-           vec(2), 0.0, -vec(0),
-           -vec(1), vec(0), 0.0;
-    return mat;
-}
-
-Vector3 vee(const Matrix3& mat) {
-    Vector3 vec;
-    vec << mat(2, 1), mat(0, 2), mat(1, 0);
-    return vec;
-}
-
-// Matrix3 Rot3LeftJacobian(const Vector3& arr) {
-//   return Rot3::ExpmapDerivative(-arr);
-//
-// }
 
 bool checkNorm(const Vector3& x, double tol) {
     return abs(x.norm() - 1) < tol || std::isnan(x.norm());
