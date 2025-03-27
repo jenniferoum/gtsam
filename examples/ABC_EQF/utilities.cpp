@@ -5,7 +5,7 @@
 #include <cmath>
 
 // Global configuration
-const std::string COORDINATE = "EXPONENTIAL";  // Alternative: "NORMAL"
+const std::string COORDINATE = "EXPONENTIAL";
 
 Matrix3 wedge(const Vector3& vec) {
     Matrix3 mat;
@@ -21,22 +21,10 @@ Vector3 vee(const Matrix3& mat) {
     return vec;
 }
 
-Matrix3 Rot3LeftJacobian(const Vector3& arr) {
-    double angle = arr.norm();
-
-    // Near |phi|==0, use first order Taylor expansion
-    if (angle < 1e-10) {
-        return Matrix3::Identity() + 0.5 * wedge(arr);
-    }
-
-    Vector3 axis = arr / angle;
-    double s = sin(angle);
-    double c = cos(angle);
-
-    return (s / angle) * Matrix3::Identity() +
-           (1 - (s / angle)) * (axis * axis.transpose()) +
-           ((1 - c) / angle) * wedge(axis);
-}
+// Matrix3 Rot3LeftJacobian(const Vector3& arr) {
+//   return Rot3::ExpmapDerivative(-arr);
+//
+// }
 
 bool checkNorm(const Vector3& x, double tol) {
     return abs(x.norm() - 1) < tol || std::isnan(x.norm());

@@ -49,7 +49,7 @@ G G::exp(const Vector& x) {
     int n = (x.size() - 6) / 3;
     Rot3 A = Rot3::Expmap(x.head<3>());
     
-    Vector3 a_vee = Rot3LeftJacobian(x.head<3>()) * x.segment<3>(3);
+    Vector3 a_vee = Rot3::ExpmapDerivative(-x.head<3>()) * x.segment<3>(3);
     Matrix3 a = wedge(a_vee);
     
     std::vector<Rot3> B;
