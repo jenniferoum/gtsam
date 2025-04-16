@@ -86,7 +86,10 @@ endforeach(subdir)
 
 # To add additional sources to gtsam when building the full library (static or shared)
 # append the subfolder with _srcs appended to the end to this list
-set(gtsam_srcs ${3rdparty_srcs})
+set(gtsam_srcs ${3rdparty_srcs}
+        ../examples/ABC_EQF_Demo.cpp
+        ../examples/ABC_EQF.cpp
+        ../examples/ABC_EQF.h)
 foreach(subdir ${gtsam_subdirs})
 	list(APPEND gtsam_srcs ${${subdir}_srcs})
 endforeach(subdir)
