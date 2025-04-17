@@ -502,7 +502,7 @@ Matrix stateActionDiff(const State& xi) {
  * Uses SelfAdjointSolver, completeOrthoganalDecomposition().pseudoInverse()
  */
 EqF::EqF(const Matrix& Sigma, int n, int m)
-    : __dof(6 + 3 * n), __n_cal(n), __n_sensor(m), __X_hat(G::identity(n)),
+    : __dof(6 + 3 * n), __n_cal(n),  __X_hat(G::identity(n)),
       __Sigma(Sigma), __xi_0(State::identity(n)) {
 
     if (Sigma.rows() != __dof || Sigma.cols() != __dof) {

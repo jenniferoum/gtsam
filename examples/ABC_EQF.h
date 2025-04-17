@@ -312,7 +312,6 @@ class EqF {
 private:
     int __dof;                 // Degrees of freedom
     int __n_cal;               // Number of calibration states
-    int __n_sensor;            // Number of sensors
     G __X_hat;                 // Filter state
     Matrix __Sigma;            // Error covariance
     State __xi_0;              // Origin state

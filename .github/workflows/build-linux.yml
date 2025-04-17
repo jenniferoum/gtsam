@@ -31,8 +31,6 @@ jobs:
         # See https://help.github.com/en/articles/workflow-syntax-for-github-actions.
         name: [
             # "Bracket" the versions from GCC [9-14] and Clang [9-16]
-            ubuntu-20.04-gcc-9,
-            ubuntu-20.04-clang-9,
             ubuntu-24.04-gcc-14,
             ubuntu-24.04-clang-16,
           ]
@@ -40,15 +38,6 @@ jobs:
         build_type: [Debug, Release]
         build_unstable: [ON]
         include:
-          - name: ubuntu-20.04-gcc-9
-            os: ubuntu-20.04
-            compiler: gcc
-            version: "9"
-
-          - name: ubuntu-20.04-clang-9
-            os: ubuntu-20.04
-            compiler: clang
-            version: "9"
 
           - name: ubuntu-24.04-gcc-14
             os: ubuntu-24.04

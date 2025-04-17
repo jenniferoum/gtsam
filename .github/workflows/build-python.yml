@@ -52,8 +52,6 @@ jobs:
         # See https://help.github.com/en/articles/workflow-syntax-for-github-actions.
         name:
           [
-            ubuntu-20.04-gcc-9,
-            ubuntu-20.04-clang-9,
             macos-13-xcode-14.2,
             macos-14-xcode-15.4,
             windows-2022-msbuild,
@@ -62,15 +60,6 @@ jobs:
         build_type: [Release]
         python_version: [3]
         include:
-          - name: ubuntu-20.04-gcc-9
-            os: ubuntu-20.04
-            compiler: gcc
-            version: "9"
-
-          - name: ubuntu-20.04-clang-9
-            os: ubuntu-20.04
-            compiler: clang
-            version: "9"
 
           - name: macos-13-xcode-14.2
             os: macos-13
