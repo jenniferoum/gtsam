@@ -63,19 +63,22 @@ def main():
     H1 = SL4(np.eye(4))
 
     # Ground-truth poses
-    # Option A
     H2 = H1.compose(H12_SL4)
     H3 = H2.compose(H23_SL4)
     H4 = H3.compose(H34_SL4)
     H5 = H4.compose(H45_SL4)
 
-    # Option B
-    # H2 = SL4(H1.matrix() @ H12)
-    # H3 = SL4(H2.matrix() @ H23)
-    # H4 = SL4(H3.matrix() @ H34)
-    # H5 = SL4(H4.matrix() @ H45)
-
     gt_poses = [H1, H2, H3, H4, H5]
+
+    # Double check the funtionalities
+    # The below operation should be I_4x4
+    print((H2.inverse() * H3) * H23_SL4.inverse())
+    print("-------------------")
+    # Each element should print the same thing
+    print((H2.inverse() * H3))
+    print(H23_SL4)
+    print(H2.between(H3))
+    print("-------------------")
 
     # Add odometry factors
     graph.add(BetweenFactorSL4(1, 2, H12_SL4, model))

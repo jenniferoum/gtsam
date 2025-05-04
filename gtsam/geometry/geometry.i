@@ -645,10 +645,12 @@ class SL4 {
 
   // Group
   static gtsam::SL4 Identity();
-  gtsam::SL4 inverse(Eigen::Ref<Eigen::MatrixXd> H1) const;
+  gtsam::SL4 inverse() const;
+  gtsam::SL4 inverse(Eigen::Ref<Eigen::MatrixXd> H) const;
   gtsam::SL4 compose(const gtsam::SL4& sl4) const;
   gtsam::SL4 compose(const gtsam::SL4& sl4,
                      Eigen::Ref<Eigen::MatrixXd> H1, Eigen::Ref<Eigen::MatrixXd> H2) const;
+  gtsam::SL4 between(const gtsam::SL4& sl4) const;
   gtsam::SL4 between(const gtsam::SL4& sl4,
                      Eigen::Ref<Eigen::MatrixXd> H1, Eigen::Ref<Eigen::MatrixXd> H2) const;
 
