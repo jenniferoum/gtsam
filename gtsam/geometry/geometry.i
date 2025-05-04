@@ -645,11 +645,12 @@ class SL4 {
 
   // Group
   static gtsam::SL4 Identity();
-  gtsam::SL4 inverse(SL4Jacobian H1 = {}) const;
+  gtsam::SL4 inverse(Eigen::Ref<Eigen::MatrixXd> H1) const;
+  gtsam::SL4 compose(const gtsam::SL4& sl4) const;
   gtsam::SL4 compose(const gtsam::SL4& sl4,
-                     SL4Jacobian H1 = {}, SL4Jacobian H2 = {}) const;
+                     Eigen::Ref<Eigen::MatrixXd> H1, Eigen::Ref<Eigen::MatrixXd> H2) const;
   gtsam::SL4 between(const gtsam::SL4& sl4,
-                     SL4Jacobian H1 = {}, SL4Jacobian H2 = {}) const;
+                     Eigen::Ref<Eigen::MatrixXd> H1, Eigen::Ref<Eigen::MatrixXd> H2) const;
 
   // Operator overload
   gtsam::SL4 operator*(const gtsam::SL4& sl4) const;
@@ -664,10 +665,11 @@ class SL4 {
 
   // Manifold
   gtsam::SL4 retract(gtsam::Vector v,
-                     SL4Jacobian Horigin, SL4Jacobian Hv) const;
+                     Eigen::Ref<Eigen::MatrixXd> Horigin,
+                     Eigen::Ref<Eigen::MatrixXd> Hv) const;
   gtsam::Vector localCoordinates(const gtsam::SL4& g,
-                                 SL4Jacobian Horigin,
-                                 SL4Jacobian Hp2) const;
+                                 Eigen::Ref<Eigen::MatrixXd> Horigin,
+                                 Eigen::Ref<Eigen::MatrixXd> Hp2) const;
 
   // Interface
   gtsam::Matrix4 matrix() const;

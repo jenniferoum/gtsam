@@ -64,16 +64,17 @@ def main():
 
     # Ground-truth poses
     # Option A
-    H2 = SL4(H1.matrix() @ H12)
-    H3 = SL4(H2.matrix() @ H23)
-    H4 = SL4(H3.matrix() @ H34)
-    H5 = SL4(H4.matrix() @ H45)
+    H2 = H1.compose(H12_SL4)
+    H3 = H2.compose(H23_SL4)
+    H4 = H3.compose(H34_SL4)
+    H5 = H4.compose(H45_SL4)
 
     # Option B
-    # H2 = H1.compose(H12_SL4)
-    # H3 = H2.compose(H23_SL4)
-    # H4 = H3.compose(H34_SL4)
-    # H5 = H4.compose(H45_SL4)
+    # H2 = SL4(H1.matrix() @ H12)
+    # H3 = SL4(H2.matrix() @ H23)
+    # H4 = SL4(H3.matrix() @ H34)
+    # H5 = SL4(H4.matrix() @ H45)
+
     gt_poses = [H1, H2, H3, H4, H5]
 
     # Add odometry factors
@@ -87,10 +88,7 @@ def main():
     initial = Values()
     for i, gt_pose in enumerate(gt_poses, 1):
         noise = random_noise_vector()
-        # noisy_pose = gt_pose.compose(SL4.Expmap(noise))
-        # print(gt_pose.matrix().shape)
-        # print(SL4.Expmap(noise).matrix().shape)
-        noisy_pose = SL4(gt_pose.matrix() @ SL4.Expmap(noise).matrix())
+        noisy_pose = gt_pose.compose(SL4.Expmap(noise))
         initial.insert(i, noisy_pose)
 
     # Optimize
