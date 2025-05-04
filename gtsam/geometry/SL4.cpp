@@ -30,8 +30,8 @@ void SL4::print(const std::string& s) const {
 }
 
 /* ************************************************************************* */
-bool SL4::equals(const SL4& psl4, double tol) const {
-  return T_.isApprox(psl4.T_, tol);
+bool SL4::equals(const SL4& sl4, double tol) const {
+  return T_.isApprox(sl4.T_, tol);
 }
 
 /* ************************************************************************* */
@@ -50,23 +50,29 @@ SL4 SL4::inverse(SL4Jacobian H1) const {
 
 /* ************************************************************************* */
 // NOTE(hlim): In PGO, this function is not used
-SL4 SL4::compose(const SL4& p2, SL4Jacobian H1,
+// SL4 SL4::compose(const SL4& sl4) const {
+//   return SL4(T_ * sl4.T_);
+// }
+
+/* ************************************************************************* */
+// NOTE(hlim): In PGO, this function is not used
+SL4 SL4::compose(const SL4& sl4, SL4Jacobian H1,
                            SL4Jacobian H2) const {
-  if (!H1 && !H2) return SL4(T_ * p2.T_);
+  if (!H1 && !H2) return SL4(T_ * sl4.T_);
 
   // TODO(hlim): Might not affect the PGO quality at all,  
   // but should be implemented for the complete implementation
-  SL4 result(T_ * p2.T_);
+  SL4 result(T_ * sl4.T_);
   throw std::runtime_error("H matrix is not implemented.");
   return result;
 }
 
 /* ************************************************************************* */
-SL4 SL4::between(const SL4& p2, SL4Jacobian H1,
+SL4 SL4::between(const SL4& sl4, SL4Jacobian H1,
                            SL4Jacobian H2) const {
-  if (!H1 && !H2) return SL4(T_.inverse() * p2.T_);
+  if (!H1 && !H2) return SL4(T_.inverse() * sl4.T_);
 
-  SL4 result(T_.inverse() * p2.T_);
+  SL4 result(T_.inverse() * sl4.T_);
   if (H1) {
     *H1 = -result.inverse().AdjointMap();
   }
@@ -95,11 +101,11 @@ SL4 SL4::retract(const Vector& v, SL4Jacobian Horigin,
   return retracted_pose;
 }
 
-Vector SL4::localCoordinates(const SL4& p2,
+Vector SL4::localCoordinates(const SL4& sl4,
                               SL4Jacobian Horigin,
                               SL4Jacobian Hp2) const {
   OptionalJacobian<3, 3>::Jacobian H3x3_1, H3x3_2;
-  Vector result = SL4::Logmap(T_.inverse() * p2.T_);
+  Vector result = SL4::Logmap(T_.inverse() * sl4.T_);
 
   if (Horigin) {
     // TODO(hlim) This matrix should be double checked

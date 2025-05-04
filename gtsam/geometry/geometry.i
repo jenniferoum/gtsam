@@ -641,18 +641,18 @@ class SL4 {
 
   // Testable
   void print(string s = "") const;
-  bool equals(const gtsam::SL4& other, double tol) const;
+  bool equals(const gtsam::SL4& sl4, double tol) const;
 
   // Group
   static gtsam::SL4 Identity();
   gtsam::SL4 inverse(SL4Jacobian H1 = {}) const;
-  gtsam::SL4 compose(const gtsam::SL4& other, 
+  gtsam::SL4 compose(const gtsam::SL4& sl4,
                      SL4Jacobian H1 = {}, SL4Jacobian H2 = {}) const;
-  gtsam::SL4 between(const gtsam::SL4& other, 
+  gtsam::SL4 between(const gtsam::SL4& sl4,
                      SL4Jacobian H1 = {}, SL4Jacobian H2 = {}) const;
 
   // Operator overload
-  gtsam::SL4 operator*(const gtsam::SL4& other) const;
+  gtsam::SL4 operator*(const gtsam::SL4& sl4) const;
 
   // Lie group
   static gtsam::SL4 Expmap(gtsam::Vector v);

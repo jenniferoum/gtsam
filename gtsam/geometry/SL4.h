@@ -81,7 +81,8 @@ const Eigen::Matrix<double, 15, 16> ALG_TO_VEC = setAlgtoVecMatrix();
 namespace gtsam {
 // NOTE(hlim): Strictly speaking, it should be expressed as SL(4, ℝ), 
 // but for simplicity, we omit ℝ, assuming our target is over the real numbers.
-class GTSAM_UNSTABLE_EXPORT SL4 : public LieGroup<SL4, 15> {
+// And the variable `sl4` represents SL(4, ℝ).
+class GTSAM_EXPORT SL4 : public LieGroup<SL4, 15> {
  public:
   static const size_t dimension = 15;
 
@@ -104,7 +105,7 @@ class GTSAM_UNSTABLE_EXPORT SL4 : public LieGroup<SL4, 15> {
   void print(const std::string& s = "") const;
 
   /** assert equality up to a tolerance */
-  bool equals(const SL4& SL4, double tol = 1e-9) const;
+  bool equals(const SL4& sl4, double tol = 1e-9) const;
 
   inline const Matrix44& matrix() const {
     return T_;
@@ -123,7 +124,7 @@ class GTSAM_UNSTABLE_EXPORT SL4 : public LieGroup<SL4, 15> {
   SL4 retract(const Vector& v, SL4Jacobian Horigin,
                    SL4Jacobian Hv) const;
 
-  Vector localCoordinates(const SL4& p2, SL4Jacobian Horigin,
+  Vector localCoordinates(const SL4& sl4, SL4Jacobian Horigin,
                           SL4Jacobian Hp2) const;
 
   /// @}
@@ -136,18 +137,18 @@ class GTSAM_UNSTABLE_EXPORT SL4 : public LieGroup<SL4, 15> {
   /// inverse transformation with derivatives
   SL4 inverse(SL4Jacobian H1 = {}) const;
 
-  /// compose this transformation onto another (first *this and then p2)
-  SL4 compose(const SL4& p2, SL4Jacobian H1 = {},
+
+  SL4 compose(const SL4& sl4, SL4Jacobian H1 = {},
                    SL4Jacobian H2 = {}) const;
 
   /// compose syntactic sugar
-  inline SL4 operator*(const SL4& p) const { return compose(p); }
+  inline SL4 operator*(const SL4& sl4) const { return compose(sl4); }
 
   /**
    * Return relative pose between p1 and p2, in p1 coordinate frame
    * as well as optionally the derivatives
    */
-  SL4 between(const SL4& p2, SL4Jacobian H1 = {},
+  SL4 between(const SL4& sl4, SL4Jacobian H1 = {},
                    SL4Jacobian H2 = {}) const;
 
   static Matrix44 Hat(const Vector& xi) {
