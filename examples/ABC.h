@@ -22,47 +22,6 @@ using namespace gtsam;
 // Utility Functions
 //========================================================================
 
-//========================================================================
-// Utility Functions
-//========================================================================
-
-/// Check if a vector is a unit vector
-
-bool checkNorm(const Vector3& x, double tol = 1e-3);
-
-/// Check if vector contains NaN values
-
-bool hasNaN(const Vector3& vec);
-
-/// Create a block diagonal matrix from two matrices
-
-Matrix blockDiag(const Matrix& A, const Matrix& B);
-
-/// Repeat a block matrix n times along the diagonal
-
-Matrix repBlock(const Matrix& A, int n);
-
-// Utility Functions Implementation
-
-/**
- * @brief Verifies if a vector has unit norm within tolerance
- * @param x 3d vector
- * @param tol optional tolerance
- * @return Bool indicating that the vector norm is approximately 1
- */
-bool checkNorm(const Vector3& x, double tol) {
-  return abs(x.norm() - 1) < tol || std::isnan(x.norm());
-}
-
-/**
- * @brief Checks if the input vector has any NaNs
- * @param vec A 3-D vector
- * @return true if present, false otherwise
- */
-bool hasNaN(const Vector3& vec) {
-  return std::isnan(vec[0]) || std::isnan(vec[1]) || std::isnan(vec[2]);
-}
-
 /**
  * @brief Creates a block diagonal matrix from input matrices
  * @param A Matrix A
