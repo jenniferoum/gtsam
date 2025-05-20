@@ -5,7 +5,7 @@
  * @brief Example ABC Equivariant Filter
  */
 
-#include "ABC.h"
+#include "ABC_Example.h"
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/Rot3.h>
 
