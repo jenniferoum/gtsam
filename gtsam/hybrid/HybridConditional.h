@@ -192,7 +192,7 @@ class GTSAM_EXPORT HybridConditional
    * as the conditionals involved, and leaf values as the error.
    */
   AlgebraicDecisionTree<Key> errorTree(
-      const VectorValues& values) const override;
+      const VectorValues& continuousValues) const override;
 
   /// Return the log-probability (or density) of the underlying conditional.
   double logProbability(const HybridValues& values) const override;

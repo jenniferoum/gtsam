@@ -126,11 +126,11 @@ double HybridConditional::error(const HybridValues &values) const {
 
 /* ************************************************************************ */
 AlgebraicDecisionTree<Key> HybridConditional::errorTree(
-    const VectorValues &values) const {
+    const VectorValues &continuousValues) const {
   if (auto gc = asGaussian()) {
-    return {gc->error(values)};  // NOTE: a "constant" tree
+    return {gc->error(continuousValues)};  // NOTE: a "constant" tree
   } else if (auto gm = asHybrid()) {
-    return gm->errorTree(values);
+    return gm->errorTree(continuousValues);
   } else if (auto dc = asDiscrete()) {
     return dc->errorTree();
   } else

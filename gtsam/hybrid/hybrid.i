@@ -46,6 +46,11 @@ class HybridValues {
 };
 
 #include <gtsam/hybrid/HybridFactor.h>
+class ErrorTree {
+  void print(string s = "ErrorTree\n",
+             const gtsam::KeyFormatter& keyFormatter =
+                 gtsam::DefaultKeyFormatter) const;
+};
 virtual class HybridFactor : gtsam::Factor {
   void print(string s = "HybridFactor\n",
              const gtsam::KeyFormatter& keyFormatter =
@@ -60,10 +65,12 @@ virtual class HybridFactor : gtsam::Factor {
   size_t nrContinuous() const;
   gtsam::DiscreteKeys discreteKeys() const;
   gtsam::KeyVector continuousKeys() const;
+  ErrorTree errorTree(const gtsam::VectorValues &continuousValues);
+  gtsam::Factor restrict(const gtsam::DiscreteValues& assignment) const;
 };
 
 #include <gtsam/hybrid/HybridConditional.h>
-virtual class HybridConditional {
+virtual class HybridConditional : gtsam::HybridFactor {
   HybridConditional();
   HybridConditional(const gtsam::KeyVector& continuousKeys, 
                     const gtsam::DiscreteKeys& discreteKeys, size_t nFrontals);
@@ -97,9 +104,6 @@ virtual class HybridConditional {
 
   gtsam::Factor* inner();
   double error(const gtsam::HybridValues& values) const;
-
-  gtsam::KeyVector& keys();
-  gtsam::Factor restrict(const gtsam::DiscreteValues& assignment) const;
 };
 
 #include <gtsam/hybrid/HybridGaussianFactor.h>
@@ -118,7 +122,7 @@ class HybridGaussianFactor : gtsam::HybridFactor {
 };
 
 #include <gtsam/hybrid/HybridGaussianConditional.h>
-class HybridGaussianConditional : gtsam::HybridFactor {
+class HybridGaussianConditional : gtsam::HybridGaussianFactor {
   HybridGaussianConditional(
       const gtsam::DiscreteKeys& discreteParents,
       const gtsam::HybridGaussianConditional::Conditionals& conditionals);
