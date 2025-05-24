@@ -188,6 +188,7 @@ class HybridBayesNet {
   gtsam::HybridGaussianFactorGraph toFactorGraph(
       const gtsam::VectorValues& measurements) const;
 
+  gtsam::DiscreteBayesNet discreteMarginal() const;
   gtsam::GaussianBayesNet choose(const gtsam::DiscreteValues& assignment) const;
 
   gtsam::DiscreteBayesNet discreteMarginal() const;
@@ -196,8 +197,8 @@ class HybridBayesNet {
   gtsam::HybridValues optimize() const;
   gtsam::VectorValues optimize(const gtsam::DiscreteValues& assignment) const;
 
-  gtsam::HybridValues sample(const gtsam::HybridValues& given) const;
-  gtsam::HybridValues sample() const;
+  gtsam::HybridValues sample(const gtsam::HybridValues& given, std::mt19937_64@ rng = nullptr) const;
+  gtsam::HybridValues sample(std::mt19937_64@ rng = nullptr) const;
 
   gtsam::HybridBayesNet prune(size_t maxNrLeaves) const;
   // gtsam::HybridBayesNet prune(size_t maxNrLeaves,
