@@ -182,7 +182,7 @@ class GTSAM_EXPORT HybridConditional
   std::shared_ptr<Factor> inner() const { return inner_; }
 
   /// Return the error of the underlying conditional.
-  double error(const HybridValues& values) const override;
+  double error(const HybridValues& hybridValues) const override;
 
   /**
    * @brief Compute error of the HybridConditional as a tree.

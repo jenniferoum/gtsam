@@ -194,10 +194,10 @@ AlgebraicDecisionTree<Key> HybridGaussianFactor::errorTree(
 }
 
 /* *******************************************************************************/
-double HybridGaussianFactor::error(const HybridValues& values) const {
+double HybridGaussianFactor::error(const HybridValues& hybridValues) const {
   // Directly index to get the component, no need to build the whole tree.
-  const GaussianFactorValuePair pair = factors_(values.discrete());
-  return PotentiallyPrunedComponentError(pair, values.continuous());
+  const GaussianFactorValuePair pair = factors_(hybridValues.discrete());
+  return PotentiallyPrunedComponentError(pair, hybridValues.continuous());
 }
 
 /* ************************************************************************ */

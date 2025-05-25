@@ -75,17 +75,17 @@ TEST(HybridGaussianFactor, ConstructorVariants) {
 // Test .print() output.
 TEST(HybridNonlinearFactor, Printing) {
   using namespace test_constructor;
-  HybridNonlinearFactor hybridFactor({m1}, {f0, f1});
+  HybridNonlinearFactor hybridFactor({m1}, {{f0,22}, {f1,33}});
 
   std::string expected =
       R"(Hybrid [x1 x2; 1]
 HybridNonlinearFactor
  Choice(1) 
- 0 Leaf BetweenFactor(x1,x2)
+ 0 Leaf (22) BetweenFactor(x1,x2)
   measured:  0
   noise model: diagonal sigmas [1];
 
- 1 Leaf BetweenFactor(x1,x2)
+ 1 Leaf (33) BetweenFactor(x1,x2)
   measured:  1
   noise model: diagonal sigmas [1];
 

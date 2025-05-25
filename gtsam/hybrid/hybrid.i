@@ -58,14 +58,14 @@ virtual class HybridFactor : gtsam::Factor {
   bool equals(const gtsam::HybridFactor& lf, double tol = 1e-9) const;
 
   // Standard interface:
-  double error(const gtsam::HybridValues& values) const;
   bool isDiscrete() const;
   bool isContinuous() const;
   bool isHybrid() const;
   size_t nrContinuous() const;
   gtsam::DiscreteKeys discreteKeys() const;
   gtsam::KeyVector continuousKeys() const;
-  ErrorTree errorTree(const gtsam::VectorValues &continuousValues);
+  double error(const gtsam::HybridValues& hybridValues) const;
+  gtsam::ErrorTree errorTree(const gtsam::VectorValues &continuousValues);
   gtsam::Factor restrict(const gtsam::DiscreteValues& assignment) const;
 };
 
@@ -103,7 +103,6 @@ virtual class HybridConditional : gtsam::HybridFactor {
   gtsam::DiscreteConditional* asDiscrete() const;
 
   gtsam::Factor* inner();
-  double error(const gtsam::HybridValues& values) const;
 };
 
 #include <gtsam/hybrid/HybridGaussianFactor.h>
@@ -331,8 +330,10 @@ class HybridNonlinearFactor : gtsam::HybridFactor {
       const gtsam::DecisionTree<
           gtsam::Key, std::pair<gtsam::NoiseModelFactor*, double>>& factors);
 
+  double error(const gtsam::HybridValues& hybridValues) const;
   double error(const gtsam::Values& continuousValues,
-               const gtsam::DiscreteValues& discreteValues) const;
+               const gtsam::DiscreteValues& assignment) const;
+  gtsam::ErrorTree errorTree(const gtsam::Values &continuousValues);
 
   HybridGaussianFactor* linearize(const gtsam::Values& continuousValues) const;
 
