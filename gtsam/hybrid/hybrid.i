@@ -114,6 +114,8 @@ class HybridGaussianFactor : gtsam::HybridFactor {
       const gtsam::DiscreteKey& discreteKey,
       const std::vector<std::pair<gtsam::GaussianFactor::shared_ptr, double>>&
           factorPairs);
+  std::pair<gtsam::GaussianFactor::shared_ptr, double> operator()(
+      const gtsam::DiscreteValues& assignment) const;
 
   void print(string s = "HybridGaussianFactor\n",
              const gtsam::KeyFormatter& keyFormatter =
