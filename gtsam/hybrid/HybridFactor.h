@@ -163,6 +163,6 @@ template <>
 struct traits<HybridFactor> : public Testable<HybridFactor> {};
 
 // For wrapper:
-using ErrorTree = AlgebraicDecisionTree<Key>;
+using AlgebraicDecisionTreeKey = AlgebraicDecisionTree<Key>;
 
 }  // namespace gtsam

@@ -46,8 +46,8 @@ class HybridValues {
 };
 
 #include <gtsam/hybrid/HybridFactor.h>
-class ErrorTree {
-  void print(string s = "ErrorTree\n",
+class AlgebraicDecisionTreeKey {
+  void print(string s = "AlgebraicDecisionTreeKey\n",
              const gtsam::KeyFormatter& keyFormatter =
                  gtsam::DefaultKeyFormatter) const;
 };
@@ -65,7 +65,7 @@ virtual class HybridFactor : gtsam::Factor {
   gtsam::DiscreteKeys discreteKeys() const;
   gtsam::KeyVector continuousKeys() const;
   double error(const gtsam::HybridValues& hybridValues) const;
-  gtsam::ErrorTree errorTree(const gtsam::VectorValues &continuousValues);
+  gtsam::AlgebraicDecisionTreeKey errorTree(const gtsam::VectorValues &continuousValues);
   gtsam::Factor restrict(const gtsam::DiscreteValues& assignment) const;
 };
 
@@ -130,11 +130,34 @@ class HybridGaussianConditional : gtsam::HybridGaussianFactor {
   HybridGaussianConditional(
       const gtsam::DiscreteKey& discreteParent,
       const std::vector<gtsam::GaussianConditional::shared_ptr>& conditionals);
+  HybridGaussianConditional(
+      const gtsam::DiscreteKey& discreteParent, size_t key,
+      const gtsam::Matrix& A, size_t parent,
+      const std::vector<std::pair<gtsam::Vector, double>>& parameters);
+  HybridGaussianConditional(
+      const gtsam::DiscreteKey& discreteParent, size_t key,  //
+      const gtsam::Matrix& A1, size_t parent1, const gtsam::Matrix& A2,
+      size_t parent2,
+      const std::vector<std::pair<gtsam::Vector, double>>& parameters);
+
+  // Standard API
+  gtsam::GaussianConditional::shared_ptr choose(
+      const gtsam::DiscreteValues &discreteValues) const;
+//   gtsam::GaussianConditional::shared_ptr operator()(
+//       const gtsam::DiscreteValues &discreteValues) const;
+  size_t nrComponents() const;
+  gtsam::KeyVector continuousParents() const;
+  double negLogConstant() const;
 
   gtsam::HybridGaussianFactor* likelihood(
       const gtsam::VectorValues& frontals) const;
   double logProbability(const gtsam::HybridValues& values) const;
   double evaluate(const gtsam::HybridValues& values) const;
+//   double operator()(const gtsam::HybridValues &values) const;
+
+  HybridGaussianConditional::shared_ptr prune(
+      const gtsam::DiscreteConditional &discreteProbs) const;
+  bool pruned() const;
 
   void print(string s = "HybridGaussianConditional\n",
              const gtsam::KeyFormatter& keyFormatter =
@@ -288,9 +311,9 @@ virtual class HybridGaussianFactorGraph : gtsam::HybridFactorGraph {
                    const gtsam::KeyFormatter& keyFormatter =
                        gtsam::DefaultKeyFormatter) const;
 
-  gtsam::ErrorTree errorTree(const gtsam::VectorValues& continuousValues) const;
+  gtsam::AlgebraicDecisionTreeKey errorTree(const gtsam::VectorValues& continuousValues) const;
   double probPrime(const gtsam::HybridValues& values) const;
-  gtsam::ErrorTree discretePosterior(
+  gtsam::AlgebraicDecisionTreeKey discretePosterior(
       const gtsam::VectorValues& continuousValues) const;
 
   // Sequential Elimination
@@ -327,12 +350,12 @@ virtual class HybridNonlinearFactorGraph : gtsam::HybridFactorGraph {
                    const gtsam::KeyFormatter& keyFormatter =
                        gtsam::DefaultKeyFormatter) const;
 
-  gtsam::ErrorTree errorTree(const gtsam::Values& continuousValues) const;
+  gtsam::AlgebraicDecisionTreeKey errorTree(const gtsam::Values& continuousValues) const;
 
   gtsam::HybridGaussianFactorGraph linearize(
       const gtsam::Values& continuousValues) const;
 
-  gtsam::ErrorTree discretePosterior(
+  gtsam::AlgebraicDecisionTreeKey discretePosterior(
       const gtsam::Values& continuousValues) const;
 
   gtsam::HybridNonlinearFactorGraph restrict(
@@ -360,7 +383,7 @@ class HybridNonlinearFactor : gtsam::HybridFactor {
   double error(const gtsam::HybridValues& hybridValues) const;
   double error(const gtsam::Values& continuousValues,
                const gtsam::DiscreteValues& assignment) const;
-  gtsam::ErrorTree errorTree(const gtsam::Values &continuousValues);
+  gtsam::AlgebraicDecisionTreeKey errorTree(const gtsam::Values &continuousValues);
 
   HybridGaussianFactor* linearize(const gtsam::Values& continuousValues) const;
 
