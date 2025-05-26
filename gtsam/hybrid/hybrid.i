@@ -463,5 +463,24 @@ class HybridNonlinearISAM {
   void reorderRelinearize();
 };
 
+#include <gtsam/hybrid/HybridEliminationTree.h>
+class HybridEliminationTree {
+  HybridEliminationTree(const gtsam::HybridGaussianFactorGraph& factorGraph,
+                        const gtsam::VariableIndex& structure, const gtsam::Ordering& order);
+  HybridEliminationTree(const gtsam::HybridGaussianFactorGraph& factorGraph,
+                        const gtsam::Ordering& order);
+  void print(const std::string& s = "",
+             const gtsam::KeyFormatter& keyFormatter =
+                 gtsam::DefaultKeyFormatter) const;
+  bool equals(const gtsam::HybridEliminationTree& other, double tol = 1e-9) const;
+};
+
+#include <gtsam/hybrid/HybridJunctionTree.h>
+class HybridJunctionTree {
+  HybridJunctionTree(const gtsam::HybridEliminationTree& eliminationTree);
+  void print(const std::string& s = "",
+             const gtsam::KeyFormatter& keyFormatter =
+                 gtsam::DefaultKeyFormatter) const;
+};
 
 }  // namespace gtsam
