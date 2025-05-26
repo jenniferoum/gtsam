@@ -173,7 +173,7 @@ class HybridBayesTreeClique {
   // double evaluate(const gtsam::HybridValues& values) const;
 };
 
-class HybridBayesTree {
+virtual class HybridBayesTree {
   HybridBayesTree();
   void print(string s = "HybridBayesTree\n",
              const gtsam::KeyFormatter& keyFormatter =
@@ -429,5 +429,39 @@ class HybridSmoother {
   const gtsam::HybridBayesNet& hybridBayesNet() const;
   gtsam::HybridValues optimize() const;
 };
+
+#include <gtsam/hybrid/HybridGaussianISAM.h>
+virtual class HybridGaussianISAM : gtsam::HybridBayesTree {
+  HybridGaussianISAM();
+  HybridGaussianISAM(const gtsam::HybridBayesTree& bayesTree);
+  void update(const gtsam::HybridGaussianFactorGraph& newFactors);
+  static gtsam::Ordering GetOrdering(gtsam::HybridGaussianFactorGraph& factors,
+                              const gtsam::HybridGaussianFactorGraph& newFactors);
+};
+
+#include <gtsam/hybrid/HybridNonlinearISAM.h>
+class HybridNonlinearISAM {
+  HybridNonlinearISAM(int reorderInterval = 1);
+
+  // Standard Interface
+  gtsam::Values estimate();
+  const gtsam::HybridGaussianISAM& bayesTree() const;
+  void prune(const size_t maxNumberLeaves);
+  const gtsam::Values& getLinearizationPoint() const;
+  const gtsam::DiscreteValues& assignment() const;
+  int reorderInterval() const;
+  int reorderCounter() const;
+  void print(const std::string& s = "",
+             const gtsam::KeyFormatter& keyFormatter =
+                 gtsam::DefaultKeyFormatter) const;
+  void printStats() const;
+  void saveGraph(const std::string& s,
+                 const gtsam::KeyFormatter& keyFormatter =
+                 gtsam::DefaultKeyFormatter) const;
+  void update(const gtsam::HybridNonlinearFactorGraph& newFactors,
+              const gtsam::Values& initialValues);
+  void reorderRelinearize();
+};
+
 
 }  // namespace gtsam

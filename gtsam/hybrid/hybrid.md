@@ -28,8 +28,8 @@ The `hybrid` module provides classes and algorithms designed for inference in pr
 
 ## Incremental Hybrid Inference
 
--   [HybridNonlinearISAM](doc/HybridNonlinearISAM.ipynb): Wrapper providing an ISAM interface for nonlinear hybrid problems, managing linearization and an underlying `HybridGaussianISAM`.
 -   [HybridGaussianISAM](doc/HybridGaussianISAM.ipynb): Incremental Smoothing and Mapping (ISAM) algorithm for `HybridGaussianFactorGraph`s, based on updating a `HybridBayesTree`.
+-   [HybridNonlinearISAM](doc/HybridNonlinearISAM.ipynb): Wrapper providing an ISAM interface for nonlinear hybrid problems, managing linearization and an underlying `HybridGaussianISAM`.
 -   [HybridSmoother](doc/HybridSmoother.ipynb): An incremental fixed-lag smoother interface for hybrid systems, managing updates to a `HybridBayesNet` posterior.
 
 ## Hybrid Elimination Intermediates
