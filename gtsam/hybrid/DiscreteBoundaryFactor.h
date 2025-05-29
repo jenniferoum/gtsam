@@ -116,6 +116,10 @@ class GTSAM_EXPORT DiscreteBoundaryFactor : public DecisionTreeFactor {
    */
   DiscreteBoundaryFactor operator/(const DiscreteBoundaryFactor& f) const;
 
+  /// Unhide base class operators
+  using Base::operator*;
+  using Base::operator/;
+
   /// @}
   /// @name Advanced Interface
   /// @{
