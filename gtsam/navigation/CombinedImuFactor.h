@@ -188,7 +188,7 @@ class GTSAM_EXPORT PreintegratedCombinedMeasurementsT : public PreintegrationBac
 };
 
 // For backward compatibility:
-typedef PreintegratedCombinedMeasurementsT<DefaultPreintegrationBackend> PreintegratedCombinedMeasurements;
+using PreintegratedCombinedMeasurements = PreintegratedCombinedMeasurementsT<DefaultPreintegrationBackend>;
 
 /**
  * CombinedImuFactor is a 6-ways factor involving previous state (pose and
@@ -305,7 +305,7 @@ class GTSAM_EXPORT CombinedImuFactorT
 // class CombinedImuFactorT
 
 // For backward compatibility:
-typedef CombinedImuFactorT<> CombinedImuFactor;
+using CombinedImuFactor CombinedImuFactorT<>;
 
 // operator<< for CombinedImuFactorT
 template <class PIMType_>

@@ -170,7 +170,7 @@ public:
 
 // For backward compatibility (so that the compiler flag GTSAM_TANGENT_PREINTEGRATION still
 // controls which class PreintegratedImuMeasurements uses):
-typedef PreintegratedImuMeasurementsT<DefaultPreintegrationBackend> PreintegratedImuMeasurements;
+using PreintegratedImuMeasurements = PreintegratedImuMeasurementsT<DefaultPreintegrationBackend>;
 
 /**
  * ImuFactor is a 5-ways factor involving previous state (pose and velocity of
@@ -342,7 +342,7 @@ public:
 // class ImuFactorT
 
 // For backward compatibility:
-typedef ImuFactorT<> ImuFactor;
+using ImuFactor = ImuFactorT<>;
  
 // operator<< for ImuFactorT
 template <class PIMType_>
@@ -429,7 +429,7 @@ private:
 // class ImuFactor2T
 
 // For backward compatibility:
-typedef ImuFactor2T<> ImuFactor2;
+using ImuFactor2 = ImuFactor2T<>;
 
 // operator<< for ImuFactor2T
 template <class PIMType_>
