@@ -305,7 +305,7 @@ class GTSAM_EXPORT CombinedImuFactorT
 // class CombinedImuFactorT
 
 // For backward compatibility:
-using CombinedImuFactor CombinedImuFactorT<>;
+using CombinedImuFactor = CombinedImuFactorT<>;
 
 // operator<< for CombinedImuFactorT
 template <class PIMType_>
