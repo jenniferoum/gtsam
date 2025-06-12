@@ -71,8 +71,8 @@ typedef ManifoldPreintegration DefaultPreintegrationBackend;
 template <class PreintegrationBackend>
 class GTSAM_EXPORT PreintegratedImuMeasurementsT: public PreintegrationBackend {
  
-  template <class PIMType_> friend class ImuFactorT;
-  template <class PIMType_> friend class ImuFactor2T;
+  template <class PIM> friend class ImuFactorT;
+  template <class PIM> friend class ImuFactor2T;
 
 protected:
 

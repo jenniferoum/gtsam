@@ -77,7 +77,7 @@ class GTSAM_EXPORT PreintegratedCombinedMeasurementsT : public PreintegrationBac
    */
   Eigen::Matrix<double, 15, 15> preintMeasCov_;
 
-  template <class PIMType_> friend class CombinedImuFactorT;
+  template <class PIM> friend class CombinedImuFactorT;
 
  public:
   /// @name Constructors
