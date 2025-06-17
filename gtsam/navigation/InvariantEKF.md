@@ -1,7 +1,7 @@
 # Invariant Extended Kalman Filtering
 Invariant Extended Kalman Filters (IEKFs) are a special class of Extended Kalman Filters (EKFs) that operate on states that reside on Lie Groups. They are used on a class of systems called group-affine systems where the system dynamics evolve using group composition. This group affine property allows the IEKF to have error dynamics that are **state independent**.
 
-In a standard Extended Kalman Filter (EKF), the system dynamics are linearized around the current state estimate leading to clear state dependent dynamics. If the state estimate has error (which it always does), this linearization accumulates error as well. This characteristic can sometimes lead to poor convergence and poor performance in practice. 
+In a standard Extended Kalman Filter (EKF), the system dynamics are linearized around the current state estimate - therefore having state dependent dynamics. If the state estimate has error (which it always does), this linearization accumulates error as well. This characteristic can sometimes lead to poor convergence and poor performance in practice. 
 
 This is where the IEKF sees its greatest benefits. Because of this group affine property, the error propagation is always independent of the state. Therefore, this filter will see improved convergence and consistency even with a poor state estimate. This also allows the filter to converge even with a poor initial estimate of the state. 
 
@@ -13,12 +13,11 @@ The Invariant Kalman Filter operates on many Lie Groups commonly used in robotic
 To introduce the Invariant Kalman Filter to GTSAM, we have created three classes of Extended Kalman Filters in ```navigation```. GTSAM has defined many classes of Lie Groups that may be used with these filters.
 
 - **[ManifoldEKF](https://github.com/borglab/gtsam/blob/develop/gtsam/navigation/ManifoldEKF.h)**: Implements an EKF for states that operate on a differentiable manifold.
-- **[LieGroupEKF](https://github.com/borglab/gtsam/blob/develop/gtsam/navigation/LieGroupEKF.h)**: Implements an EKF for states that operate on a Lie group with state dependent dynamics.
-- **[InvariantEKF](https://github.com/borglab/gtsam/blob/develop/gtsam/navigation/InvariantEKF.h)**: Implements an EKF for states that operate on a Lie group with group composition (state independent) dynamics.
+- **[LieGroupEKF](https://github.com/borglab/gtsam/blob/develop/gtsam/navigation/LieGroupEKF.h)**: Inherits from ```ManifoldEKF`` and implements an EKF for states that operate on a Lie group with state dependent dynamics.
+- **[InvariantEKF](https://github.com/borglab/gtsam/blob/develop/gtsam/navigation/InvariantEKF.h)**: Inherits from ```LieGroupEKF``` and implements EKF for states that operate on a Lie group with group composition (state independent) dynamics.
 
 
-Below, we introduce the math behind these filters, and provide some examples of their usage. 
-
+Below, the mathematics behind these filters are introduced, and examples of their usage are provided. 
 ## Extended Kalman Filters
 Extended Kalman Filters operate with a state  $x \in \mathbb{R}^n$ in a vector space with a covariance defined in the same vector space. The state transition model and observation model are given by
 
@@ -34,7 +33,7 @@ The state of the system is predicted using the system dynamics $f$ with a contro
 ```math
 \hat{x}_{k|k-1} = f(\hat{x}_{k-1|k-1}, u_{k-1})
 ```
-The Jacobian, or state transition matrix, of the system is found at the current state estimate; then
+The Jacobian, or state transition matrix, of the system is found at the prior state estimate; then
 ```math
 F_k = \frac{\partial f}{\partial x}|_{k|k-1}.
 ```
@@ -42,7 +41,7 @@ The state transition matrix is used to propagate the covariance $P$.
 ```math
 P_{k|k-1} = F_kP_{k-1|k-1}F_k^T + Q_{k-1}
 ```
-The state transition matrix $F_k$ is a function of the state at which it is linearized. This state dependency is the primary source of linearization errors in the EKF. 
+The state transition matrix $F_k$ is a function of the state at the current state estimate. This state dependency is the primary source of linearization errors in the EKF. 
 ### Update Stage
 In the update stage, sensor measurements are used to update the state estimate. 
 
@@ -50,11 +49,11 @@ The measurement residual is given by
 ```math
 y_k = z_k - h(\hat{x}_{k|k-1})
 ```
-and the Jacobian of $h$, or the observation matrix, is given by 
+where $h(\hat{x}_{k|k-1})$ is the predicted measurement. The Jacobian of $h$, or the observation matrix, is given by 
 ```math
 H_k =\frac{\partial h}{\partial x}|_{k|k-1}
 ```
-Once again, we linearize around the current state estimate; therefore, we have another source of linearization errors in the EKF. 
+Once again, the linearization occurs about the current state estimate which leads to additional linearization errors in the EKF. 
 
 The residual covariance is given by
 ```math
@@ -90,7 +89,7 @@ Otherwise, if the motion model is an increment $\xi_k$ in the tangent space, the
 \hat{X}_{k|k-1} = \text{retract}(\hat{X}_{k-1|k-1}, \xi_k)
 ```
 
-ManifoldEKF does not define which method is used. Rather, we state that $X_{k|k-1} = X_{\text{next}}$
+ManifoldEKF does not define which method is used. Rather, it is set that $X_{k|k-1} = X_{\text{next}}$
 where $X_{\text{next}}$ is defined by the user in their own prediction function. This allows the method to be flexible to any motion model. 
 
 ### ManifoldEKF Update Stage
@@ -154,7 +153,7 @@ F_k = Ad_{U_{k}}^{-1}
 
 
 # Examples 
-Below, we have provided three examples of these filters in action. 
+Below are three examples of these filters in action. 
 1) **[IEKF_SE2Example](https://github.com/borglab/gtsam/blob/develop/gtsam/examples/IEKF_SE2Example.cpp)**: implements ```InvariantEKF``` on a SE(2) Lie Group with odometry as a Lie group increment and a 2D GPS measurement update.
 2) **[IEKF_NavstateExample](https://github.com/borglab/gtsam/blob/develop/examples/IEKF_NavstateExample.cpp)**: implements ```InvariantEKF``` on a NavState Lie Group with a tangent space increment based on IMU measurements, and a 3D GPS measuremnt update.
 3) **[GEKF_Rot3Example](https://github.com/borglab/gtsam/blob/develop/examples/GEKF_Rot3Example.cpp)**: implements ```LieGroupEKF``` on a Rot3 Lie Group using a state dependent dynamics function and a magnetometer update.
@@ -183,18 +182,18 @@ The filter can then be created with
   InvariantEKF<Pose2> ekf(X0, P0);
 ```
 
-For this example, we assume constant process and observation covariances. We define them as
+For this example, assume constant process and observation covariances. They are defined as
 ```cpp
   Matrix3 Q = (Vector3(0.05, 0.05, 0.001)).asDiagonal();
   Matrix2 R = I_2x2 * 0.01;
 ```
 
 #### Defining odometry and measurements
-We define two simple odometry steps with a Lie group increment $U$
+Two simple odometry steps with a Lie group increment $U$ are used and defined as
 ```cpp
 Pose2 U1(1.0, 1.0, 0.5), U2(1.0, 1.0, 0.0);
 ```
-and two GPS measurements
+Two GPS measurements are also created; 
 ```cpp
   Vector2 z1, z2;
   z1 << 1.0, 0.0;
@@ -216,7 +215,7 @@ ekf.update(h_gps, z1, R);
 The **[IEKF_NavstateExample](https://github.com/borglab/gtsam/blob/develop/gtsam/examples/IEKF_NavstateExample.cpp)** demonstrates the use of an Invariant EKF with a tangent space increment based on IMU measurements transformed into the tangent space and a 3D GPS measurement processor. The Lie Group is NavState, or $\mathcal{SE}_2(3)$.
 
 #### Defining the Dynamics
-An IMU utilizes accelerometers and gyroscopes to estimate the pose of the robot. This is commonly used in inertial navigation aboard aircraft. An accelerometer and gyroscope measures the proper acceleration and the angular velocity experienced by the body. Then, $u = [a_x, a_y, a_z, w_x, w_y, w_z]^T$. In the tangent space of $\mathcal{SE}_2(3)$, we have $\xi = [w_x, w_y, w_z, 0, 0, 0, a_x, a_y, a_z]^T$. The dynamics function, then, is given by
+An IMU utilizes accelerometers and gyroscopes to estimate the pose of the robot. This is commonly used in inertial navigation aboard aircraft. An accelerometer and gyroscope measures the proper acceleration and the angular velocity experienced by the body. Then, $u = [a_x, a_y, a_z, w_x, w_y, w_z]^T$. Transforming this to the tangent space, $\xi = [w_x, w_y, w_z, 0, 0, 0, a_x, a_y, a_z]^T$. The dynamics function, then, is given by
 
 ```cpp
 Vector9 dynamics(const Vector6& imu) {
@@ -237,7 +236,7 @@ Vector3 h_gps(const NavState& X, OptionalJacobian<3, 9> H = {}) {
 ```
 
 #### Creating and Initializing the EKF
-We initialize the state and covariance, then
+The initial state and covariance are given by
 ```cpp
   NavState X0;  // R=I, v=0, t=0
   Matrix9 P0 = Matrix9::Identity() * 0.1;
@@ -247,14 +246,14 @@ and the IEKF is created using
   InvariantEKF<NavState> ekf(X0, P0);
 ```
 
-For this example, we assume constant process and observation covariances. Then,
+For this example, assume constant process and observation covariances. Then,
 ```cpp
   Matrix9 Q = Matrix9::Identity() * 0.01;
   Matrix3 R = Matrix3::Identity() * 0.5;
 ```
 
 #### Defining IMU and GPS measurements
-We define two IMU measurements and two GPS measurements. Then, the IMU is given by
+Two IMU measurements and two GPS measurements are defined in this problem. The IMU measurements are given by
 ```cpp
   Vector6 imu1;
   imu1 << 0.1, 0, 0, 0, 0.2, 0;
@@ -268,9 +267,7 @@ and the GPS measurements are given by
   Vector3 z2;
   z2 << 0.6, 0, 0;
 ```
-
-Given that we are using control vector inputs $u$, we also need a time interval $dt$. Therefore, we describe
-
+Since control vector inputs $u$ are used, a time interval $\Delta t$ is also needed. This is defined as 
 ```cpp
   double dt = 1.0;
 ```
@@ -292,12 +289,12 @@ The **[GEKF_Rot3Example](https://github.com/borglab/gtsam/blob/develop/examples/
 
 #### Defining the Dynamics Function
 A proportional controller is used as the dynamics function. The previous state estimate is used to find a new angular velocity which is used in the group EKF to predict the next state. 
-We define our proportional gain; then, 
+The proportional gain $k$ is defined as a double where
 ```cpp
 static constexpr double k = 0.5;
 ```
 
-We create our dynamics function; then, 
+The dynamics function is created below. The following code is inside of the function.
 ```cpp 
 Vector3 dynamicsSO3(const Rot3& X, OptionalJacobian<3, 3> H = {}) {
 }
@@ -340,7 +337,7 @@ Vector3 h_mag(const Rot3& X, OptionalJacobian<3, 3> H = {}) {
 ```
 
 #### Creating and Initializing the EKF
-We initialize the state and covariance, then
+The state and covariance must be initialized, so
 ```cpp
   const Rot3 R0 = Rot3::RzRyRx(0.1, -0.2, 0.3);
   const Matrix3 P0 = Matrix3::Identity() * 0.1;
@@ -350,7 +347,7 @@ and the LieGroup EKF is created using
   LieGroupEKF<Rot3> ekf(R0, P0);
 ```
 
-For this example, we assume constant process and observation covariances. We also need a time interval $\Delta t$ for the tangent space increment; then
+For this example,assume constant process and observation covariances. A time interval $\Delta t$ is needed for the tangent space increment; then
 ```cpp
   double dt = 0.1;
   Matrix3 Q = Matrix3::Identity() * 0.01;
@@ -369,11 +366,6 @@ and the EKF is updated using the magnetometer measurement by
 ```cpp
 ekf.update(h_mag, z, Rm);
 ```
-
-
-
-
-
 
 
 # Class Diagram
