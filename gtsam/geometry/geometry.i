@@ -764,11 +764,6 @@ class EssentialMatrix {
 
 #include <gtsam/geometry/Cal3.h>
 virtual class Cal3 {
-  // Standard Constructors
-  Cal3();
-  Cal3(double fx, double fy, double s, double u0, double v0);
-  Cal3(gtsam::Vector v);
-
   // Testable
   void print(string s = "Cal3") const;
   bool equals(const gtsam::Cal3& K, double tol) const;
@@ -786,7 +781,6 @@ virtual class Cal3 {
   gtsam::Matrix inverse() const;
 
   // Manifold
-  static size_t Dim();
   size_t dim() const;
 };
 
