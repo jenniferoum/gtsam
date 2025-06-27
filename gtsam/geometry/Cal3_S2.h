@@ -115,7 +115,7 @@ class GTSAM_EXPORT Cal3_S2 : public Cal3 {
   /// @{
 
   /// return DOF, dimensionality of tangent space
-  virtual size_t dim() const override { return Dim(); };
+  virtual size_t dim() const { return Dim(); };
 
   /// return DOF, dimensionality of tangent space
   static size_t Dim() { return dimension; }

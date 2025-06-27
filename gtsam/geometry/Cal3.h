@@ -172,10 +172,6 @@ class GTSAM_EXPORT Cal3 {
   /// Return inverted calibration matrix inv(K)
   Matrix3 inverse() const;
 
-  /// Abstract function that returns DOF, dimensionality of tangent space
-  /// To be overriden in derived classes
-  virtual size_t dim() const = 0;
-
   /// @}
   /// @name Advanced Interface
   /// @{
