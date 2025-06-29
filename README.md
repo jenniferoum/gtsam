@@ -2,7 +2,7 @@
 
 ---
 
-**How to install SL4 supported GTSAM**
+**How to install SL4 supported GTSAM for [VGGT-SLAM](https://arxiv.org/abs/2505.12549)**
 
 ```
 cmake .. -DGTSAM_BUILD_PYTHON=1 -DGTSAM_FORCE_STATIC_LIB=ON && make -j 60
