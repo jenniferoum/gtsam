@@ -195,8 +195,8 @@ Similarity2 Similarity2::Align(const Pose2Pairs& abPosePairs) {
 }
 
 Matrix2 Similarity2::GetV(double theta, double lambda) {
-  const double theta2 = theta * theta;
-  const double lambda2 = lambda * lambda;
+  // Derivation from https://ethaneade.com/lie_groups.pdf page 6
+  const double lambda2 = lambda * lambda, theta2 = theta * theta;
 
   // SE(2) or near-SE(2) case  (|λ| tiny)
   if (std::abs(lambda) < 1e-9) {
@@ -225,26 +225,20 @@ Matrix2 Similarity2::GetV(double theta, double lambda) {
   if (theta2 > 1e-9) {
     A = sin(theta) / theta;
     B = (1 - cos(theta)) / theta2;
-    C = (theta - sin(theta)) / (theta2 * theta);   // note sign
-  }
-  else {                    // θ series
+    C = (1 - A) / theta2;
+  } else {  // θ series
     A = 1.0 - theta2 / 6.0;
     B = 0.5 - theta2 / 24.0;
     C = 1.0 / 6.0 - theta2 / 120.0;
   }
 
-  const double alpha = lambda2 / (lambda2 + theta2);   // safe
+  const double alpha = lambda2 / (lambda2 + theta2);
   const double s_inv = exp(-lambda);
-
-  const double X = alpha * (1 - s_inv) / lambda
-    + (1 - alpha) * (A - lambda * B);
-
-  const double Y = alpha * (s_inv - 1 + lambda) / (lambda2)
-    +(1 - alpha) * (B - lambda * C);
+  const double X = alpha * (1 - s_inv) / lambda + (1 - alpha) * (A - lambda * B);
+  const double Y = alpha * (s_inv - 1 + lambda) / lambda2 + (1 - alpha) * (B - lambda * C);
 
   Matrix2 V;
-  V << X, -theta * Y,
-    theta* Y, X;
+  V << X, -theta * Y, theta* Y, X;
   return V;
 }
 
