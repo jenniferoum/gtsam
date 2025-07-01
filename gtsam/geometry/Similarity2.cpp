@@ -215,7 +215,7 @@ Matrix2 Similarity2::GetV(double theta, double lambda) {
     return V;
   }
 
-  // general Sim(2) case ---------------------------------------------
+  // general Sim(2) case
   const double d2 = lambda2 + theta2;
   if (d2 < 1e-15)               // both tiny → identity
     return Matrix2::Identity();

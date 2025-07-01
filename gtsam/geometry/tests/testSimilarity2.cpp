@@ -15,13 +15,17 @@
   * @author Varun Agrawal
   */
 
-#include <CppUnitLite/TestHarness.h>
+#include <gtsam/geometry/Similarity2.h>
+
 #include <gtsam/base/Testable.h>
 #include <gtsam/base/numericalDerivative.h>
 #include <gtsam/base/testLie.h>
-#include <gtsam/geometry/Similarity2.h>
+#include <gtsam/base/Vector.h>
+
+#include <CppUnitLite/TestHarness.h>
 
 #include <functional>
+#include <vector>
 
 using namespace std::placeholders;
 using namespace gtsam;
@@ -205,13 +209,6 @@ TEST(Similarity2, vec) {
   EXPECT(assert_equal(H_numerical, H_actual, 1e-7));
 }
 
-// In testSimilarity2.cpp
-
-#include <gtsam/base/Vector.h> // For Vector4
-#include <vector> // For std::vector
-
-// ... other tests ...
-
 //******************************************************************************
 TEST(Similarity2, AdjointMap) {
   // Create a non-trivial Similarity2 object
@@ -227,7 +224,6 @@ TEST(Similarity2, AdjointMap) {
   // 2. Calculate the Adjoint map using the general, "brute force" definition.
   // This is the "expected" ground truth.
   // Ad_i = Vee(T * Hat(e_i) * T_inv)
-  //-------------------------------------------------------------------------
 
   // Get the 4 generators G_i = Hat(e_i) for sim(2)
   std::vector<Matrix3> G;

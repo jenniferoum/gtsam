@@ -116,7 +116,6 @@ TEST(Similarity3, AdjointMap) {
 
   // 2. Calculate the Adjoint map using the general, "brute force" definition.
   // Ad_i = Vee(T * Hat(e_i) * T_inv)
-
   // Get the 7 generators G_i = Hat(e_i) for sim(3)
   std::vector<Matrix4> G;
   for (int i = 0; i < 7; ++i) {

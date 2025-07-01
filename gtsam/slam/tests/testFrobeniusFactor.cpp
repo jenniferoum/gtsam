@@ -274,7 +274,7 @@ namespace sim2 {
 /* ************************************************************************* */
 TEST(FrobeniusFactorSimilarity2, evaluateError) {
   using namespace ::sim2;
-  auto factor = FrobeniusFactor<Similarity2>(1, 2, noiseModel::Unit::Create(12));
+  auto factor = FrobeniusFactor<Similarity2>(1, 2, noiseModel::Unit::Create(9));
   Vector actual = factor.evaluateError(P1, P2);
   Vector expected = P2.vec() - P1.vec();
   EXPECT(assert_equal(expected, actual, 1e-9));
