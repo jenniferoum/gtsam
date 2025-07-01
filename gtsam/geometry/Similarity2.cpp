@@ -359,6 +359,6 @@ Vector9 Similarity2::vec(OptionalJacobian<9, 4> H) const {
       T* P_sim2.block<3, 4>(3, 0),
       T* P_sim2.block<3, 4>(6, 0);
   }
-  return Eigen::Map<const Vector9>(matrix().data());
+  return Eigen::Map<const Vector9>(T.data());
 }
 }  // namespace gtsam
