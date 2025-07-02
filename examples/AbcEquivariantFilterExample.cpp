@@ -8,15 +8,16 @@
  * Estimation with Online Calibration" by Fornasier et al. Authors: Darshan
  * Rajasekaran & Jennifer Oum
  */
-
-#include "ABC_EQF.h"
+#include "ABC.h"
+#include "EquivariantFilter.h"
 
 // Use namespace for convenience
-using namespace gtsam;
+using namespace gtsam::abc_eqf_lib;
 constexpr size_t N = 1;  // Number of calibration states
 using M = abc_eqf_lib::State<N>;
 using Group = abc_eqf_lib::G<N>;
-using EqFilter = abc_eqf_lib::EqF<N>;
+using Geometry = ABCGeometry<N>;
+using EqFilter = abc_eqf_lib::EqF<Group, M, Geometry>;
 using gtsam::abc_eqf_lib::EqF;
 using gtsam::abc_eqf_lib::Input;
 using gtsam::abc_eqf_lib::Measurement;

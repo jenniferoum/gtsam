@@ -7,8 +7,18 @@
  * Attitude Estimation with Online Calibration" by Fornasier et al.
  * Authors: Darshan Rajasekaran & Jennifer Oum
  */
-#ifndef ABC_H
-#define ABC_H
+#ifndef ABC_GEOMETRY_H
+#define ABC_GEOMETRY_H
+/**
+ * @file ABC.h
+ * @brief Core components for Attitude-Bias-Calibration systems
+ *
+ * This file contains fundamental components and utilities for the ABC system
+ * based on the paper "Overcoming Bias: Equivariant Filter Design for Biased
+ * Attitude Estimation with Online Calibration" by Fornasier et al.
+ * Authors: Darshan Rajasekaran & Jennifer Oum
+ */
+
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/Vector.h>
 #include <gtsam/geometry/Rot3.h>
@@ -18,6 +28,7 @@ namespace gtsam {
 namespace abc_eqf_lib {
 using namespace std;
 using namespace gtsam;
+
 //========================================================================
 // Utility Functions
 //========================================================================
@@ -203,16 +214,286 @@ struct G {
     return G(A, a, B);
   }
 };
-}  // namespace abc_eqf_lib
+
+//========================================================================
+// Helper Functions Implementation
+//========================================================================
+
+/**
+ * Maps system dynamics to the symmetry group
+ * @param xi State
+ * @param u Input
+ * @return Lifted input in Lie Algebra
+ * Uses Vector zero & Rot3 inverse, matrix functions
+ */
+// template <size_t N>
+// Vector lift(const State<N>& xi, const Input& u) {
+//   Vector L = Vector::Zero(6 + 3 * N);
+//
+//   // First 3 elements
+//   L.head<3>() = u.w - xi.b;
+//
+//   // Next 3 elements
+//   L.segment<3>(3) = -u.W() * xi.b;
+//
+//   // Remaining elements
+//   for (size_t i = 0; i < N; i++) {
+//     L.segment<3>(6 + 3 * i) = xi.S[i].inverse().matrix() * L.head<3>();
+//   }
+//
+//   return L;
+// }
+/**
+ * Implements group actions on the states
+ * @param X A symmetry group element G consisting of the attitude, bias and the
+ * calibration components X.a -> Rotation matrix containing the attitude X.b ->
+ * A skew-symmetric matrix representing bias X.B -> A vector of Rotation
+ * matrices for the calibration components
+ * @param xi State object
+ * xi.R -> Attitude (Rot3)
+ * xi.b -> Gyroscope Bias(Vector 3)
+ * xi.S -> Vector of calibration matrices(Rot3)
+ * @return Transformed state
+ * Uses the Rot3 inverse and Vee functions
+ */
+template <size_t N>
+State<N> operator*(const G<N>& X, const State<N>& xi) {
+  std::array<Rot3, N> new_S;
+
+  for (size_t i = 0; i < N; i++) {
+    new_S[i] = X.A.inverse() * xi.S[i] * X.B[i];
+  }
+
+  return State<N>(xi.R * X.A, X.A.inverse().matrix() * (xi.b - Rot3::Vee(X.a)),
+                  new_S);
+}
+/**
+ * Transforms the angular velocity measurements b/w frames
+ * @param X A symmetry group element X with the components
+ * @param u Inputs
+ * @return Transformed inputs
+ * Uses Rot3 Inverse, matrix and Vee functions and is critical for maintaining
+ * the input equivariance
+ */
+template <size_t N>
+Input velocityAction(const G<N>& X, const Input& u) {
+  return Input{X.A.inverse().matrix() * (u.w - Rot3::Vee(X.a)), u.Sigma};
+}
+/**
+ * Transforms the Direction measurements based on the calibration type ( Eqn 6)
+ * @param X Group element X
+ * @param y Direction measurement y
+ * @param idx Calibration index
+ * @return Transformed direction
+ * Uses Rot3 inverse, matric and Unit3 unitvector functions
+ */
+template <size_t N>
+Vector3 outputAction(const G<N>& X, const Unit3& y, int idx) {
+  if (idx == -1) {
+    return X.A.inverse().matrix() * y.unitVector();
+  } else {
+    if (idx >= static_cast<int>(N)) {
+      throw std::out_of_range("Calibration index out of range");
+    }
+    return X.B[idx].inverse().matrix() * y.unitVector();
+  }
+}
+
+/**
+ * @brief Calculates the Jacobian matrix using central difference approximation
+ * @param f Vector function f
+ * @param x The point at which Jacobian is evaluated
+ * @return Matrix containing numerical partial derivatives of f at x
+ * Uses Vector's size() and Zero(), Matrix's Zero() and col() methods
+ */
+Matrix numericalDifferential(std::function<Vector(const Vector&)> f,
+                             const Vector& x) {
+  double h = 1e-6;
+  Vector fx = f(x);
+  int n = fx.size();
+  int m = x.size();
+  Matrix Df = Matrix::Zero(n, m);
+
+  for (int j = 0; j < m; j++) {
+    Vector ej = Vector::Zero(m);
+    ej(j) = 1.0;
+
+    Vector fplus = f(x + h * ej);
+    Vector fminus = f(x - h * ej);
+
+    Df.col(j) = (fplus - fminus) / (2 * h);
+  }
+
+  return Df;
+}
+
+/**
+ * Computes the differential of a state action at the identity of the symmetry
+ * group
+ * @param xi State object Xi representing the point at which to evaluate the
+ * differential
+ * @return A matrix representing the jacobian of the state action
+ * Uses numericalDifferential, and Rot3 expmap, logmap
+ */
+template <size_t N>
+Matrix stateActionDiff(const State<N>& xi) {
+  std::function<Vector(const Vector&)> coordsAction = [&xi](const Vector& U) {
+    G<N> groupElement = G<N>::exp(U);
+    State<N> transformed = groupElement * xi;
+    return xi.localCoordinates(transformed);
+  };
+
+  Vector zeros = Vector::Zero(6 + 3 * N);
+  Matrix differential = numericalDifferential(coordsAction, zeros);
+  return differential;
+}
 
 template <size_t N>
-struct traits<abc_eqf_lib::State<N>>
-    : internal::LieGroupTraits<abc_eqf_lib::State<N>> {};
+struct ABCGeometry {
+  using Input = abc_eqf_lib::Input;
+  using Measurement = abc_eqf_lib::Measurement;
+  using GType = G<N>;
+  using MType = State<N>;
 
-template <size_t N>
-struct traits<abc_eqf_lib::G<N>> : internal::LieGroupTraits<abc_eqf_lib::G<N>> {
+  static GType identityGroup() { return GType::identity(N); }
+
+  static MType identityState() { return MType::identity(); }
+  static MType groupAction(const GType& g, const MType& x) { return g * x; }
+  static Vector lift(const MType& xi, const Input& u) {
+    Vector L = Vector::Zero(6 + 3 * N);
+
+    // First 3 elements
+    L.head<3>() = u.w - xi.b;
+
+    // Next 3 elements
+    L.segment<3>(3) = -u.W() * xi.b;
+
+    // Remaining elements
+    for (size_t i = 0; i < N; i++) {
+      L.segment<3>(6 + 3 * i) = xi.S[i].inverse().matrix() * L.head<3>();
+    }
+
+    return L;
+  }
+  static GType groupExp(const Vector& v) { return GType::exp(v); }
+  static GType groupCompose(const GType& g1, const GType& g2) {
+    return g1 * g2;
+  }
+
+  /**
+   * Computes the discrete time state transition matrix
+   * @param u Angular velocity
+   * @param dt time step
+   * @return State transition matrix in discrete time
+   */
+  static Matrix stateTransitionMatrix(const Input& u, double dt, GType X_hat) {
+    Matrix3 W0 = velocityAction(X_hat.inv(), u).W();
+    Matrix Phi1 = Matrix::Zero(6, 6);
+
+    Matrix3 Phi12 = -dt * (I_3x3 + (dt / 2) * W0 + ((dt * dt) / 6) * W0 * W0);
+    Matrix3 Phi22 = I_3x3 + dt * W0 + ((dt * dt) / 2) * W0 * W0;
+
+    Phi1.block<3, 3>(0, 0) = I_3x3;
+    Phi1.block<3, 3>(0, 3) = Phi12;
+    Phi1.block<3, 3>(3, 3) = Phi22;
+    Matrix Phi2 = repBlock(Phi22, N);
+    return blockDiag(Phi1, Phi2);
+  }
+  /**
+   * Computes linearized continuous time state matrix
+   * @param u Angular velocity
+   * @return Linearized state matrix
+   * Uses Matrix zero and Identity functions
+   */
+  static Matrix stateMatrixA(const GType& X_hat, const Input& u) {
+    Matrix3 W0 = velocityAction(X_hat.inverse(), u).W();
+
+    Matrix A1 = Matrix::Zero(6, 6);
+    A1.block<3, 3>(0, 3) = -I_3x3;
+    A1.block<3, 3>(3, 3) = W0;
+
+    Matrix A2 = repBlock(W0, N);
+    return blockDiag(A1, A2);  // Now valid inside geometry
+  }
+  static Matrix inputMatrix(GType X_hat) {
+    Matrix B1 = blockDiag(X_hat.A.matrix(), X_hat.A.matrix());
+    Matrix B2(3 * N, 3 * N);
+
+    for (size_t i = 0; i < N; ++i) {
+      B2.block<3, 3>(3 * i, 3 * i) = X_hat.B[i].matrix();
+    }
+
+    return blockDiag(B1, B2);
+  }
+
+  static Matrix processNoise(const Input& u) {
+    return blockDiag(u.Sigma, repBlock(1e-9 * I_3x3, N));
+  }
+
+  /**
+   * Computes the input uncertainty propagation matrix
+   * @return
+   * Uses the blockdiag matrix
+   */
+  static Matrix inputMatrixBt(GType X_hat) {
+    Matrix B1 = blockDiag(X_hat.A.matrix(), X_hat.A.matrix());
+    Matrix B2(3 * N, 3 * N);
+
+    for (size_t i = 0; i < N; ++i) {
+      B2.block<3, 3>(3 * i, 3 * i) = X_hat.B[i].matrix();
+    }
+
+    return blockDiag(B1, B2);
+  }
+  /**
+   * Computes the linearized measurement matrix. The structure depends on
+   * whether the sensor has a calibration state
+   * @param d reference direction
+   * @param idx Calibration index
+   * @return Measurement matrix
+   * Uses the matrix zero, Rot3 hat and the Unitvector functions
+   */
+  static Matrix measurementMatrixC(const Unit3& d, int idx) {
+    Matrix Cc = Matrix::Zero(3, 3 * N);
+
+    // If the measurement is related to a sensor that has a calibration state
+    if (idx >= 0) {
+      // Set the correct 3x3 block in Cc
+      Cc.block<3, 3>(0, 3 * idx) = Rot3::Hat(d.unitVector());
+    }
+
+    Matrix3 wedge_d = Rot3::Hat(d.unitVector());
+
+    // Create the combined matrix
+    Matrix temp(3, 6 + 3 * N);
+    temp.block<3, 3>(0, 0) = wedge_d;
+    temp.block<3, 3>(0, 3) = Matrix3::Zero();
+    temp.block(0, 6, 3, 3 * N) = Cc;
+
+    return wedge_d * temp;
+  }
+  /**
+   * Computes the measurement uncertainty propagation matrix
+   * @param idx Calibration index
+   * @return Returns B[idx] for calibrated sensors, A for uncalibrated
+   */
+  static Matrix outputMatrixDt(int idx, G<N> X_hat) {
+    // If the measurement is related to a sensor that has a calibration state
+    if (idx >= 0) {
+      if (idx >= static_cast<int>(N)) {
+        throw std::out_of_range("Calibration index out of range");
+      }
+      return X_hat.B[idx].matrix();
+    } else {
+      return X_hat.A.matrix();
+    }
+  }
+
+  static constexpr int DOF = 6 + 3 * N;
+  static constexpr int n_cal = N;
 };
 
+}  // namespace abc_eqf_lib
 }  // namespace gtsam
 
-#endif  // ABC_H
+#endif  // ABC_GEOMETRY_H
