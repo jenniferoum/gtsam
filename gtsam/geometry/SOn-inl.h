@@ -57,13 +57,6 @@ typename SO<N>::TangentVector SO<N>::ChartAtOrigin::Local(const SO& R,
 }
 
 template <int N>
-typename SO<N>::MatrixDD SO<N>::AdjointMap() const {
-  if (N==2) return I_1x1; // SO(2) case
-  throw std::runtime_error(
-      "SO<N>::AdjointMap only implemented for SO2, SO3 and SO4.");
-}
-
-template <int N>
 SO<N> SO<N>::Expmap(const TangentVector& omega, ChartJacobian H) {
   throw std::runtime_error("SO<N>::Expmap only implemented for SO3 and SO4.");
 }

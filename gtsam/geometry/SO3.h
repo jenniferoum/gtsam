@@ -59,7 +59,7 @@ Vector3 SO3::Vee(const Matrix3& X);  ///< inverse of Hat
 
 /// Adjoint map
 template <>
-Matrix3 SO3::AdjointMap() const;
+Matrix3 SO3::AdjointMap() const{ return matrix_; }
 
 /**
  * Exponential map at identity - create a rotation from canonical coordinates
@@ -95,10 +95,6 @@ SO3 SO3::ChartAtOrigin::Retract(const Vector3& omega, ChartJacobian H);
 template <>
 GTSAM_EXPORT
 Vector3 SO3::ChartAtOrigin::Local(const SO3& R, ChartJacobian H);
-
-template <>
-GTSAM_EXPORT
-Vector9 SO3::vec(OptionalJacobian<9, 3> H) const;
 
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
 template <class Archive>

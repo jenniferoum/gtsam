@@ -51,7 +51,7 @@ constexpr int NSquaredSO(int N) { return (N < 0) ? Eigen::Dynamic : N * N; }
  * Template paramater N can be a fixed integer or can be Eigen::Dynamic
  */
 template <int N>
-class SO : public LieGroup<SO<N>, internal::DimensionSO(N)> {
+class SO : public MatrixLieGroup<SO<N>, internal::DimensionSO(N), N> {
  public:
   inline constexpr static auto dimension = internal::DimensionSO(N);
   using MatrixNN = Eigen::Matrix<double, N, N>;
@@ -267,7 +267,9 @@ class SO : public LieGroup<SO<N>, internal::DimensionSO(N)> {
   /// @{
 
   /// Adjoint map
-  MatrixDD AdjointMap() const;
+  MatrixDD AdjointMap() const {
+    return MatrixLieGroup<SO<N>, internal::DimensionSO(N), N>::AdjointMap();
+  }
 
   /**
    * Exponential map at identity - create a rotation from canonical coordinates
