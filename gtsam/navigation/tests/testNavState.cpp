@@ -746,6 +746,38 @@ TEST(NavState, ChartDerivatives) {
 }
 
 /* ************************************************************************* */
+TEST(NavState, vec) {
+  // Test the 'vec' method
+  using Vector25 = Eigen::Matrix<double, 25, 1>;
+  const NavState navState(Rot3::Rodrigues(0.1, 0.2, 0.3), Point3(1.0, 2.0, 3.0), Velocity3(0.4, 0.5, 0.6));
+
+  Vector25 expected_vec = Eigen::Map<Vector25>(navState.matrix().data());
+  Eigen::Matrix<double, 25, 9> actualH;
+  Vector25 actual_vec = navState.vec(actualH);
+  EXPECT(assert_equal(expected_vec, actual_vec));
+
+  // Verify Jacobian with numerical derivatives
+  std::function<Vector25(const NavState&)> f = [](const NavState& p) { return p.vec(); };
+  Eigen::Matrix<double, 25, 9> numericalH = numericalDerivative11<Vector25, NavState>(f, navState);
+  EXPECT(assert_equal(numericalH, actualH, 1e-9));
+}
+
+/* ************************************************************************* */
+TEST(NavState, AdjointMap_GenericVsSpecialized) {
+  // Create a non-trivial NavState object
+  const NavState navState(Rot3::Rodrigues(0.1, 0.2, 0.3), Point3(1.0, 2.0, 3.0), Velocity3(0.4, 0.5, 0.6));
+
+  // Call the specialized AdjointMap
+  Matrix9 specialized_Adj = navState.AdjointMap();
+
+  // Call the generic AdjointMap from the base class
+  Matrix9 generic_Adj = static_cast<const MatrixLieGroup<NavState, 9, 5>*>(&navState)->AdjointMap();
+
+  // Assert that they are equal
+  EXPECT(assert_equal(specialized_Adj, generic_Adj, 1e-9));
+}
+
+/* ************************************************************************* */
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);

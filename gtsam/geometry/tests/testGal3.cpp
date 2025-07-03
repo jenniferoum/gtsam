@@ -1197,6 +1197,26 @@ TEST(Gal3, vec) {
     EXPECT(assert_equal(H_numerical, H_actual, 1e-7));
 }
 
+//******************************************************************************
+
+TEST(Gal3, AdjointMap) {
+  // Create a non-trivial Gal3 object
+  const Rot3 R = Rot3::Rodrigues(0.1, 0.2, 0.3);
+  const Point3 r(1.0, 2.0, 3.0);
+  const Velocity3 v(0.4, 0.5, 0.6);
+  const double t = 0.7;
+  const Gal3 gal3(R, r, v, t);
+
+  // Call the specialized AdjointMap
+  Matrix10 specialized_Adj = gal3.AdjointMap();
+
+  // Call the generic AdjointMap from the base class
+  Matrix10 generic_Adj = static_cast<const MatrixLieGroup<Gal3, 10, 5>*>(&gal3)->AdjointMap();
+
+  // Assert that they are equal
+  EXPECT(assert_equal(specialized_Adj, generic_Adj, kTol));
+}
+
 /* ************************************************************************* */
 int main() {
     TestResult tr;
