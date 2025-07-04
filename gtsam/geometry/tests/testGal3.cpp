@@ -34,7 +34,7 @@ static const double kTol = 1e-8;
 
 // Instantiate Testable and Lie concepts for Gal3
 GTSAM_CONCEPT_TESTABLE_INST(gtsam::Gal3)
-GTSAM_CONCEPT_LIE_INST(gtsam::Gal3)
+GTSAM_CONCEPT_MATRIX_LIE_GROUP_INST(gtsam::Gal3)
 
 // Define common test values
 const Rot3 kTestRot = Rot3::RzRyRx(0.1, -0.2, 0.3);

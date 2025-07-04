@@ -31,7 +31,7 @@ using namespace gtsam;
 using namespace std;
 
 GTSAM_CONCEPT_TESTABLE_INST(Pose2)
-GTSAM_CONCEPT_LIE_INST(Pose2)
+GTSAM_CONCEPT_MATRIX_LIE_GROUP_INST(Pose2)
 
 //******************************************************************************
 TEST(Pose2 , Concept) {

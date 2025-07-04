@@ -31,7 +31,7 @@ using namespace gtsam;
 using namespace std::placeholders;
 
 GTSAM_CONCEPT_TESTABLE_INST(Pose3)
-GTSAM_CONCEPT_LIE_INST(Pose3)
+GTSAM_CONCEPT_MATRIX_LIE_GROUP_INST(Pose3)
 
 static const Point3 P(0.2,0.7,-2);
 static const Rot3 R = Rot3::Rodrigues(0.3,0,0);

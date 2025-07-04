@@ -30,7 +30,7 @@ using namespace std;
 using namespace gtsam;
 
 GTSAM_CONCEPT_TESTABLE_INST(NavState)
-GTSAM_CONCEPT_LIE_INST(NavState)
+GTSAM_CONCEPT_MATRIX_LIE_GROUP_INST(NavState)
 
 static const Rot3 kAttitude = Rot3::RzRyRx(0.1, 0.2, 0.3);
 static const Point3 kPosition(1.0, 2.0, 3.0);
