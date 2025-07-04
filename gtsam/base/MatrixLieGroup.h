@@ -105,7 +105,8 @@ namespace gtsam {
      */
     Jacobian AdjointMap() const {
       const auto& m = static_cast<const Class&>(*this);
-      const size_t d = m.dim();
+      size_t d = D;
+      if constexpr (D == Eigen::Dynamic)  d = m.dim();
       Jacobian adj(d, d);
       const auto T_mat = m.matrix();
       const auto T_inv_mat = m.inverse().matrix();
