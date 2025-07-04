@@ -293,6 +293,8 @@ public:
     // log and exponential map with Jacobians
     g = traits<T>::Expmap(v, Hg);
     v = traits<T>::Logmap(g, Hg);
+    // AdjointMap
+    *Hg = traits<T>::AdjointMap(g);
   }
 private:
   T g, h;
