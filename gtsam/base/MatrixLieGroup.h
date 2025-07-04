@@ -36,7 +36,7 @@ namespace gtsam {
         "This helper is only for fixed-size Lie groups.");
       Eigen::Matrix<double, N* N, D> P;
       for (int i = 0; i < D; ++i) {
-        const auto G_i = Class::Hat(typename Class::TangentVector::Unit(D, i));
+        const auto G_i = Class::Hat(Class::TangentVector::Unit(D, i));
         P.col(i) = Eigen::Map<const Eigen::Matrix<double, N* N, 1>>(G_i.data());
       }
       return P;

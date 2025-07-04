@@ -294,14 +294,6 @@ class SO : public MatrixLieGroup<SO<N>, internal::DimensionSO(N), N> {
   /// @name Other methods
   /// @{
 
-  /**
-   * Return vectorized rotation matrix in column order.
-   * Will use dynamic matrices as intermediate results, but returns a fixed size
-   * X and fixed-size Jacobian if dimension is known at compile time.
-   * */
-  VectorN2 vec(OptionalJacobian<internal::NSquaredSO(N), dimension> H =
-                   {}) const;
-
   /// Calculate N^2 x dim matrix of vectorized Lie algebra generators for SO(N)
   template <int N_ = N, typename = IsFixed<N_>>
   static Matrix VectorizedGenerators() {
@@ -376,13 +368,6 @@ template <>
 GTSAM_EXPORT
 SOn LieGroup<SOn, Eigen::Dynamic>::between(const SOn& g, DynamicJacobian H1,
                                            DynamicJacobian H2) const;
-
-/*
- * Specialize dynamic vec.
- */
-template <> 
-GTSAM_EXPORT
-typename SOn::VectorN2 SOn::vec(DynamicJacobian H) const;
 
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
 /** Serialization function */

@@ -76,27 +76,6 @@ typename SO<N>::MatrixDD SO<N>::LogmapDerivative(const TangentVector& omega) {
   throw std::runtime_error("O<N>::LogmapDerivative only implemented for SO3.");
 }
 
-// Default fixed size version (but specialized elsewehere for N=2,3,4)
-template <int N>
-typename SO<N>::VectorN2 SO<N>::vec(
-    OptionalJacobian<internal::NSquaredSO(N), dimension> H) const {
-  // Vectorize
-  VectorN2 X = Eigen::Map<const VectorN2>(matrix_.data());
-
-  // If requested, calculate H as (I \oplus Q) * P,
-  // where Q is the N*N rotation matrix, and P is calculated below.
-  if (H) {
-    // Calculate P matrix of vectorized generators
-    // TODO(duy): Should we refactor this as the jacobian of Hat?
-    Matrix P = SO<N>::VectorizedGenerators();
-    for (size_t i = 0; i < N; i++) {
-      H->block(i * N, 0, N, dimension) =
-          matrix_ * P.block(i * N, 0, N, dimension);
-    }
-  }
-  return X;
-}
-
 template <int N>
 void SO<N>::print(const std::string& s) const {
     std::cout << s << matrix_ << std::endl;
