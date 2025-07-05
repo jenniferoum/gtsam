@@ -26,7 +26,7 @@ using namespace std;
 using namespace gtsam;
 
 // Define a sufficiently large number of iterations for stable timing.
-#define NUM_ITERATIONS 1000000
+#define NUM_ITERATIONS 10000000
 
 // Create CSV file for results
 ofstream os("timeFrobeniusFactor.csv");
@@ -74,7 +74,7 @@ void timeOne(const std::string& name) {
   obj.stop();
   auto timer = ::gtsam::internal::gCurrentTimer.lock()->child(id_tic, name.c_str(), ::gtsam::internal::gCurrentTimer);
   os << timer->secs() / NUM_ITERATIONS << ", ";
-  cout << name << ":\t" << timer->secs() << endl;
+  cout << name << ":\t" << timer->secs()*1e9/NUM_ITERATIONS << " ns" << endl;
 }
 
 /*************************************************************************************/
@@ -91,7 +91,6 @@ int main(void) {
   timeOne<SO4>("SO4");
   timeOne<Pose3>("Pose3");
   timeOne<Gal3>("Gal3");
-  timeOne<NavState>("NavState");
 
   return 0;
 }
