@@ -35,16 +35,28 @@ static const Rot2 R_PI_2(Rot2::fromCosSin(0., 1.));
 
 /* ************************************************************************* */
 Matrix3 Pose2::matrix() const {
-  Matrix2 R = r_.matrix();
-  Matrix32 R0;
-  R0.block<2,2>(0,0) = R;
-  R0.block<1,2>(2,0).setZero();
-  Matrix31 T;
-  T <<  t_.x(), t_.y(), 1.0;
-  Matrix3 RT_;
-  RT_.block<3,2>(0,0) = R0;
-  RT_.block<3,1>(0,2) = T;
-  return RT_;
+  Matrix3 m = Matrix3::Identity();
+  m.block<2,2>(0,0) = r_.matrix();
+  m.block<2,1>(0,2) = t_;
+  return m;
+}
+
+/* ************************************************************************* */
+Vector9 Pose2::vec(OptionalJacobian<9, 3> H) const {
+  // Vectorize
+  const Matrix3 M = matrix();
+  const Vector v = Eigen::Map<const Vector9>(M.data());
+
+  // If requested, calculate H
+  if (H) {
+    H->setZero();
+    auto R = M.block<2, 2>(0, 0);
+    H->block<2, 1>(0, 2) = R.col(1);
+    H->block<2, 1>(3, 2) = -R.col(0);
+    H->block<2, 2>(6, 0) = R;
+  }
+
+  return v;
 }
 
 /* ************************************************************************* */
