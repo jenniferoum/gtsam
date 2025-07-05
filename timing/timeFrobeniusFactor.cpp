@@ -22,14 +22,13 @@
 #include <iostream>
 #include <string>
 
-using namespace std;
 using namespace gtsam;
 
 // Define a sufficiently large number of iterations for stable timing.
-#define NUM_ITERATIONS 1000000
+static constexpr size_t NUM_ITERATIONS = 10000000;
 
 // Create CSV file for results
-ofstream os("timeFrobeniusFactor.csv");
+std::ofstream os("timeFrobeniusFactor.csv");
 
 /**
  * @brief Time evaluateError for a given Lie group type.
@@ -73,15 +72,15 @@ void timeOne(const std::string& name) {
   }
   obj.stop();
   auto timer = ::gtsam::internal::gCurrentTimer.lock()->child(id_tic, name.c_str(), ::gtsam::internal::gCurrentTimer);
-  os << timer->secs() / NUM_ITERATIONS << ", ";
-  cout << name << ":\t" << timer->secs() << endl;
+  os << timer->secs() / NUM_ITERATIONS << ", \n";
+  std::cout << name << ":\t" << timer->secs()*1e9/NUM_ITERATIONS << " ns" << std::endl;
 }
 
 /*************************************************************************************/
 int main(void) {
   // Announce the test and number of iterations.
-  cout << "Timing FrobeniusBetweenFactor::evaluateError with derivatives for " << NUM_ITERATIONS
-    << " iterations." << endl << endl;
+  std::cout << "Timing FrobeniusBetweenFactor::evaluateError with derivatives for " << NUM_ITERATIONS
+    << " iterations.\n" << std::endl;
 
   // Time all the specified MatrixLieGroup classes.
   timeOne<Rot2>("Rot2");
