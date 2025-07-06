@@ -47,20 +47,6 @@ static std::shared_ptr<PreintegrationParams> Params() {
 
 /* ************************************************************************* */
 namespace {
-// Auxiliary functions to test evaluate error in ImuFactor
-/* ************************************************************************* */
-template <class ImuFactorType>
-Rot3 evaluateRotationError(const ImuFactorType& factor, const Pose3& pose_i,
-    const Vector3& vel_i, const Pose3& pose_j, const Vector3& vel_j,
-    const Bias& bias) {
-  return Rot3::Expmap(
-      factor.evaluateError(pose_i, vel_i, pose_j, vel_j, bias).head(3));
-}
-
-} // namespace
-
-/* ************************************************************************* */
-namespace {
 // Macro to test ImuFactor with both Manifold and Tangent preintegration
 // In the tests below, the selected PreintegratedImuMeasurementsT is available as `PIM`.
 #define TEST_PIM(testGroup, testName)                                           \
@@ -294,13 +280,17 @@ TEST_PIM(ImuFactor, ErrorAndJacobians) {
   // Make sure rotation part is correct when error is interpreted as axis-angle
   // Jacobians are around zero, so the rotation part is the same as:
   Matrix H1Rot3 = numericalDerivative11<Rot3, Pose3>(
-      std::bind(&evaluateRotationError<ImuFactorT<PIM>>, factor, std::placeholders::_1, v1, x2, v2, kZeroBias),
-      x1);
+    [&](const Pose3& pose_i) {
+      return Rot3::Expmap(factor.evaluateError(pose_i, v1, x2, v2, kZeroBias).head(3));
+    },
+    x1);
   EXPECT(assert_equal(H1Rot3, H1a.topRows(3)));
 
   Matrix H3Rot3 = numericalDerivative11<Rot3, Pose3>(
-      std::bind(&evaluateRotationError<ImuFactorT<PIM>>, factor, x1, v1, std::placeholders::_1, v2, kZeroBias),
-      x2);
+    [&](const Pose3& pose_j) {
+      return Rot3::Expmap(factor.evaluateError(x1, v1, pose_j, v2, kZeroBias).head(3));
+    },
+    x2);
   EXPECT(assert_equal(H3Rot3, H3a.topRows(3)));
 
   // Evaluate error with wrong values
