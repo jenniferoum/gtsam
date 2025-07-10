@@ -218,31 +218,6 @@ struct G {
 //========================================================================
 // Helper Functions Implementation
 //========================================================================
-
-/**
- * Maps system dynamics to the symmetry group
- * @param xi State
- * @param u Input
- * @return Lifted input in Lie Algebra
- * Uses Vector zero & Rot3 inverse, matrix functions
- */
-// template <size_t N>
-// Vector lift(const State<N>& xi, const Input& u) {
-//   Vector L = Vector::Zero(6 + 3 * N);
-//
-//   // First 3 elements
-//   L.head<3>() = u.w - xi.b;
-//
-//   // Next 3 elements
-//   L.segment<3>(3) = -u.W() * xi.b;
-//
-//   // Remaining elements
-//   for (size_t i = 0; i < N; i++) {
-//     L.segment<3>(6 + 3 * i) = xi.S[i].inverse().matrix() * L.head<3>();
-//   }
-//
-//   return L;
-// }
 /**
  * Implements group actions on the states
  * @param X A symmetry group element G consisting of the attitude, bias and the
