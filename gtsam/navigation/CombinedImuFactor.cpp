@@ -44,12 +44,12 @@ void PreintegrationCombinedParams::print(const string& s) const {
 }
 
 //------------------------------------------------------------------------------
-bool PreintegrationCombinedParams::equals(const PreintegratedRotationParams& other,
-  double tol) const {
+bool PreintegrationCombinedParams::equals(
+    const PreintegratedRotationParams& other, double tol) const {
   auto e = dynamic_cast<const PreintegrationCombinedParams*>(&other);
   return e != nullptr && PreintegrationParams::equals(other, tol) &&
-    equal_with_abs_tol(biasAccCovariance, e->biasAccCovariance, tol) &&
-    equal_with_abs_tol(biasOmegaCovariance, e->biasOmegaCovariance,tol);
+         equal_with_abs_tol(biasAccCovariance, e->biasAccCovariance, tol) &&
+         equal_with_abs_tol(biasOmegaCovariance, e->biasOmegaCovariance, tol);
 }
 
 //------------------------------------------------------------------------------
@@ -93,16 +93,18 @@ void PreintegratedCombinedMeasurementsT<PreintegrationType>::resetIntegration() 
 
 //------------------------------------------------------------------------------
 template <class PreintegrationType>
-void PreintegratedCombinedMeasurementsT<PreintegrationType>::integrateMeasurement(
-    const Vector3& measuredAcc, const Vector3& measuredOmega, double dt) {
+void PreintegratedCombinedMeasurementsT<
+    PreintegrationType>::integrateMeasurement(const Vector3& measuredAcc,
+                                              const Vector3& measuredOmega,
+                                              double dt) {
   if (dt <= 0) {
     throw std::runtime_error(
         "PreintegratedCombinedMeasurements::integrateMeasurement: dt <=0");
   }
 
   // Update preintegrated measurements.
-  Matrix9 A; // Jacobian wrt preintegrated measurements without bias (df/dx)
-  Matrix93 B, C;  // Jacobian of state wrpt accel bias and omega bias respectively.
+  Matrix9 A;  // Jacobian wrt preintegrated measurements without bias (df/dx)
+  Matrix93 B, C;  // Jacobian of state wrpt accel bias and omega bias.
   PreintegrationType::update(measuredAcc, measuredOmega, dt, &A, &B, &C);
 
   // Update preintegrated measurements covariance: as in [2] we consider a first
@@ -144,20 +146,16 @@ void PreintegratedCombinedMeasurementsT<PreintegrationType>::integrateMeasuremen
       (theta_H_omega * (wCov / dt) * theta_H_omega.transpose());
 
   D_t_t(&G_measCov_Gt) =
-      (pos_H_acc * (aCov / dt) * pos_H_acc.transpose())           //
-      + (dt * iCov);
+      (pos_H_acc * (aCov / dt) * pos_H_acc.transpose()) + (dt * iCov);
 
-  D_v_v(&G_measCov_Gt) =
-      (vel_H_acc * (aCov / dt) * vel_H_acc.transpose());
+  D_v_v(&G_measCov_Gt) = (vel_H_acc * (aCov / dt) * vel_H_acc.transpose());
 
   D_a_a(&G_measCov_Gt) = dt * this->p().biasAccCovariance;
   D_g_g(&G_measCov_Gt) = dt * this->p().biasOmegaCovariance;
 
   // OFF BLOCK DIAGONAL TERMS
-  D_t_v(&G_measCov_Gt) =
-      (pos_H_acc * (aCov / dt) * vel_H_acc.transpose());
-  D_v_t(&G_measCov_Gt) =
-      (vel_H_acc * (aCov / dt) * pos_H_acc.transpose());
+  D_t_v(&G_measCov_Gt) = (pos_H_acc * (aCov / dt) * vel_H_acc.transpose());
+  D_v_t(&G_measCov_Gt) = (vel_H_acc * (aCov / dt) * pos_H_acc.transpose());
 
   preintMeasCov_.noalias() += G_measCov_Gt;
 }

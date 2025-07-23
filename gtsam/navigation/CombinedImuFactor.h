@@ -166,8 +166,7 @@ class GTSAM_EXPORT PreintegratedCombinedMeasurementsT : public PreintegrationTyp
 
 #ifdef GTSAM_ALLOW_DEPRECATED_SINCE_V43
 /// @deprecated: biasAccOmegaInt is no longer used. Use a prior on first bias instead.
-  void resetIntegration(
-    const gtsam::Matrix6& Q_init) {
+  void resetIntegration(const gtsam::Matrix6& Q_init) {
     std::cerr << "Warning: setBiasAccOmegaInit() is deprecated and no longer used." << std::endl;
     PreintegrationType::resetIntegration();
     preintMeasCov_.setZero();
