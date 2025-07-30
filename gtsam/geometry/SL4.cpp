@@ -88,21 +88,23 @@ bool SL4::equals(const SL4& sl4, double tol) const {
 SL4 SL4::ChartAtOrigin::Retract(const Vector15& v, ChartJacobian H) {
   assert(v.size() == 15);
   SL4 retracted(I_4x4 + Hat(v));
-  if (H) *H = I_15x15;
+  if (H) throw std::runtime_error("SL4::Retract: Jacobian not implemented.");
   return retracted;
 }
 
 /* ************************************************************************* */
 Vector15 SL4::ChartAtOrigin::Local(const SL4& sl4, ChartJacobian H) {
   Vector xi = Vee(sl4.T_ - I_4x4);
-  if (H) *H = I_15x15;
+  if (H) throw std::runtime_error("SL4::Local: Jacobian not implemented.");
   return xi;
 }
 
 /* ************************************************************************* */
-SL4 SL4::Expmap(const Vector& xi) {
+SL4 SL4::Expmap(const Vector& xi, SL4Jacobian H) {
   assert(xi.size() == 15);
   const auto& A = Hat(xi);
+
+  if (H) throw std::runtime_error("SL4::Expmap: Jacobian not implemented.");
 
   // NOTE(hlim):
   // The cost of the computation is approximately 20n^3 for matrices of size n.
@@ -110,14 +112,14 @@ SL4 SL4::Expmap(const Vector& xi) {
   // See
   // https://eigen.tuxfamily.org/dox/unsupported/group__MatrixFunctions__Module.html
 
-  // TODO(hlim): Approximate exp function? But it introduces non-negligible
-  // numerical error. return SL4(Matrix44::Identity() + A + 0.5 * A * A);
-
   return SL4(A.exp());
 }
 
 /* ************************************************************************* */
-Vector SL4::Logmap(const SL4& p) { return Vee(p.T_.log()); }
+Vector SL4::Logmap(const SL4& p, SL4Jacobian H) {
+  if (H) throw std::runtime_error("SL4::Logmap: Jacobian not implemented.");
+  return Vee(p.T_.log());
+}
 
 /* ************************************************************************* */
 Matrix15x15 SL4::AdjointMap() const {

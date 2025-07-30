@@ -51,6 +51,12 @@ TEST(SL4, Constructor) {
 }
 
 /* ************************************************************************* */
+TEST(SL4, Identity) {
+  SL4 identity;
+  EXPECT(assert_equal<Matrix4>(Matrix4::Identity(), identity.matrix(), 1e-8));
+}
+
+/* ************************************************************************* */
 TEST(SL4, Expmap) {
   SL4 expected(SL4::Expmap(xi0));
   EXPECT(assert_equal(expected, SL4::Expmap(xi0), 1e-8));
@@ -64,13 +70,10 @@ TEST(SL4, Logmap) {
 
 /* ************************************************************************* */
 TEST(SL4, Retract) {
-  Matrix H;
   Vector15 xi = xi0 / 100;
-  SL4 actual = SL4::Retract(xi, H);
+  SL4 actual = SL4::Retract(xi);
   SL4 expected(I_4x4 + SL4::Hat(xi));
   EXPECT(assert_equal(expected, actual, 1e-8));
-  Matrix numericalH = numericalDerivative11(SL4::Retract, xi);
-  EXPECT(assert_equal(numericalH, H, 5e-3));
 }
 
 /* ************************************************************************* */
@@ -79,6 +82,29 @@ TEST(SL4, LocalCoordinates) {
   SL4 sl4_retracted = T1.retract(xi);
   Vector xi_retrieved = T1.localCoordinates(sl4_retracted);
   EXPECT(assert_equal(sl4_retracted, T1.retract(xi_retrieved), 1e-5));
+}
+
+/* ************************************************************************* */
+TEST(SL4, AdjointMapMatchesMatrixLieGroup) {
+  SL4 sl4 = SL4::Expmap(xi0);
+  Matrix adj_SL4 = sl4.AdjointMap();
+  Matrix adj_generic = sl4.MatrixLieGroup<SL4, 15, 4>::AdjointMap();
+
+  EXPECT(assert_equal(adj_generic, adj_SL4, 1e-8));
+}
+
+/* ************************************************************************* */
+TEST(SL4, ComposeAndInverse) {
+  SL4 sl4_1 = SL4::Expmap(xi1);
+  SL4 sl4_2 = SL4::Expmap(xi2);
+
+  SL4 composed = sl4_1.compose(sl4_2);
+  SL4 expected(composed.matrix());
+  EXPECT(assert_equal(expected, composed, 1e-8));
+
+  SL4 inv = sl4_1.inverse();
+  SL4 identity = sl4_1.compose(inv);
+  EXPECT(assert_equal(SL4(), identity, 1e-8));
 }
 
 /* ************************************************************************* */

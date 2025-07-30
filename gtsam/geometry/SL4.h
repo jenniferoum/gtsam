@@ -57,24 +57,6 @@ class GTSAM_EXPORT SL4 : public MatrixLieGroup<SL4, 15, 4> {
   inline const Matrix44& matrix() const { return T_; }
 
   /// @}
-  /// @name Manifold
-  /// @{
-
-  /// Dimensionality of tangent space = 15 DOF - used to autodetect sizes
-  inline static size_t Dim() { return dimension; }
-
-  /// Dimensionality of tangent space = 15 DOF
-  inline size_t dim() const { return dimension; }
-
-  // Chart at origin, depends on compile-time flag GTSAM_POSE3_EXPMAP
-  struct GTSAM_EXPORT ChartAtOrigin {
-    static SL4 Retract(const Vector15& xi, ChartJacobian Hxi = {});
-    static Vector15 Local(const SL4& pose, ChartJacobian Hpose = {});
-  };
-
-  // retract and localCoordinates provided by LieGroup
-
-  /// @}
   /// @name Group
   /// @{
 
@@ -93,17 +75,25 @@ class GTSAM_EXPORT SL4 : public MatrixLieGroup<SL4, 15, 4> {
     
   // compose and between provided by LieGroup
 
+  /// Adjoint representation of the tangent space
+  Matrix15x15 AdjointMap() const;
+
   /// Version with derivative version added by LieGroup
   using LieGroup<SL4, 15>::inverse;
 
   /// Exponential map at identity - create an element from canonical coordinates
-  static SL4 Expmap(const Vector& xi);
+  static SL4 Expmap(const Vector& xi, SL4Jacobian H = {});
 
   /// Log map at identity - return the canonical coordinates of this element
-  static Vector Logmap(const SL4& p);
+  static Vector Logmap(const SL4& p, SL4Jacobian H = {});
 
-  /// Adjoint representation of the tangent space
-  Matrix15x15 AdjointMap() const;
+  // Chart at origin
+  struct GTSAM_EXPORT ChartAtOrigin {
+    static SL4 Retract(const Vector15& xi, ChartJacobian Hxi = {});
+    static Vector15 Local(const SL4& pose, ChartJacobian Hpose = {});
+  };
+
+  // retract and localCoordinates provided by LieGroup
 
   /// @}
   /// @name Matrix Lie Group
