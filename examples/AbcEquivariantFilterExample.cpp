@@ -429,8 +429,11 @@ int main(int argc, char* argv[]) {
     initialSigma.diagonal().tail<3>() =
         Vector3::Constant(0.1);  // Calibration uncertainty
 
+    Group initialGroup = gtsam::traits<Group>::Identity();
+    M initialState = Geometry::identityState();
+
     // Create filter
-    EqFilter filter(initialSigma, n_sensors);
+    EqFilter filter(initialGroup, initialState, initialSigma, n_sensors);
 
     // Process data
     processDataWithEqF(filter, data);

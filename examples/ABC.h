@@ -21,6 +21,7 @@
 
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/Vector.h>
+#include <gtsam/base/numericalDerivative.h>
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Unit3.h>
 
@@ -167,6 +168,8 @@ struct G {
   Rot3 A;                 /// First SO(3) element
   Matrix3 a;              /// so(3) element (skew-symmetric matrix)
   std::array<Rot3, N> B;  /// List of SO(3) elements for calibration
+  static constexpr int dimension = 6 + 3 * N;
+  using TangentVector = Eigen::Matrix<double, dimension, 1>;
 
   /// Initialize the symmetry group G
   G(const Rot3& A = Rot3::Identity(), const Matrix3& a = Matrix3::Zero(),
@@ -212,6 +215,13 @@ struct G {
       B[i] = Rot3::Expmap(x.segment<3>(6 + 3 * i));
     }
     return G(A, a, B);
+  }
+
+  /// Retract a tangent vector back to the manifold using Expmap
+  G retract(const TangentVector& v,
+            OptionalJacobian<dimension, dimension> H = boost::none,
+            OptionalJacobian<dimension, dimension> Hv = boost::none) const {
+    return gtsam::traits<G>::Compose(*this, gtsam::traits<G>::Expmap(v));
   }
 };
 
@@ -308,19 +318,12 @@ Matrix numericalDifferential(std::function<Vector(const Vector&)> f,
  * @param xi State object Xi representing the point at which to evaluate the
  * differential
  * @return A matrix representing the jacobian of the state action
- * Uses numericalDifferential, and Rot3 expmap, logmap
  */
 template <size_t N>
 Matrix stateActionDiff(const State<N>& xi) {
-  std::function<Vector(const Vector&)> coordsAction = [&xi](const Vector& U) {
-    G<N> groupElement = G<N>::exp(U);
-    State<N> transformed = groupElement * xi;
-    return xi.localCoordinates(transformed);
-  };
-
-  Vector zeros = Vector::Zero(6 + 3 * N);
-  Matrix differential = numericalDifferential(coordsAction, zeros);
-  return differential;
+  return gtsam::numericalDerivative11<Vector, G<N>>(
+      [&xi](const G<N>& g) { return xi.localCoordinates(g * xi); },
+      gtsam::traits<G<N>>::Identity());
 }
 
 template <size_t N>
@@ -329,30 +332,34 @@ struct ABCGeometry {
   using Measurement = abc_eqf_lib::Measurement;
   using GType = G<N>;
   using MType = State<N>;
-
-  static GType identityGroup() { return GType::identity(N); }
-
+  using TangentVector = typename GType::TangentVector;
   static MType identityState() { return MType::identity(); }
   static MType groupAction(const GType& g, const MType& x) { return g * x; }
-  static Vector lift(const MType& xi, const Input& u) {
-    Vector L = Vector::Zero(6 + 3 * N);
+
+  /**
+   * Compute the lifted tangent vector from state and input.
+   * @param xi Current state on the manifold (including orientation, bias, and
+   * sensor rotations).
+   * @param u Input measurement containing angular velocity and its covariance.
+   * @return TangentVector Lifted vector in the Lie algebra used for
+   * propagation.
+   */
+  static TangentVector lift(const MType& xi, const Input& u) {
+    TangentVector L = TangentVector::Zero();
 
     // First 3 elements
-    L.head<3>() = u.w - xi.b;
+    L.template head<3>() = u.w - xi.b;
 
     // Next 3 elements
-    L.segment<3>(3) = -u.W() * xi.b;
+    L.template segment<3>(3) = -u.W() * xi.b;
 
     // Remaining elements
     for (size_t i = 0; i < N; i++) {
-      L.segment<3>(6 + 3 * i) = xi.S[i].inverse().matrix() * L.head<3>();
+      L.template segment<3>(6 + 3 * i) =
+          xi.S[i].inverse().matrix() * L.template head<3>();
     }
 
     return L;
-  }
-  static GType groupExp(const Vector& v) { return GType::exp(v); }
-  static GType groupCompose(const GType& g1, const GType& g2) {
-    return g1 * g2;
   }
 
   /**
@@ -464,11 +471,21 @@ struct ABCGeometry {
     }
   }
 
-  static constexpr int DOF = 6 + 3 * N;
   static constexpr int n_cal = N;
 };
 
 }  // namespace abc_eqf_lib
+
+template <size_t N>
+struct traits<abc_eqf_lib::G<N>> : internal::LieGroupTraits<abc_eqf_lib::G<N>> {
+  using GType = abc_eqf_lib::G<N>;
+
+  static GType Identity() { return GType::identity(N); }
+
+  static GType Compose(const GType& g1, const GType& g2) { return g1 * g2; }
+
+  static GType Expmap(const Vector& v) { return GType::exp(v); }
+};
 }  // namespace gtsam
 
 #endif  // ABC_H

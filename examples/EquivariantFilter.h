@@ -38,6 +38,151 @@ using namespace std;
 using namespace gtsam;
 
 //========================================================================
+// Equivariant Filter (EqF) Template Function Verification
+//========================================================================
+
+template <typename Geometry, typename M, typename Input>
+class has_lift {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::lift(std::declval<M>(), std::declval<Input>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_groupAction {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::groupAction(std::declval<typename G::GType>(),
+                                 std::declval<typename G::MType>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_stateTransitionMatrix {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::stateTransitionMatrix(std::declval<typename G::Input>(),
+                                           std::declval<double>(),
+                                           std::declval<typename G::GType>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_stateMatrixA {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::stateMatrixA(std::declval<const typename G::GType&>(),
+                                  std::declval<const typename G::Input&>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_inputMatrix {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::inputMatrix(std::declval<typename G::GType>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_processNoise {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::processNoise(std::declval<const typename G::Input&>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_inputMatrixBt {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::inputMatrixBt(std::declval<typename G::GType>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_measurementMatrixC {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::measurementMatrixC(std::declval<const Unit3&>(),
+                                        std::declval<int>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_outputMatrixDt {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::outputMatrixDt(std::declval<int>(),
+                                    std::declval<typename G::GType>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+//========================================================================
 // Equivariant Filter (EqF)
 //========================================================================
 
@@ -57,7 +202,7 @@ class EqF {
    * @param Sigma Initial covariance
    * @param m Number of sensors
    */
-  EqF(const Matrix& Sigma, int m);
+  EqF(const G& X0, const M& x0, const Matrix& Sigma, int m);
 
   /**
    * Return estimated state
@@ -78,7 +223,7 @@ class EqF {
    */
   void update(const typename Geometry::Measurement& y);
 
-  static constexpr int DOF = Geometry::DOF;
+  static constexpr int DOF = gtsam::traits<G>::dimension;
   static constexpr int n_cal = Geometry::n_cal;
 };
 
@@ -94,20 +239,11 @@ class EqF {
  * Uses SelfAdjointSolver, completeOrthoganalDecomposition().pseudoInverse()
  */
 template <typename G, typename M, typename Geometry>
-EqF<G, M, Geometry>::EqF(const Matrix& Sigma, int m)
-    : X_hat(Geometry::identityGroup()),
-      Sigma(Sigma),
-      xi_0(Geometry::identityState()) {
+EqF<G, M, Geometry>::EqF(const G& X0, const M& x0, const Matrix& Sigma, int m)
+    : X_hat(X0), Sigma(Sigma), xi_0(x0) {
   if (Sigma.rows() != DOF || Sigma.cols() != DOF) {
     throw std::invalid_argument(
         "Initial covariance dimensions must match the degrees of freedom");
-  }
-
-  // Check positive semi-definite
-  Eigen::SelfAdjointEigenSolver<Matrix> eigensolver(Sigma);
-  if (eigensolver.eigenvalues().minCoeff() < -1e-10) {
-    throw std::invalid_argument(
-        "Covariance matrix must be semi-positive definite");
   }
 
   if (n_cal < 0) {
@@ -119,6 +255,28 @@ EqF<G, M, Geometry>::EqF(const Matrix& Sigma, int m)
     throw std::invalid_argument(
         "Number of direction sensors must be at least 2");
   }
+
+  static_assert(has_lift<Geometry, M, abc_eqf_lib::Input>::value,
+                "Geometry must implement static lift(const M&, const Input&)");
+  static_assert(has_stateTransitionMatrix<Geometry>::value,
+                "Geometry must define static stateTransitionMatrix(Input, "
+                "double, GType)");
+  static_assert(has_groupAction<Geometry>::value,
+                "Geometry must define groupAction(GType, MType)");
+  static_assert(
+      has_stateMatrixA<Geometry>::value,
+      "Geometry must define static stateMatrixA(const GType&, const Input&)");
+  static_assert(has_inputMatrix<Geometry>::value,
+                "Geometry must define static inputMatrix(GType)");
+  static_assert(has_processNoise<Geometry>::value,
+                "Geometry must define static processNoise(const Input&)");
+  static_assert(has_inputMatrixBt<Geometry>::value,
+                "Geometry must define static inputMatrixBt(GType)");
+  static_assert(
+      has_measurementMatrixC<Geometry>::value,
+      "Geometry must define static measurementMatrixC(const Unit3&, int)");
+  static_assert(has_outputMatrixDt<Geometry>::value,
+                "Geometry must define static outputMatrixDt(int, GType)");
 
   // Compute differential of phi
   Dphi0 = stateActionDiff(xi_0);
@@ -151,7 +309,7 @@ void EqF<G, M, Geometry>::propagation(const typename Geometry::Input& u,
 
   Matrix Q = Geometry::processNoise(u);  // Replaces blockDiag(...)
 
-  X_hat = Geometry::groupCompose(X_hat, Geometry::groupExp(L * dt));
+  X_hat = traits<G>::Compose(X_hat, traits<G>::Expmap(L * dt));
   Sigma = Phi * Sigma * Phi.transpose() + Bt * Q * Bt.transpose() * dt;
 }
 /**
@@ -186,7 +344,7 @@ void EqF<G, M, Geometry>::update(const typename Geometry::Measurement& y) {
   Matrix S = Ct * Sigma * Ct.transpose() + Dt * y.Sigma * Dt.transpose();
   Matrix K = Sigma * Ct.transpose() * S.inverse();
   Vector Delta = InnovationLift * K * delta_vec;
-  X_hat = Geometry::groupCompose(Geometry::groupExp(Delta), X_hat);
+  X_hat = traits<G>::Compose(traits<G>::Expmap(Delta), X_hat);
   Sigma = (Matrix::Identity(DOF, DOF) - K * Ct) * Sigma;
 }
 }  // namespace abc_eqf_lib
