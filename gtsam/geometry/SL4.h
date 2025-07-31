@@ -6,16 +6,16 @@
 
 #pragma once
 
+#include <gtsam/config.h>
+#include <gtsam/dllexport.h>
+
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/MatrixLieGroup.h>
 #include <gtsam/base/OptionalJacobian.h>
 #include <gtsam/base/Vector.h>
 #include <gtsam/base/std_optional_serialization.h>
-#include <gtsam/dllexport.h>
 
-// To use exp(), log()
 #include <string>
-#include <unsupported/Eigen/MatrixFunctions>
 
 using SL4Jacobian = gtsam::OptionalJacobian<15, 15>;
 

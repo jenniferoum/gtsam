@@ -6,6 +6,9 @@
 
 #include <gtsam/geometry/SL4.h>
 
+// To use exp(), log()
+#include <unsupported/Eigen/MatrixFunctions>
+
 using namespace std;
 
 namespace {
