@@ -178,7 +178,6 @@ class SO : public MatrixLieGroup<SO<N>, internal::DimensionSO(N), N> {
 
   /// Multiplication
   SO operator*(const SO& other) const {
-    assert(dim() == other.dim());
     return SO(matrix_ * other.matrix_);
   }
 
@@ -188,7 +187,9 @@ class SO : public MatrixLieGroup<SO<N>, internal::DimensionSO(N), N> {
     return SO();
   }
 
-  /// SO<N> identity for N == Eigen::Dynamic
+  // Provide dim() if dimension == Eigen::Dynamic
+  // SFINAE constraint: IsDynamic<N_> ensures this method is only available
+  // for dynamically-sized SO(n) groups (i.e., when N == Eigen::Dynamic).
   template <int N_ = N, typename = IsDynamic<N_>>
   static SO Identity(size_t n = 0) {
     return SO(n);
