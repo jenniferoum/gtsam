@@ -99,16 +99,6 @@ public:
                       OptionalJacobian<3, 3> H1 = {},
                       OptionalJacobian<3, 3> H2 = {}) const;
 
-  /// Dimensionality of tangent space = 3 DOF
-  inline static size_t Dim() {
-    return 3;
-  }
-
-  /// Dimensionality of tangent space = 3 DOF
-  inline size_t dim() const {
-    return 3;
-  }
-
   /// The retract function
   OrientedPlane3 retract(const Vector3& v,
                         OptionalJacobian<3, 3> H = {}) const;

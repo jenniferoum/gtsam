@@ -386,16 +386,6 @@ public:
   /// @name Manifold
   /// @{
 
-  /// @deprecated
-  size_t dim() const {
-    return 6;
-  }
-
-  /// @deprecated
-  static size_t Dim() {
-    return 6;
-  }
-
   /// move a cameras according to d
   PinholePose retract(const Vector6& d) const {
     return PinholePose(Base::pose().retract(d), K_);

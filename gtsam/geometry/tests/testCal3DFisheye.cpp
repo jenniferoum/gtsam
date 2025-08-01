@@ -43,9 +43,6 @@ TEST(Cal3Fisheye, retract) {
                        K.py() + 5, K.k1() + 6, K.k2() + 7, K.k3() + 8,
                        K.k4() + 9);
 
-  EXPECT_LONGS_EQUAL(Cal3Fisheye::Dim(), 9);
-  EXPECT_LONGS_EQUAL(expected.dim(), 9);
-
   Vector9 d;
   d << 1, 2, 3, 4, 5, 6, 7, 8, 9;
   Cal3Fisheye actual = K.retract(d);

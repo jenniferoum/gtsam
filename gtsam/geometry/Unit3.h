@@ -171,16 +171,6 @@ public:
   /// @name Manifold
   /// @{
 
-  /// Dimensionality of tangent space = 2 DOF
-  inline static size_t Dim() {
-    return 2;
-  }
-
-  /// Dimensionality of tangent space = 2 DOF
-  inline size_t dim() const {
-    return 2;
-  }
-
   enum CoordinatesMode {
     EXPMAP, ///< Use the exponential map to retract
     RENORM ///< Retract with vector addition and renormalize.

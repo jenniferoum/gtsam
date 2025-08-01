@@ -83,8 +83,6 @@ class EssentialMatrix {
   /// @name Manifold
   /// @{
   inline constexpr static auto dimension = 5;
-  inline static size_t Dim() { return dimension;}
-  inline size_t dim() const { return dimension;}
 
   typedef OptionalJacobian<dimension, dimension> ChartJacobian;
 

@@ -135,12 +135,6 @@ class GTSAM_EXPORT Cal3DS2_Base : public Cal3 {
   /// Derivative of uncalibrate wrpt the calibration parameters
   Matrix29 D2d_calibration(const Point2& p) const;
 
-  /// return DOF, dimensionality of tangent space
-  size_t dim() const { return Dim(); }
-
-  /// return DOF, dimensionality of tangent space
-  static size_t Dim() { return dimension; }
-
   /// @}
   /// @name Clone
   /// @{

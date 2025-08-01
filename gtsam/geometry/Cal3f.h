@@ -101,12 +101,6 @@ class GTSAM_EXPORT Cal3f : public Cal3 {
   /// @name Manifold
   /// @{
 
-  /// Return DOF, dimensionality of tangent space
-  size_t dim() const { return Dim(); }
-
-  /// Return DOF, dimensionality of tangent space
-  static size_t Dim() { return dimension; }
-
   /// Update calibration with tangent space delta
   Cal3f retract(const Vector& d) const { return Cal3f(fx_ + d(0), u0_, v0_); }
 

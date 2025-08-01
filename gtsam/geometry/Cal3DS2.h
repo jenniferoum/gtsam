@@ -83,12 +83,6 @@ class GTSAM_EXPORT Cal3DS2 : public Cal3DS2_Base {
   /// Given a different calibration, calculate update to obtain it
   Vector localCoordinates(const Cal3DS2& T2) const;
 
-  /// Return dimensions of calibration manifold object
-  size_t dim() const { return Dim(); }
-
-  /// Return dimensions of calibration manifold object
-  static size_t Dim() { return dimension; }
-
   /// @}
   /// @name Clone
   /// @{

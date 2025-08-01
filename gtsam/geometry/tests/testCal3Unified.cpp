@@ -105,9 +105,6 @@ TEST(Cal3Unified, Retract) {
                        2.0 * 1e-3 + 8, 3.0 * 1e-3 + 9, 4.0 * 1e-3 + 10,
                        0.1 + 1);
 
-  EXPECT_LONGS_EQUAL(Cal3Unified::Dim(), 10);
-  EXPECT_LONGS_EQUAL(expected.dim(), 10);
-
   Vector10 d;
   d << 2, 3, 4, 5, 6, 7, 8, 9, 10, 1;
   Cal3Unified actual = K.retract(d);

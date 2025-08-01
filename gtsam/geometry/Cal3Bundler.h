@@ -124,12 +124,6 @@ class GTSAM_EXPORT Cal3Bundler : public Cal3f {
   /// @name Manifold
   /// @{
 
-  /// Return DOF, dimensionality of tangent space
-  size_t dim() const { return Dim(); }
-
-  /// Return DOF, dimensionality of tangent space
-  static size_t Dim() { return dimension; }
-
   /// Update calibration with tangent space delta
   Cal3Bundler retract(const Vector& d) const {
     return Cal3Bundler(fx_ + d(0), k1_ + d(1), k2_ + d(2), u0_, v0_);

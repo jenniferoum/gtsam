@@ -121,12 +121,6 @@ class GTSAM_EXPORT Cal3_S2Stereo : public Cal3_S2 {
   /// @name Manifold
   /// @{
 
-  /// return DOF, dimensionality of tangent space
-  size_t dim() const override { return Dim(); }
-
-  /// return DOF, dimensionality of tangent space
-  static size_t Dim() { return dimension; }
-
   /// Given 6-dim tangent vector, create new calibration
   Cal3_S2Stereo retract(const Vector& d) const {
     return Cal3_S2Stereo(fx() + d(0), fy() + d(1), skew() + d(2), px() + d(3),

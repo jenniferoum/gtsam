@@ -35,8 +35,6 @@ TEST(SO4, Identity) {
   const SO4 R;
   EXPECT_LONGS_EQUAL(4, R.rows());
   EXPECT_LONGS_EQUAL(6, SO4::dimension);
-  EXPECT_LONGS_EQUAL(6, SO4::Dim());
-  EXPECT_LONGS_EQUAL(6, R.dim());
   EXPECT_LONGS_EQUAL(6, traits<SO4>::GetDimension(R));
 }
 

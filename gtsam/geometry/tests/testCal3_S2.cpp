@@ -111,9 +111,6 @@ TEST(Cal3_S2, Equal) {
 TEST(Cal3_S2, Retract) {
   Cal3_S2 expected(500 + 1, 500 + 2, 0.1 + 3, 640 / 2 + 4, 480 / 2 + 5);
 
-  EXPECT_LONGS_EQUAL(Cal3_S2::Dim(), 5);
-  EXPECT_LONGS_EQUAL(expected.dim(), 5);
-
   Vector5 d;
   d << 1, 2, 3, 4, 5;
   Cal3_S2 actual = K.retract(d);

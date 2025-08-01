@@ -728,8 +728,6 @@ class Unit3 {
                       Eigen::Ref<Eigen::MatrixXd> H_q) const;
 
   // Manifold
-  static size_t Dim();
-  size_t dim() const;
   gtsam::Unit3 retract(gtsam::Vector v) const;
   gtsam::Vector localCoordinates(const gtsam::Unit3& s) const;
   gtsam::Unit3 FromPoint3(const gtsam::Point3& point) const;
@@ -764,8 +762,6 @@ class OrientedPlane3 {
                       Eigen::Ref<Eigen::MatrixXd> H1,
                       Eigen::Ref<Eigen::MatrixXd> H2) const;
 
-  static size_t Dim();
-  size_t dim() const;
 
   gtsam::OrientedPlane3 retract(const gtsam::Vector3& v) const;
   gtsam::OrientedPlane3 retract(const gtsam::Vector3& v,
@@ -797,8 +793,6 @@ class EssentialMatrix {
   bool equals(const gtsam::EssentialMatrix& other, double tol) const;
 
   // Manifold
-  static size_t Dim();
-  size_t dim() const;
   gtsam::EssentialMatrix retract(gtsam::Vector xi) const;
   gtsam::Vector localCoordinates(const gtsam::EssentialMatrix& other) const;
 
@@ -846,8 +840,6 @@ virtual class Cal3_S2 : gtsam::Cal3 {
   bool equals(const gtsam::Cal3_S2& K, double tol) const;
 
   // Manifold
-  static size_t Dim();
-  size_t dim() const;
   gtsam::Cal3_S2 retract(gtsam::Vector d) const;
   gtsam::Vector localCoordinates(const gtsam::Cal3_S2& T2) const;
 
@@ -912,8 +904,6 @@ virtual class Cal3DS2 : gtsam::Cal3DS2_Base {
   bool equals(const gtsam::Cal3DS2& K, double tol) const;
 
   // Manifold
-  size_t dim() const;
-  static size_t Dim();
   gtsam::Cal3DS2 retract(gtsam::Vector d) const;
   gtsam::Vector localCoordinates(const gtsam::Cal3DS2& T2) const;
 
@@ -940,8 +930,6 @@ virtual class Cal3Unified : gtsam::Cal3DS2_Base {
   gtsam::Point2 nPlaneToSpace(const gtsam::Point2& p) const;
 
   // Manifold
-  size_t dim() const;
-  static size_t Dim();
   gtsam::Cal3Unified retract(gtsam::Vector d) const;
   gtsam::Vector localCoordinates(const gtsam::Cal3Unified& T2) const;
 
@@ -1107,8 +1095,6 @@ class FundamentalMatrix {
   bool equals(const gtsam::FundamentalMatrix& other, double tol = 1e-9) const;
 
   // Manifold
-  static size_t Dim();
-  size_t dim() const;
   gtsam::Vector localCoordinates(const gtsam::FundamentalMatrix& F) const;
   gtsam::FundamentalMatrix retract(const gtsam::Vector& delta) const;
 };
@@ -1128,8 +1114,6 @@ class SimpleFundamentalMatrix {
   bool equals(const gtsam::SimpleFundamentalMatrix& other, double tol = 1e-9) const;
 
   // Manifold
-  static size_t Dim();
-  size_t dim() const;
   gtsam::Vector localCoordinates(const gtsam::SimpleFundamentalMatrix& F) const;
   gtsam::SimpleFundamentalMatrix retract(const gtsam::Vector& delta) const;
 };
@@ -1151,8 +1135,6 @@ class CalibratedCamera {
   bool equals(const gtsam::CalibratedCamera& camera, double tol) const;
 
   // Manifold
-  static size_t Dim();
-  size_t dim() const;
   gtsam::CalibratedCamera retract(gtsam::Vector d) const;
   gtsam::Vector localCoordinates(const gtsam::CalibratedCamera& T2) const;
 
@@ -1208,8 +1190,6 @@ class PinholeCamera {
   // Manifold
   This retract(gtsam::Vector d) const;
   gtsam::Vector localCoordinates(const This& T2) const;
-  size_t dim() const;
-  static size_t Dim();
 
   // Transformations and measurement functions
   static gtsam::Point2 Project(const gtsam::Point3& cameraPoint);
@@ -1281,8 +1261,6 @@ class PinholePose {
   // Manifold
   This retract(gtsam::Vector d) const;
   gtsam::Vector localCoordinates(const This& p) const;
-  size_t dim() const;
-  static size_t Dim();
 
   // Transformations and measurement functions
   static gtsam::Point2 Project(const gtsam::Point3& cameraPoint);
@@ -1342,8 +1320,6 @@ class Similarity2 {
   // Manifold
   gtsam::Similarity2 retract(gtsam::Vector v) const;
   gtsam::Vector localCoordinates(const gtsam::Similarity2& t2) const;
-  size_t dim() const;
-  static size_t Dim();
 
   // Lie group
   static gtsam::Similarity2 Expmap(gtsam::Vector v);
@@ -1389,8 +1365,6 @@ class Similarity3 {
   // Manifold
   gtsam::Similarity3 retract(gtsam::Vector v) const;
   gtsam::Vector localCoordinates(const gtsam::Similarity3& t2) const;
-  size_t dim() const;
-  static size_t Dim();
 
   // Lie group
   static gtsam::Similarity3 Expmap(gtsam::Vector v);
@@ -1477,8 +1451,6 @@ class StereoCamera {
   // Manifold
   gtsam::StereoCamera retract(gtsam::Vector v) const;
   gtsam::Vector localCoordinates(const gtsam::StereoCamera& t2) const;
-  size_t dim() const;
-  static size_t Dim();
 
   // Transformations and measurement functions
   gtsam::StereoPoint2 project(const gtsam::Point3& point) const;

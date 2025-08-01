@@ -153,12 +153,6 @@ class GTSAM_EXPORT Cal3Fisheye : public Cal3 {
   /// @name Manifold
   /// @{
 
-  /// Return dimensions of calibration manifold object
-  size_t dim() const { return Dim(); }
-
-  /// Return dimensions of calibration manifold object
-  static size_t Dim() { return dimension; }
-
   /// Given delta vector, update calibration
   Cal3Fisheye retract(const Vector& d) const {
     return Cal3Fisheye(vector() + d);

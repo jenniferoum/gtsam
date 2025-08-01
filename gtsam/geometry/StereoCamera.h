@@ -99,16 +99,6 @@ public:
   /// @name Manifold
   /// @{
 
-  /// Dimensionality of the tangent space
-  inline size_t dim() const {
-    return 6;
-  }
-
-  /// Dimensionality of the tangent space
-  static inline size_t Dim() {
-    return 6;
-  }
-
   /// Updates a with tangent space delta
   inline StereoCamera retract(const Vector& v) const {
     return StereoCamera(pose().retract(v), K_);
