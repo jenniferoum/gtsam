@@ -77,9 +77,6 @@ class StereoPoint2 {
 
   // Group
   static gtsam::StereoPoint2 Identity();
-  gtsam::StereoPoint2 inverse() const;
-  gtsam::StereoPoint2 compose(const gtsam::StereoPoint2& p1) const;
-  gtsam::StereoPoint2 between(const gtsam::StereoPoint2& p2) const;
 
   // Operator Overloads
   gtsam::StereoPoint2 operator-() const;
@@ -87,14 +84,6 @@ class StereoPoint2 {
   // supported
   gtsam::StereoPoint2 operator+(const gtsam::StereoPoint2& p2) const;
   gtsam::StereoPoint2 operator-(const gtsam::StereoPoint2& p2) const;
-
-  // Manifold
-  gtsam::StereoPoint2 retract(gtsam::Vector v) const;
-  gtsam::Vector localCoordinates(const gtsam::StereoPoint2& t2) const;
-
-  // Lie Group
-  static gtsam::StereoPoint2 Expmap(gtsam::Vector d);
-  static gtsam::Vector Logmap(const gtsam::StereoPoint2& p);
 
   // Standard Interface
   gtsam::Vector vector() const;
