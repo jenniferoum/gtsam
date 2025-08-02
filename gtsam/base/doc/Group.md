@@ -25,7 +25,7 @@ This is for groups that use `operator*` for composition, like rotation or pose t
 
 This is for groups that behave like vector spaces, using `operator+` for composition. Your class must provide:
 
-*   A static `Identity` aethod.
+*   A static `Identity` method.
 *   An `operator+` for composition.
 *   A binary `operator-` for the `Between` operation.
 *   A unary `operator-` for the `Inverse` operation.

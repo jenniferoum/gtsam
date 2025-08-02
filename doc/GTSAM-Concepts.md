@@ -57,6 +57,70 @@ A `VectorSpace` is a specialized `AdditiveGroup` that also supports scalar multi
 
 For a detailed guide, see {doc}`../gtsam/base/doc/VectorSpace.md`.
 
+## Overview
+
+The Mermaid diagram below summarizes the relationships between the different geometry concepts:
+```mermaid
+classDiagram
+    direction TB
+
+    class Manifold {
+        dimension
+        TangentVector
+        ChartJacobian
+        Dim()
+        dim()
+        retract(H)
+        localCoordinates(H)
+    }
+
+    class Group {
+      flavor_tag
+      Identity()
+    }
+
+    class AdditiveGroup {
+        <<Flavor of Group>>
+        operator+()
+        operator-()
+    }
+
+    class MultiplicativeGroup {
+        <<Flavor of Group>>
+        operator*()
+        inverse()
+    }
+
+    class LieGroup {
+        ChartAtOrigin
+        inverse()
+        Expmap(H)
+        Logmap(H)
+        AdjointMap()
+    }
+
+    class MatrixLieGroup {
+        LieAlgebra
+        matrix()
+        Hat()
+        Vee()
+    }
+
+    class VectorSpace {
+        dot()
+        norm()
+        operator*()
+    }
+
+    Group <|-- AdditiveGroup: is a
+    Group <|-- MultiplicativeGroup: is a
+    MultiplicativeGroup <|.. LieGroup: satisfies
+    LieGroup <|-- MatrixLieGroup: is a
+    Manifold <|.. VectorSpace: satisfies
+    Manifold <|.. LieGroup: satisfies
+    AdditiveGroup <|.. VectorSpace: satisfies
+```
+
 ---
 
 ## Future Concepts
