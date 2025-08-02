@@ -44,15 +44,12 @@ struct LieGroup {
   typedef Eigen::Matrix<double, N, 1> TangentVector;
 
   /// Static method to get the dimension (compile-time or dynamic)
-  static constexpr int Dim() {
-    return N;
-  }
+  static constexpr int Dim() { return N; }
 
-  /// Instance method to get the dimension, only if N == Eigen::Dynamic
+  /// Provided fixed dimension in dim() if needed
   template <int M = N>
-  std::enable_if_t<M == Eigen::Dynamic, int>
-  dim() const {
-    return derived().dim();
+  std::enable_if_t<M != Eigen::Dynamic, int> dim() const {
+    return N;
   }
 
   const Class & derived() const {
