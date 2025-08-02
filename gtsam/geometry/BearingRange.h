@@ -121,6 +121,9 @@ public:
   /// @name Manifold
   /// @{
 
+  inline static size_t Dim() { return dimension; }
+  inline size_t dim() const { return dimension; }
+
   typedef Eigen::Matrix<double, dimension, 1> TangentVector;
   typedef OptionalJacobian<dimension, dimension> ChartJacobian;
 
