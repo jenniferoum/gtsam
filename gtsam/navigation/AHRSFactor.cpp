@@ -63,75 +63,82 @@ void PreintegratedAhrsMeasurements::integrateMeasurement(
 }
 
 //------------------------------------------------------------------------------
-Vector3 PreintegratedAhrsMeasurements::predict(const Vector3& bias,
-                                               OptionalJacobian<3, 3> H) const {
+Rot3 PreintegratedAhrsMeasurements::predict(
+    const Rot3& Ri, const Vector3& bias, gtsam::OptionalJacobian<3, 3> H1,
+    gtsam::OptionalJacobian<3, 3> H2) const {
+  // Correct for bias.
+  Matrix3 D_biascorrected_bias;
   const Vector3 biasOmegaIncr = bias - biasHat_;
-  const Rot3 biascorrected = biascorrectedDeltaRij(biasOmegaIncr, H);
-  Matrix3 D_omega_biascorrected;
-  const Vector3 omega =
-      Rot3::Logmap(biascorrected, H ? &D_omega_biascorrected : 0);
-  if (H) (*H) = D_omega_biascorrected * (*H);
-  return omega;
+  Rot3 correctedDeltaRij = biascorrectedDeltaRij(
+      biasOmegaIncr, H2 ? &D_biascorrected_bias : nullptr);
+
+  // We handle the common case of no Coriolis correction first, in a
+  // fast path that can be easily optimized by the compiler.
+  if (!p().omegaCoriolis) {
+    // Predict final orientation.
+    const Rot3 predicted_Rj = Ri.compose(correctedDeltaRij, H1, H2);
+    if (H2) *H2 *= D_biascorrected_bias;
+    return predicted_Rj;
+  } else {
+    // 2. Calculate Coriolis effects.
+    const Vector3 coriolis = integrateCoriolis(Ri);
+    const Rot3 coriolisCorrection = Rot3::Expmap(-coriolis);
+
+    // Compose corrections to get the final relative rotation.
+    Matrix3 D_corrected_biascorrected, D_corrected_coriolis;
+    correctedDeltaRij = correctedDeltaRij.compose(
+        coriolisCorrection, H2 ? &D_corrected_biascorrected : nullptr,
+        H1 ? &D_corrected_coriolis : nullptr);
+
+    // Predict final orientation.
+    Matrix3 D_predict_Ri, D_predict_delta;
+    const Rot3 predicted_Rj =
+        Ri.compose(correctedDeltaRij, H1 ? &D_predict_Ri : nullptr,
+                   H1 || H2 ? &D_predict_delta : nullptr);
+
+    // Chain rule for Jacobians.
+    if (H1) {
+      const Matrix3 D_coriolis_Ri =
+          skewSymmetric(Ri.transpose() * (*p().omegaCoriolis) * deltaTij_);
+      const Matrix3 D_coriolisCorrection_coriolis =
+          Rot3::ExpmapDerivative(-coriolis);
+      const Matrix3 D_corrected_Ri = D_corrected_coriolis *
+                                     D_coriolisCorrection_coriolis *
+                                     (-D_coriolis_Ri);
+
+      // Final Jacobian wrt Ri is sum of two paths.
+      *H1 = D_predict_Ri + D_predict_delta * D_corrected_Ri;
+    }
+
+    if (H2) {
+      *H2 = D_predict_delta * D_corrected_biascorrected * D_biascorrected_bias;
+    }
+
+    return predicted_Rj;
+  }
 }
 
 //------------------------------------------------------------------------------
-Rot3 PreintegratedAhrsMeasurements::predict(const Rot3& rot_i,
-                                            const Vector3& bias) const {
-  // Correct for bias
-  const Vector3 biascorrectedOmega = this->predict(bias);
-
-  // Coriolis term
-  const Vector3 coriolis = this->integrateCoriolis(rot_i);
-
-  const Vector3 correctedOmega = biascorrectedOmega - coriolis;
-  const Rot3 correctedDeltaRij = Rot3::Expmap(correctedOmega);
-
-  return rot_i.compose(correctedDeltaRij);
-}
-
-//------------------------------------------------------------------------------
-Vector3 PreintegratedAhrsMeasurements::computeError(
+Vector PreintegratedAhrsMeasurements::computeError(
     const Rot3& Ri, const Rot3& Rj, const Vector3& bias,
     gtsam::OptionalJacobian<3, 3> H1, gtsam::OptionalJacobian<3, 3> H2,
     gtsam::OptionalJacobian<3, 3> H3) const {
-  // Do bias correction, if (H3) will contain 3*3 derivative used below
-  const Vector3 biascorrectedOmega = predict(bias, H3);
+  // Predict orientation at time j
+  Matrix3 D_predict_Ri, D_predict_bias;
+  Rot3 predicted_Rj = predict(Ri, bias, H1 ? &D_predict_Ri : nullptr,
+                              H3 ? &D_predict_bias : nullptr);
 
-  // Coriolis term
-  const Vector3 coriolis = integrateCoriolis(Ri);
-  const Vector3 correctedOmega = biascorrectedOmega - coriolis;
+  // Compute the error vector
+  Matrix3 D_error_Rj, D_error_predict;
+  Vector3 error = Rj.localCoordinates(predicted_Rj, H2 ? &D_error_Rj : nullptr,
+                                      H1 || H3 ? &D_error_predict : nullptr);
 
-  // Prediction
-  const Rot3 correctedDeltaRij = Rot3::Expmap(correctedOmega);
+  // Jacobians using the chain rule
+  if (H1) *H1 = D_error_predict * D_predict_Ri;
+  if (H2) *H2 = D_error_Rj;
+  if (H3) *H3 = D_error_predict * D_predict_bias;
 
-  // Get error between actual and prediction
-  const Rot3 actualRij = Ri.between(Rj);
-  const Rot3 fRrot = correctedDeltaRij.between(actualRij);
-  Vector3 fR = Rot3::Logmap(fRrot);
-
-  // Terms common to derivatives
-  const Matrix3 D_cDeltaRij_cOmega = Rot3::ExpmapDerivative(correctedOmega);
-  const Matrix3 D_fR_fRrot = Rot3::LogmapDerivative(fR);
-
-  if (H1) {
-    // dfR/dRi
-    Matrix3 D_coriolis = -D_cDeltaRij_cOmega * skewSymmetric(coriolis);
-    (*H1) =
-        D_fR_fRrot * (-actualRij.transpose() - fRrot.transpose() * D_coriolis);
-  }
-
-  if (H2) {
-    // dfR/dPosej
-    (*H2) = D_fR_fRrot;
-  }
-
-  if (H3) {
-    // dfR/dBias, note H3 contains derivative of predict
-    const Matrix3 JbiasOmega = D_cDeltaRij_cOmega * (*H3);
-    (*H3) = D_fR_fRrot * (-fRrot.transpose() * JbiasOmega);
-  }
-
-  return fR;
+  return error;
 }
 
 //------------------------------------------------------------------------------
@@ -152,11 +159,11 @@ Vector3 PreintegratedAhrsMeasurements::DeltaAngles(
 // AHRSFactor methods
 //------------------------------------------------------------------------------
 AHRSFactor::AHRSFactor(
-    Key rot_i, Key rot_j, Key bias,
+    Key Ri, Key rot_j, Key bias,
     const PreintegratedAhrsMeasurements& preintegratedMeasurements)
     : Base(noiseModel::Gaussian::Covariance(
                preintegratedMeasurements.preintMeasCov_),
-           rot_i, rot_j, bias),
+           Ri, rot_j, bias),
       _PIM_(preintegratedMeasurements) {}
 
 gtsam::NonlinearFactor::shared_ptr AHRSFactor::clone() const {
@@ -190,25 +197,17 @@ Vector AHRSFactor::evaluateError(const Rot3& Ri, const Rot3& Rj,
 }
 
 //------------------------------------------------------------------------------
-Rot3 AHRSFactor::Predict(const Rot3& rot_i, const Vector3& bias,
+Rot3 AHRSFactor::Predict(const Rot3& Ri, const Vector3& bias,
                          const PreintegratedAhrsMeasurements& pim) {
-  const Vector3 biascorrectedOmega = pim.predict(bias);
-
-  // Coriolis term
-  const Vector3 coriolis = pim.integrateCoriolis(rot_i);
-
-  const Vector3 correctedOmega = biascorrectedOmega - coriolis;
-  const Rot3 correctedDeltaRij = Rot3::Expmap(correctedOmega);
-
-  return rot_i.compose(correctedDeltaRij);
+  return pim.predict(Ri, bias);
 }
 
 //------------------------------------------------------------------------------
-AHRSFactor::AHRSFactor(Key rot_i, Key rot_j, Key bias,
+AHRSFactor::AHRSFactor(Key Ri, Key rot_j, Key bias,
                        const PreintegratedAhrsMeasurements& pim,
                        const Vector3& omegaCoriolis,
                        const std::optional<Pose3>& body_P_sensor)
-    : Base(noiseModel::Gaussian::Covariance(pim.preintMeasCov_), rot_i, rot_j,
+    : Base(noiseModel::Gaussian::Covariance(pim.preintMeasCov_), Ri, rot_j,
            bias),
       _PIM_(pim) {
   auto p = std::make_shared<PreintegratedAhrsMeasurements::Params>(pim.p());
@@ -217,7 +216,7 @@ AHRSFactor::AHRSFactor(Key rot_i, Key rot_j, Key bias,
 }
 
 //------------------------------------------------------------------------------
-Rot3 AHRSFactor::predict(const Rot3& rot_i, const Vector3& bias,
+Rot3 AHRSFactor::predict(const Rot3& Ri, const Vector3& bias,
                          const PreintegratedAhrsMeasurements& pim,
                          const Vector3& omegaCoriolis,
                          const std::optional<Pose3>& body_P_sensor) {
@@ -226,7 +225,7 @@ Rot3 AHRSFactor::predict(const Rot3& rot_i, const Vector3& bias,
   p->body_P_sensor = body_P_sensor;
   PreintegratedAhrsMeasurements newPim = pim;
   newPim.p_ = p;
-  return Predict(rot_i, bias, newPim);
+  return Predict(Ri, bias, newPim);
 }
 
 }  // namespace gtsam

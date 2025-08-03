@@ -101,36 +101,32 @@ class GTSAM_EXPORT PreintegratedAhrsMeasurements
    */
   void integrateMeasurement(const Vector3& measuredOmega, double deltaT);
 
-  /// Predict bias-corrected incremental rotation
-  /// TODO: The matrix Hbias is the derivative of predict? Unit-test?
-  Vector3 predict(const Vector3& bias, OptionalJacobian<3, 3> H = {}) const;
-
   /**
-   * Predicts the orientation at time j given the orientation at time i and
-   * the bias estimate. This is the new recommended predict function.
-   * @param rot_i   Orientation at time i
-   * @param bias    The bias estimate
-   * @return The predicted orientation at time j
+   * Predict the orientation at time j, given orientation and bias at time i.
+   * @param Ri orientation at time i
+   * @param bias gyroscope bias
+   * @param H1 optional 3x3 Jacobian wrt Ri
+   * @param H2 optional 3x3 Jacobian wrt bias
+   * @return predicted orientation at time j
    */
-  Rot3 predict(const Rot3& rot_i, const Vector3& bias) const;
+  Rot3 predict(const Rot3& Ri, const Vector3& bias,
+               gtsam::OptionalJacobian<3, 3> H1 = {},
+               gtsam::OptionalJacobian<3, 3> H2 = {}) const;
 
   /**
    * Calculate the error between the predicted and actual rotation.
-   * This is the modernized method that moves the logic from the factor
-   * into the PIM class.
-   * @param rot_i The orientation at time i
-   * @param rot_j The orientation at time j
+   * @param Ri The orientation at time i
+   * @param Rj The orientation at time j
    * @param bias The gyroscope bias
-   * @param H1 Optional Jacobian of the error with respect to rot_i
-   * @param H2 Optional Jacobian of the error with respect to rot_j
+   * @param H1 Optional Jacobian of the error with respect to Ri
+   * @param H2 Optional Jacobian of the error with respect to Rj
    * @param H3 Optional Jacobian of the error with respect to bias
    * @return A 3D vector containing the rotation error.
    */
-  Vector3 computeError(const Rot3& rot_i, const Rot3& rot_j,
-                       const Vector3& bias,
-                       gtsam::OptionalJacobian<3, 3> H1 = {},
-                       gtsam::OptionalJacobian<3, 3> H2 = {},
-                       gtsam::OptionalJacobian<3, 3> H3 = {}) const;
+  Vector computeError(const Rot3& Ri, const Rot3& Rj, const Vector3& bias,
+                      gtsam::OptionalJacobian<3, 3> H1 = {},
+                      gtsam::OptionalJacobian<3, 3> H2 = {},
+                      gtsam::OptionalJacobian<3, 3> H3 = {}) const;
 
   // This function is only used for test purposes
   // (compare numerical derivatives wrt analytic ones)
@@ -208,24 +204,22 @@ class GTSAM_EXPORT AHRSFactor : public NoiseModelFactorN<Rot3, Rot3, Vector3> {
   /** implement functions needed to derive from Factor */
 
   /// vector of errors
-  Vector evaluateError(const Rot3& rot_i, const Rot3& rot_j,
-                       const Vector3& bias, OptionalMatrixType H1,
-                       OptionalMatrixType H2,
+  Vector evaluateError(const Rot3& Ri, const Rot3& Rj, const Vector3& bias,
+                       OptionalMatrixType H1, OptionalMatrixType H2,
                        OptionalMatrixType H3) const override;
 
   /// predicted states from IMU
   /// TODO(frank): relationship with PIM predict ??
-  static Rot3 Predict(const Rot3& rot_i, const Vector3& bias,
+  static Rot3 Predict(const Rot3& Ri, const Vector3& bias,
                       const PreintegratedAhrsMeasurements& pim);
 
   /// @deprecated constructor, but used in tests.
-  AHRSFactor(Key rot_i, Key rot_j, Key bias,
-             const PreintegratedAhrsMeasurements& pim,
+  AHRSFactor(Key Ri, Key Rj, Key bias, const PreintegratedAhrsMeasurements& pim,
              const Vector3& omegaCoriolis,
              const std::optional<Pose3>& body_P_sensor = {});
 
   /// @deprecated static function, but used in tests.
-  static Rot3 predict(const Rot3& rot_i, const Vector3& bias,
+  static Rot3 predict(const Rot3& Ri, const Vector3& bias,
                       const PreintegratedAhrsMeasurements& pim,
                       const Vector3& omegaCoriolis,
                       const std::optional<Pose3>& body_P_sensor = {});

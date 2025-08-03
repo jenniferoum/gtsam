@@ -164,7 +164,7 @@ TEST(AHRSFactor, PIMComputeError) {
   // Use a wrapper to call the new PIM::computeError for numerical derivatives
   std::function<Vector3(const Rot3&, const Rot3&, const Vector3&)> f =
       [&pim](const Rot3& r1, const Rot3& r2, const Vector3& b) -> Vector3 {
-    return pim.computeError(r1, r2, b, {}, {}, {});
+    return pim.computeError(r1, r2, b);
   };
 
   // Calculate analytical Jacobians
@@ -395,37 +395,84 @@ TEST(AHRSFactor, ErrorWithBiasesAndSensorBodyDisplacement) {
 }
 
 //******************************************************************************
-TEST(AHRSFactor, predictTest) {
-  Vector3 bias(0, 0, 0);
+TEST(AHRSFactor, PIM_predict_and_Jacobians) {
+  // --- Setup ---
+  Vector3 bias(0.1, -0.1, 0.2);
+  Rot3 rot_i = Rot3::Roll(M_PI / 4.0);
+  auto p = std::make_shared<PreintegratedAhrsMeasurements::Params>();
+  p->gyroscopeCovariance = kMeasuredOmegaCovariance;
 
-  // Measurements
-  Vector3 measuredOmega(0, 0, M_PI / 10.0);
-  double deltaT = 0.2;
-  PreintegratedAhrsMeasurements pim(bias, kMeasuredOmegaCovariance);
-  for (int i = 0; i < 1000; ++i) {
-    pim.integrateMeasurement(measuredOmega, deltaT);
-  }
-  // Check preintegrated covariance
-  Matrix expectedMeasCov(3, 3);
-  expectedMeasCov = 200 * kMeasuredOmegaCovariance;
-  EXPECT(assert_equal(expectedMeasCov, pim.preintMeasCov()));
+  PreintegratedAhrsMeasurements pim(p, Vector3::Zero());
 
-  AHRSFactor factor(R(1), R(2), B(1), pim, kZeroOmegaCoriolis);
+  // Integrate a few measurements
+  Vector3 measuredOmega(0.1, 0.2, M_PI / 10.0);
+  double deltaT = 0.5;
+  pim.integrateMeasurement(measuredOmega, deltaT);
+  pim.integrateMeasurement(measuredOmega, deltaT);
 
-  // Predict
-  Rot3 x;
-  Rot3 expectedRot = Rot3::Ypr(20 * M_PI, 0, 0);
-  Rot3 actualRot = factor.predict(x, bias, pim, kZeroOmegaCoriolis);
-  EXPECT(assert_equal(expectedRot, actualRot, 1e-6));
+  // --- Test Prediction Value ---
+  // Call the new predict method without requesting Jacobians
+  Rot3 predictedRot = pim.predict(rot_i, bias, {}, {});
 
-  // PreintegratedAhrsMeasurements::predict
-  Matrix expectedH = numericalDerivative11<Vector3, Vector3>(
-      [&pim](const Vector3& b) { return pim.predict(b, {}); }, bias);
+  // Calculate expected value manually for verification
+  Vector3 biasOmegaIncr = bias - pim.biasHat();
+  Rot3 expected_biascorrected_delta = pim.biascorrectedDeltaRij(biasOmegaIncr);
+  Rot3 expectedRot = rot_i.compose(expected_biascorrected_delta);
+  EXPECT(assert_equal(expectedRot, predictedRot, 1e-6));
 
-  // Actual Jacobians
-  Matrix H;
-  (void)pim.predict(bias, H);
-  EXPECT(assert_equal(expectedH, H, 1e-8));
+  // --- Test Jacobians ---
+  // Define a wrapper for numerical derivatives
+  std::function<Rot3(const Rot3&, const Vector3&)> f =
+      [&pim](const Rot3& r, const Vector3& b) { return pim.predict(r, b); };
+
+  // Get analytical Jacobians from the predict call
+  Matrix3 H1_actual, H2_actual;
+  (void)pim.predict(rot_i, bias, H1_actual, H2_actual);
+
+  // Get numerical Jacobians
+  Matrix3 H1_numerical = numericalDerivative21(f, rot_i, bias);
+  Matrix3 H2_numerical = numericalDerivative22(f, rot_i, bias);
+
+  // Compare analytical and numerical Jacobians
+  EXPECT(assert_equal(H1_numerical, H1_actual, 1e-7));
+  EXPECT(assert_equal(H2_numerical, H2_actual, 1e-7));
+}
+
+//******************************************************************************
+// Test predict with Coriolis enabled
+TEST(AHRSFactor, PIM_predict_and_Jacobians_with_Coriolis) {
+  // --- Setup ---
+  Vector3 bias(0.1, -0.1, 0.2);
+  Rot3 rot_i = Rot3::Roll(M_PI / 4.0);
+  Vector3 omegaCoriolis(0.1, 0.05, 0.2);
+
+  auto p = std::make_shared<PreintegratedAhrsMeasurements::Params>();
+  p->gyroscopeCovariance = kMeasuredOmegaCovariance;
+  p->omegaCoriolis = omegaCoriolis;
+
+  PreintegratedAhrsMeasurements pim(p, Vector3::Zero());
+
+  // Integrate a few measurements
+  Vector3 measuredOmega(0.1, 0.2, M_PI / 10.0);
+  double deltaT = 0.5;
+  pim.integrateMeasurement(measuredOmega, deltaT);
+
+  // --- Test Jacobians ---
+  // Define a wrapper for numerical derivatives
+  std::function<Rot3(const Rot3&, const Vector3&)> f =
+      [&pim](const Rot3& r, const Vector3& b) { return pim.predict(r, b); };
+
+  // Get analytical Jacobians from the predict call
+  Matrix3 H1_actual, H2_actual;
+  (void)pim.predict(rot_i, bias, H1_actual, H2_actual);
+
+  // Get numerical Jacobians
+  Matrix3 H1_numerical = numericalDerivative21(f, rot_i, bias);
+  Matrix3 H2_numerical = numericalDerivative22(f, rot_i, bias);
+
+  // Compare analytical and numerical Jacobians
+  EXPECT(assert_equal(H1_numerical, H1_actual, 1e-7));
+  EXPECT(assert_equal(H2_numerical, H2_actual, 1e-7));
 }
 //******************************************************************************
 TEST(AHRSFactor, graphTest) {
