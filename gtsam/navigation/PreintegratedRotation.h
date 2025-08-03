@@ -195,8 +195,9 @@ class GTSAM_EXPORT PreintegratedRotation {
   Rot3 biascorrectedDeltaRij(const Vector3& biasOmegaIncr,
                              OptionalJacobian<3, 3> H = {}) const;
 
-  /// Integrate coriolis correction in body frame rot_i
-  Vector3 integrateCoriolis(const Rot3& rot_i) const;
+  /// Integrate coriolis correction in body frame Ri
+  Vector3 integrateCoriolis(const Rot3& Ri,
+                            OptionalJacobian<3, 3> H = {}) const;
 
   /// @}
 
