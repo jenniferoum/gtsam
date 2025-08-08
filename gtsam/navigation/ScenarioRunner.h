@@ -149,9 +149,8 @@ class GTSAM_EXPORT CombinedScenarioRunner : public ScenarioRunner {
 };
 
 /*
- *  Simple class to test navigation scenarios with
- * PreintegratedAhrsMeasurements. Takes a trajectory scenario as input, and can
- * generate AHRS measurements.
+ * Simple class to test navigation scenarios with PreintegratedAhrsMeasurements.
+ * Takes a trajectory scenario as input, and can generate AHRS measurements.
  */
 class GTSAM_EXPORT AhrsScenarioRunner : public ScenarioRunner {
  public:

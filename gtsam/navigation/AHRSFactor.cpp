@@ -156,13 +156,11 @@ Vector3 PreintegratedAhrsMeasurements::DeltaAngles(
 //------------------------------------------------------------------------------
 // AHRSFactor methods
 //------------------------------------------------------------------------------
-AHRSFactor::AHRSFactor(
-    Key Ri, Key rot_j, Key bias,
-    const PreintegratedAhrsMeasurements& preintegratedMeasurements)
-    : Base(noiseModel::Gaussian::Covariance(
-               preintegratedMeasurements.preintMeasCov_),
-           Ri, rot_j, bias),
-      _PIM_(preintegratedMeasurements) {}
+AHRSFactor::AHRSFactor(Key rot_i, Key rot_j, Key bias,
+                       const PreintegratedAhrsMeasurements& pim)
+    : Base(noiseModel::Gaussian::Covariance(pim.preintMeasCov_), rot_i, rot_j,
+           bias),
+      _PIM_(pim) {}
 
 gtsam::NonlinearFactor::shared_ptr AHRSFactor::clone() const {
   //------------------------------------------------------------------------------

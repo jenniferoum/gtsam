@@ -179,10 +179,10 @@ class GTSAM_EXPORT AHRSFactor : public NoiseModelFactorN<Rot3, Rot3, Vector3> {
    * @param rot_i previous rot key
    * @param rot_j current rot key
    * @param bias  previous bias key
-   * @param preintegratedMeasurements preintegrated measurements
+   * @param pim preintegrated measurements
    */
   AHRSFactor(Key rot_i, Key rot_j, Key bias,
-             const PreintegratedAhrsMeasurements& preintegratedMeasurements);
+             const PreintegratedAhrsMeasurements& pim);
 
   ~AHRSFactor() override {}
 
