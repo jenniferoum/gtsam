@@ -51,6 +51,7 @@ void PreintegratedAhrsMeasurements::resetIntegration() {
 void PreintegratedAhrsMeasurements::integrateMeasurement(
     const Vector3& measuredOmega, double deltaT) {
   // 1. integrate (handles bias + body_P_sensor rotation internally)
+  // Fr is the Jacobian of the new preintegrated rotation w.r.t. the previous one.
   Matrix3 Fr;
   PreintegratedRotation::integrateGyroMeasurement(measuredOmega, biasHat_,
                                                   deltaT, &Fr);
@@ -62,7 +63,8 @@ void PreintegratedAhrsMeasurements::integrateMeasurement(
     SigmaBody = bRs * SigmaBody * bRs.transpose();
   }
 
-  // First order uncertainty propagation
+  // First order uncertainty propagation:
+  //   new_cov = Fr * old_cov * Fr.transpose() + new_noise
   // The deltaT allows to pass from continuous time noise to discrete time
   // noise. Comparing with the IMUFactor.cpp implementation, the latter is an
   // approximation for C * (wCov / dt) * C.transpose(), with C \approx I * dt.
@@ -104,11 +106,13 @@ Rot3 PreintegratedAhrsMeasurements::predict(
     // Augment Jacobians with the indirect paths.
     if (H1) {
       // Add in indirect path: Ri -> coriolis -> finalDeltaRij
+      // H1 is now D_predicted_Rj_wrt_Ri
       *H1 -= D_finalDelta_coriolis * D_coriolis_Ri;
     }
 
     if (H2) {
       // Apply the chain rule for the bias Jacobian, updating H2 in-place.
+      // H2 was D_biascorrected_wrt_bias, now it is D_predicted_Rj_wrt_bias
       *H2 = D_finalDelta_biasDelta * (*H2);
     }
 
@@ -126,7 +130,7 @@ Vector3 PreintegratedAhrsMeasurements::computeError(
   Rot3 predicted_Rj = predict(Ri, bias, H1 ? &D_predict_Ri : nullptr,
                               H3 ? &D_predict_bias : nullptr);
 
-  // Compute the error vector
+  // Compute the error vector: log(Rj.inverse() * predicted_Rj)
   Matrix3 D_error_Rj, D_error_predict;
   Vector3 error = Rj.logmap(predicted_Rj, H2 ? &D_error_Rj : nullptr,
                             H1 || H3 ? &D_error_predict : nullptr);
@@ -137,20 +141,6 @@ Vector3 PreintegratedAhrsMeasurements::computeError(
   if (H3) *H3 = D_error_predict * D_predict_bias;
 
   return error;
-}
-
-//------------------------------------------------------------------------------
-Vector3 PreintegratedAhrsMeasurements::DeltaAngles(
-    const Vector3& msr_gyro_t, double msr_dt, const Vector3& delta_angles) {
-  // Note: all delta terms refer to an IMU\sensor system at t0
-
-  // Calculate the corrected measurements using the Bias object
-  Vector3 body_t_omega_body = msr_gyro_t;
-
-  Rot3 R_t_to_t0 = Rot3::Expmap(delta_angles);
-
-  R_t_to_t0 = R_t_to_t0 * Rot3::Expmap(body_t_omega_body * msr_dt);
-  return Rot3::Logmap(R_t_to_t0);
 }
 
 //------------------------------------------------------------------------------

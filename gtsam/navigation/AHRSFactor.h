@@ -33,6 +33,20 @@ namespace gtsam {
  * measurements (rotation rates) and the corresponding covariance matrix.
  * Can be built incrementally so as to avoid costly integration at time of
  * factor construction.
+ *
+ * @section math_notes Mathematical Formulation
+ *
+ * The preintegrated rotation is updated incrementally with each gyroscope
+ * measurement. Given a gyroscope measurement \f$ \omega_k \f$ at time \f$ t_k \f$,
+ * the preintegrated rotation \f$ \Delta R_{ij} \f$ from time \f$ t_i \f$ to \f$ t_j \f$
+ * is the product of many small rotations:
+ * \f[
+ * \Delta R_{ij} = \prod_{k=i}^{j-1} \text{Exp}((\omega_k - b_g) \Delta t)
+ * \f]
+ * where \f$ b_g \f$ is the gyroscope bias, and \f$ \text{Exp}(\cdot) \f$ is the
+ * exponential map from \f$ \mathbb{R}^3 \f$ to SO(3).
+ *
+ * This class also propagates the covariance of the preintegrated rotation.
  */
 class GTSAM_EXPORT PreintegratedAhrsMeasurements
     : public PreintegratedRotation {
@@ -128,11 +142,6 @@ class GTSAM_EXPORT PreintegratedAhrsMeasurements
                        gtsam::OptionalJacobian<3, 3> H2 = {},
                        gtsam::OptionalJacobian<3, 3> H3 = {}) const;
 
-  // This function is only used for test purposes
-  // (compare numerical derivatives wrt analytic ones)
-  static Vector3 DeltaAngles(const Vector3& msr_gyro_t, double msr_dt,
-                             const Vector3& delta_angles);
-
   /// @deprecated constructor, but used in tests.
   PreintegratedAhrsMeasurements(const Vector3& biasHat,
                                 const Matrix3& measuredOmegaCovariance)
@@ -154,6 +163,34 @@ class GTSAM_EXPORT PreintegratedAhrsMeasurements
 #endif
 };
 
+/**
+ * An AHRSFactor is a three-way factor that is based on the preintegrated
+ * gyroscope measurements.
+ *
+ * @section math_notes Mathematical Formulation
+ *
+ * The factor relates the orientation at two time steps, \f$ R_i \f$ and \f$ R_j \f$,
+ * and the gyroscope bias \f$ b_g \f$. The error function is given by:
+ * \f[
+ * e(R_i, R_j, b_g) = \text{Log}\left( (\Delta \tilde{R}_{ij}(b_g))^{-1} R_i^{-1} R_j \right)
+ * \f]
+ * where \f$ \Delta \tilde{R}_{ij}(b_g) \f$ is the preintegrated rotation corrected
+ * for the current estimate of the gyroscope bias, and \f$ \text{Log}(\cdot) \f$ is
+ * the logarithmic map from SO(3) to \f$ \mathbb{R}^3 \f$.
+ *
+ * The preintegrated rotation \f$ \Delta R_{ij} \f$ is calculated as:
+ * \f[
+ * \Delta R_{ij} = \prod_{k=i}^{j-1} \text{Exp}((\omega_k - \hat{b}_g) \Delta t)
+ * \f]
+ * where \f$ \hat{b}_g \f$ is the bias estimate used for preintegration. The
+ * bias-corrected preintegrated rotation \f$ \Delta \tilde{R}_{ij}(b_g) \f$ is
+ * then approximated using a first-order expansion:
+ * \f[
+ * \Delta \tilde{R}_{ij}(b_g) \approx \Delta R_{ij} \text{Exp}(J_b (b_g - \hat{b}_g))
+ * \f]
+ * where \f$ J_b \f$ is the Jacobian of the preintegrated rotation with respect
+ * to the gyroscope bias.
+ */
 class GTSAM_EXPORT AHRSFactor : public NoiseModelFactorN<Rot3, Rot3, Vector3> {
   typedef AHRSFactor This;
   typedef NoiseModelFactorN<Rot3, Rot3, Vector3> Base;
