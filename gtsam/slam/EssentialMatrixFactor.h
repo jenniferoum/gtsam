@@ -97,7 +97,7 @@ class EssentialMatrixFactor : public NoiseModelFactorN<EssentialMatrix> {
   Vector evaluateError(const EssentialMatrix& E,
                        OptionalMatrixType H) const override {
     Vector error(1);
-    error << E.error(vA_, vB_, H);
+    error(0) = E.error(vA_, vB_, H);
     return error;
   }
 
@@ -409,7 +409,7 @@ class EssentialMatrixFactor4
     }
 
     Vector error(1);
-    error << E.error(vA, vB, HE);
+    error(0) = E.error(vA, vB, HE);
 
     return error;
   }
@@ -513,7 +513,7 @@ class EssentialMatrixFactor5
     }
 
     Vector error(1);
-    error << E.error(vA, vB, HE);
+    error(0) = E.error(vA, vB, HE);
 
     return error;
   }
