@@ -404,8 +404,9 @@ class EssentialMatrixFactor4
       // H2 = df/dK = vB.T * E.T * dvA/dK + vA.T * E * dvB/dK
       // where dvA/dK = dvA/dcA * dcA/dK, dVB/dK = dvB/dcB * dcB/dK
       // and dvA/dcA = dvB/dcB = [[1, 0], [0, 1], [0, 0]]
-      *HK = vB.transpose() * E.matrix().transpose().leftCols<2>() * cA_H_K +
-            vA.transpose() * E.matrix().leftCols<2>() * cB_H_K;
+      Matrix DynamicH_K = vB.transpose() * E.matrix().transpose().leftCols<2>() * cA_H_K +
+          vA.transpose() * E.matrix().leftCols<2>() * cB_H_K;  // (1*2) * (2*DimK)
+      *HK = DynamicH_K;
     }
 
     Vector error(1);
@@ -504,12 +505,14 @@ class EssentialMatrixFactor5
 
     if (HKa) {
       // Compute the jacobian of error w.r.t Ka.
-      *HKa = vB.transpose() * E.matrix().transpose().leftCols<2>() * cA_H_Ka;
+      Matrix DynamicHka = vB.transpose() * E.matrix().transpose().leftCols<2>() * cA_H_Ka;
+      *HKa = DynamicHka;
     }
 
     if (HKb) {
       // Compute the jacobian of error w.r.t Kb.
-      *HKb = vA.transpose() * E.matrix().leftCols<2>() * cB_H_Kb;
+      Matrix DynamicHkb = vA.transpose() * E.matrix().leftCols<2>() * cB_H_Kb;
+      *HKb = DynamicHkb;
     }
 
     Vector error(1);
