@@ -119,7 +119,8 @@ namespace gtsam {
       const auto mean = solve({});  // solve for mean.
       mean.print("  mean", formatter);
     }
-    cout << "  logNormalizationConstant: " << -negLogConstant() << endl;
+    cout << "  logNormalizationConstant: " << fixed << setprecision(4)
+         << -negLogConstant() << endl;
     if (model_)
       model_->print("  Noise model: ");
     else

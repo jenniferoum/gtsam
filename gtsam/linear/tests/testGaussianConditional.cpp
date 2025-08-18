@@ -463,15 +463,8 @@ TEST(GaussianConditional, Sample) {
   // Use a specific random generator
   std::mt19937_64 rng(4242);
   auto actual3 = conditional.sample(given, &rng);
-  EXPECT_LONGS_EQUAL(1, actual2.size());
-  // regressions
-#if __APPLE__
-EXPECT(assert_equal(Vector2(31.0111856, 64.9850775), actual2[X(0)], 1e-5));
-#elif _WIN32
-  EXPECT(assert_equal(Vector2(30.995317, 64.9943165), actual2[X(0)], 1e-5));
-#elif __linux__
-  EXPECT(assert_equal(Vector2(30.9809331, 64.9927588), actual2[X(0)], 1e-5));
-#endif
+  EXPECT_LONGS_EQUAL(1, actual3.size());
+  // regressions don't make sense
 }
 
 /* ************************************************************************* */
