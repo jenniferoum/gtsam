@@ -517,7 +517,7 @@ TEST(GaussianConditional, Print) {
     "  mean: 1 elements\n"
     "  x0: 20 40\n"
     "  logNormalizationConstant: -4.0351\n"
-    "isotropic dim=2 sigma=3\n";
+    "isotropic dim=2 sigma=3.0000\n";
   EXPECT(assert_print_equal(expected, conditional, "GaussianConditional"));
 
   auto conditional1 =
@@ -532,7 +532,7 @@ TEST(GaussianConditional, Print) {
     "          [ -3 -4 ]\n"
     "  d = [ 20 40 ]\n"
     "  logNormalizationConstant: -4.0351\n"
-    "isotropic dim=2 sigma=3\n";
+    "isotropic dim=2 sigma=3.0000\n";
   EXPECT(assert_print_equal(expected1, conditional1, "GaussianConditional"));
 
   // Test printing for multiple parents.
@@ -548,7 +548,7 @@ TEST(GaussianConditional, Print) {
     "          [ -7 -8 ]\n"
     "  d = [ 20 40 ]\n"
     "  logNormalizationConstant: -4.0351\n"
-    "isotropic dim=2 sigma=3\n";
+    "isotropic dim=2 sigma=3.0000\n";
   EXPECT(assert_print_equal(expected2, conditional2, "GaussianConditional"));
 }
 
