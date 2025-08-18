@@ -181,7 +181,8 @@ using namespace constrained_example;
 [[maybe_unused]] static NonlinearFactorGraph costs = Cost();
 [[maybe_unused]] static NonlinearEqualityConstraints eqConstraints =
     EqConstraints();
-[[maybe_unused]] static NonlinearInequalityConstraints ineqConstraints;
+[[maybe_unused]] static NonlinearInequalityConstraints ineqConstraints =
+    IneqConstraints();
 [[maybe_unused]] static Values init_values = InitValues();
 [[maybe_unused]] static ConstrainedOptProblem problem(costs, eqConstraints,
                                                       ineqConstraints);
