@@ -22,6 +22,8 @@
 #include <gtsam/linear/VectorValues.h>
 #include <gtsam/linear/linearExceptions.h>
 
+#include <iomanip>
+
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
@@ -120,7 +122,7 @@ namespace gtsam {
       mean.print("  mean", formatter);
     }
     cout << "  logNormalizationConstant: " << std::fixed << std::setprecision(4)
-         << -negLogConstant() << endl;
+       << -negLogConstant() << endl;
     if (model_)
       model_->print("  Noise model: ");
     else

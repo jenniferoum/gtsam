@@ -6,4 +6,9 @@ else()
   set(EXCLUDE_TESTS "")
 endif()
 
+if (GTSAM_SINGLE_TEST_EXE)
+	list(APPEND EXCLUDE_TESTS "testPenaltyOptimizer.cpp" "testAugmentedLagrangianOptimizer.cpp")
+endif()
+
+
 gtsamAddTestsGlob(constraint "test*.cpp" "${EXCLUDE_TESTS}" "gtsam")
