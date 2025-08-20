@@ -39,6 +39,7 @@ static constexpr double one_24th = 1.0 / 24.0;
 static constexpr double one_60th = 1.0 / 60.0;
 static constexpr double one_120th = 1.0 / 120.0;
 static constexpr double one_180th = 1.0 / 180.0;
+static constexpr double one_360th = 1.0 / 360.0;
 static constexpr double one_720th = 1.0 / 720.0;
 static constexpr double one_1260th = 1.0 / 1260.0;
 
@@ -113,27 +114,43 @@ Matrix3 ExpmapFunctor::expmap() const { return I_3x3 + A * W + B * WW; }
 
 DexpFunctor::DexpFunctor(const Vector3& omega, double nearZeroThresholdSq, double nearPiThresholdSq)
   : ExpmapFunctor(nearZeroThresholdSq, omega), omega(omega) {
-  if (!nearZero) {
-    // General case or nearPi: Use standard stable formulas first
-    C = (1.0 - A) / theta2; // Usually stable, even near pi (1-0)/pi^2
+  // General case or nearPi: Use standard stable formulas first
+  const double delta = M_PI > theta ? M_PI - theta : 0.0;
+  const double delta2 = delta * delta;
+  nearPi = (delta2 < nearPiThresholdSq);
+}
 
-    // Calculate delta = pi - theta (non-negative) for nearPi check
-    const double delta = M_PI > theta ? M_PI - theta : 0.0;
-    const double delta2 = delta * delta;
-    const bool nearPi = (delta2 < nearPiThresholdSq);
-    if (nearPi) {
-      // Taylor expansion near pi *only for D* (Order delta)
-      D = k1_Pi2 + (k2_Pi3 - k1_4Pi) * delta; // D ~ 1/pi^2 + delta*(2/pi^3 - 1/(4*pi))
-    } else {
-      // General case D:
-      D = (1.0 - A / (2.0 * B)) / theta2;
-    }
-  } else {
-    // Taylor expansion at 0
-    // TODO(Frank): flipping signs here does not trigger any tests: harden!
-    C = one_6th - theta2 * one_120th;
-    D = one_12th + theta2 * one_720th;
+double DexpFunctor::C() const {
+  if (std::isnan(C_)) {
+    // Usually stable, even near pi (1-0)/pi^2
+    C_ = !nearZero ? (1.0 - A) / theta2 : (one_6th - theta2 * one_120th);
   }
+  return C_;
+}
+
+double DexpFunctor::D() const {
+  if (std::isnan(D_)) {
+    D_ = !nearZero ? (nearPi ? (k1_Pi2 + (k2_Pi3 - k1_4Pi) * (M_PI - theta))
+                             : ((1.0 - A / (2.0 * B)) / theta2))
+                   : (one_12th + theta2 * one_720th);
+  }
+  return D_;
+}
+
+double DexpFunctor::E() const {
+  if (std::isnan(E_)) {
+    E_ = !nearZero ? ((1.0 - 2.0 * B) / (2.0 * theta2))
+                   : (one_24th - theta2 * one_720th);
+  }
+  return E_;
+}
+
+double DexpFunctor::dA() const {
+  if (std::isnan(dA_)) {
+    // Identity: dA = A′/θ = C − B (valid for all θ, with our near-zero series)
+    dA_ = C() - B;
+  }
+  return dA_;
 }
 
 double DexpFunctor::dB() const {
@@ -146,14 +163,24 @@ double DexpFunctor::dB() const {
 
 double DexpFunctor::dC() const {
   if (std::isnan(dC_)) {
-    dC_ = !nearZero ? ((B - 3.0 * C) / theta2)
+    dC_ = !nearZero ? ((B - 3.0 * C()) / theta2)
                     : (-one_60th + theta2 * one_1260th);
   }
   return dC_;
 }
 
-Kernel DexpFunctor::Jacobian() const& { return Kernel{this, 1.0, B, C, dB(), dC()}; }
+double DexpFunctor::dE() const {
+  if (std::isnan(dE_)) {
+    dE_ = !nearZero ? (-(dB() + 2.0 * E()) / theta2) : (-one_360th);
+  }
+  return dE_;
+}
+
+// --- Kernels ---
+Kernel DexpFunctor::Rodrigues() const& { return Kernel{this, 1.0, A, B, dA(), dB()}; }
+Kernel DexpFunctor::Jacobian() const& { return Kernel{this, 1.0, B, C(), dB(), dC()}; }
 InvJKernel DexpFunctor::InvJacobian() const& { return InvJKernel{this, Jacobian()}; }
+Kernel DexpFunctor::Gamma() const& { return Kernel{this, 0.5, C(), E(), dC(), dE()}; }
 
 DexpFunctor::DexpFunctor(const Vector3& omega)
     : DexpFunctor(omega, kNearZeroThresholdSq, kNearPiThresholdSq) {}

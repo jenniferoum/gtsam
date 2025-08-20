@@ -268,7 +268,7 @@ gtsam::Gal3 gtsam::Gal3::Expmap(const TangentVector& xi, OptionalJacobian<10, 10
     } else {
          // Closed form for E matrix (from Equation 19, Page 8)
          const double B_E = (1.0 - 2.0 * dexp_functor.B) / (2.0 * dexp_functor.theta2);
-         E = 0.5 * Matrix3::Identity() + dexp_functor.C * dexp_functor.W + B_E * dexp_functor.WW;
+         E = 0.5 * Matrix3::Identity() + dexp_functor.C() * dexp_functor.W + B_E * dexp_functor.WW;
     }
 
     const Point3 r_final = Point3(Jl_theta * rho_tan + E * (t_tan_val * nu_tan));
@@ -298,7 +298,7 @@ Gal3::TangentVector Gal3::Logmap(const Gal3& g, OptionalJacobian<10, 10> Hg) {
     } else {
          // Closed form for E matrix (from Equation 19, Page 8)
          const double B_E = (1.0 - 2.0 * dexp_functor_log.B) / (2.0 * dexp_functor_log.theta2);
-         E = 0.5 * Matrix3::Identity() + dexp_functor_log.C * dexp_functor_log.W + B_E * dexp_functor_log.WW;
+         E = 0.5 * Matrix3::Identity() + dexp_functor_log.C() * dexp_functor_log.W + B_E * dexp_functor_log.WW;
     }
 
     const Vector3 r_vec = Vector3(g.r_);
