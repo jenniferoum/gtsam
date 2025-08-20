@@ -164,12 +164,7 @@ protected:
 /// See https://www.ethaneade.org/lie.pdf expmap (82) and left Jacobian (83).
 struct GTSAM_EXPORT DexpFunctor : public ExpmapFunctor {
   const Vector3 omega;
-
-  // Ethan's C constant used in Jacobians
-  double C;  // (1 - A) / theta^2
-
-  // Constant used in inverse Jacobians
-  double D;  // (1 - A/2B) / theta2
+  bool nearPi{ false };
 
   /// Constructor with element of Lie algebra so(3)
   explicit DexpFunctor(const Vector3& omega);
@@ -177,11 +172,17 @@ struct GTSAM_EXPORT DexpFunctor : public ExpmapFunctor {
   /// Constructor with custom thresholds (advanced)
   explicit DexpFunctor(const Vector3& omega, double nearZeroThresholdSq, double nearPiThresholdSq);
 
+  // Rodrigues kernel: R_[l/r](ω) = I + A(θ) Ω + B(θ) Ω² (left).
+  Kernel Rodrigues() const&;
+
   // Jacobian kernel J_[l/r](ω) = I +/0 B Ω + C Ω²  (left/right).
   Kernel Jacobian() const&;
 
   // Specialized kernel for inverse Jacobian, stable even for |ω| > π
   InvJKernel InvJacobian() const&;  // I +/- 1/2 Ω + D Ω²
+
+  // Gamma kernel: Γ_[l/r](ω) = 0.5 I ± C Ω + E Ω² (left/right).
+  Kernel Gamma() const&;
 
   // NOTE(luca): Right Jacobian for Exponential map in SO(3) - equation
   // (10.86) and following equations in G.S. Chirikjian, "Stochastic Models,
@@ -226,14 +227,22 @@ struct GTSAM_EXPORT DexpFunctor : public ExpmapFunctor {
   inline Matrix3 invDexp() const { return rightJacobianInverse(); }
 #endif
 
+  // access to (lazily evaluated) coefficients
+  double C() const;
+  double D() const;
+  double E() const;
+
   // access to (lazily evaluated) radial derivatives c'(θ)/θ
+  double dA() const;
   double dB() const;
   double dC() const;
+  double dE() const;
 
  protected:
-  // Constants used for Jacobian kernel
+  // Lazy caches stored as NaN-initialized scalars
   static constexpr double kNan = std::numeric_limits<double>::quiet_NaN();
-  mutable double dB_{kNan}, dC_{kNan};  ///< lazy c(θ)′/θ
+  mutable double C_{kNan}, D_{kNan}, E_{kNan};  ///< C, D and E lazily computed.
+  mutable double dA_{kNan}, dB_{kNan}, dC_{kNan}, dE_{kNan};  ///< lazy c(θ)′/θ
 };
 }  //  namespace so3
 

@@ -110,13 +110,13 @@ Matrix3 InvJKernel::left() const {
     return inverse3x3(J.left());
   }
   // Closed-form inverse in the {I, Ω, Ω²} basis
-  return I_3x3 - 0.5 * S->W + S->D * S->WW;
+  return I_3x3 - 0.5 * S->W + S->D() * S->WW;
 }
 Matrix3 InvJKernel::right() const {
   if (S->theta > M_PI) {
     return inverse3x3(J.right());
   }
-  return I_3x3 + 0.5 * S->W + S->D * S->WW;
+  return I_3x3 + 0.5 * S->W + S->D() * S->WW;
 }
 
 Vector3 InvJKernel::applyLeft(const Vector3& v, OptionalJacobian<3, 3> Hw,
