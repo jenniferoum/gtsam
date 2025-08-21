@@ -38,7 +38,6 @@ jobs:
             ubuntu-clang-tbb,
             ubuntu-clang-cayleymap,
             ubuntu-clang-system-libs,
-            ubuntu-no-boost,
             ubuntu-no-unstable,
             ubuntu-build-examples,
           ]
@@ -75,12 +74,6 @@ jobs:
             compiler: clang
             version: "14"
             flag: system
-
-          - name: ubuntu-no-boost
-            os: ubuntu-22.04
-            compiler: clang
-            version: "14"
-            flag: no_boost
 
           - name: ubuntu-no-unstable
             os: ubuntu-22.04
@@ -128,23 +121,7 @@ jobs:
             echo "CXX=clang++-${{ matrix.version }}" >> $GITHUB_ENV
           fi
 
-      - name: Install (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install cmake ninja
-          sudo xcode-select -switch /Applications/Xcode_${{ matrix.version }}.app
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
-
-      - name: Install Boost
-        run: |
-          if [ ${{matrix.flag}} != 'no_boost' ]; then
-            if [ ${{runner.os}} == 'Linux' ]; then
-              sudo apt-get -y install libboost-all-dev
-            elif [ ${{runner.os}} == 'macOS' ]; then
-              brew install boost
-            fi
-          fi
+      
 
       - name: Set Allow Deprecated Flag
         if: matrix.flag == 'deprecated'
@@ -183,13 +160,6 @@ jobs:
           echo "GTSAM_USE_SYSTEM_EIGEN=ON" >> $GITHUB_ENV
           sudo apt-get install libmetis-dev
           echo "GTSAM_USE_SYSTEM_METIS=ON" >> $GITHUB_ENV
-
-      - name: Turn off boost
-        if: matrix.flag == 'no_boost'
-        run: |
-          echo "GTSAM_ENABLE_BOOST_SERIALIZATION=OFF" >> $GITHUB_ENV
-          echo "GTSAM_USE_BOOST_FEATURES=OFF" >> $GITHUB_ENV
-          echo "GTSAM will not use BOOST"
 
       - name: Turn off unstable
         if: matrix.flag == 'no_unstable'
