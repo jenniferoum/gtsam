@@ -32,6 +32,7 @@ jobs:
         name: [
           macos-13-xcode-14.2,
           macos-14-xcode-15.4,
+          macos-14-xcode-15.4-boost,
         ]
 
         build_type: [Debug, Release]
@@ -47,16 +48,32 @@ jobs:
             compiler: xcode
             version: "15.4"
 
+          - name: macos-14-xcode-15.4-boost
+            os: macos-14
+            compiler: xcode
+            version: "15.4"
+        exclude:
+          - name: macos-14-xcode-15.4-boost
+            build_type: Debug
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install Dependencies
         run: |
-          brew install cmake ninja
-          brew install boost
+          brew upgrade cmake || brew install cmake
+          brew upgrade ninja || brew install ninja
           sudo xcode-select -switch /Applications/Xcode.app
           echo "CC=clang" >> $GITHUB_ENV
           echo "CXX=clang++" >> $GITHUB_ENV
+
+      - name: Install Boost
+        if: contains(matrix.name, 'boost')
+        run: |
+          brew upgrade boost || brew install boost
+          echo "GTSAM_USE_BOOST_FEATURES=ON" >> $GITHUB_ENV
+          echo "GTSAM_ENABLE_BOOST_SERIALIZATION=ON" >> $GITHUB_ENV
+
       - name: Build and Test
         run: bash .github/scripts/unix.sh -t
