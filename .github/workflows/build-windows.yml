@@ -93,6 +93,7 @@ jobs:
           echo "$env:PATH" >> $env:GITHUB_PATH
 
       - name: Install Boost
+        if: matrix.build_type == 'Release'
         shell: powershell
         run: |
           # Snippet from: https://github.com/actions/virtual-environments/issues/2667
@@ -116,13 +117,20 @@ jobs:
         run: |
           export CMAKE_GENERATOR=Ninja 
           cmake -E remove_directory build
-          cmake -B build \
-                -S . \
-                -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
-                -DGTSAM_ALLOW_DEPRECATED_SINCE_V43=OFF \
-                -DBOOST_ROOT="${BOOST_ROOT}" \
-                -DBOOST_INCLUDEDIR="${BOOST_ROOT}\boost\include" \
-                -DBOOST_LIBRARYDIR="${BOOST_ROOT}\lib"
+          if [ "${{ matrix.build_type }}" = "Release" ]; then
+            cmake -B build \
+                  -S . \
+                  -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
+                  -DGTSAM_ALLOW_DEPRECATED_SINCE_V43=OFF \
+                  -DBOOST_ROOT="${BOOST_ROOT}" \
+                  -DBOOST_INCLUDEDIR="${BOOST_ROOT}\\boost\\include" \
+                  -DBOOST_LIBRARYDIR="${BOOST_ROOT}\\lib"
+          else
+            cmake -B build \
+                  -S . \
+                  -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
+                  -DGTSAM_ALLOW_DEPRECATED_SINCE_V43=OFF
+          fi
 
       - name: Build
         shell: bash

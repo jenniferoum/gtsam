@@ -66,7 +66,6 @@ jobs:
             os: ubuntu-24.04
             compiler: clang
             version: "16"
-            build_type: Release
         exclude:
           - name: ubuntu-24.04-clang-16-boost
             build_type: Debug
@@ -103,7 +102,7 @@ jobs:
           fi
 
       - name: Install Boost (Conditional)
-        if: contains(matrix.name, 'boost')
+        if: contains(matrix.name, 'boost') && matrix.build_type == 'Release'
         run: |
           sudo apt-get -y install libboost-all-dev
           echo "GTSAM_USE_BOOST_FEATURES=ON" >> $GITHUB_ENV

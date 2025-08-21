@@ -52,6 +52,7 @@ jobs:
             os: macos-14
             compiler: xcode
             version: "15.4"
+
         exclude:
           - name: macos-14-xcode-15.4-boost
             build_type: Debug
@@ -62,16 +63,16 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew upgrade cmake || brew install cmake
-          brew upgrade ninja || brew install ninja
+          brew upgrade cmake --quiet || brew install cmake --quiet
+          brew upgrade ninja --quiet || brew install ninja --quiet
           sudo xcode-select -switch /Applications/Xcode.app
           echo "CC=clang" >> $GITHUB_ENV
           echo "CXX=clang++" >> $GITHUB_ENV
 
       - name: Install Boost
-        if: contains(matrix.name, 'boost')
+        if: contains(matrix.name, 'boost') && matrix.build_type == 'Release'
         run: |
-          brew upgrade boost || brew install boost
+          brew upgrade boost --quiet || brew install boost --quiet
           echo "GTSAM_USE_BOOST_FEATURES=ON" >> $GITHUB_ENV
           echo "GTSAM_ENABLE_BOOST_SERIALIZATION=ON" >> $GITHUB_ENV
 
