@@ -7,8 +7,8 @@ on:
       - '**.ipynb' 
       - 'myst.yml'
 
-# Every time we make a push to the PR, immediately cancel the previous checks,
-# and start a new one. The other runner will be available more quickly to the PR.
+# Cancels any in-progress workflow runs for the same PR when a new push is made,
+# allowing the runner to become available more quickly for the latest changes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
@@ -109,19 +109,10 @@ jobs:
             sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy main"
           fi
 
-          sudo apt-get -y install cmake build-essential pkg-config libpython3-dev python3-numpy libicu-dev ninja-build mold
-
-          if [ "${{ matrix.compiler }}" = "gcc" ]; then
-            sudo apt-get install -y g++-${{ matrix.version }} g++-${{ matrix.version }}-multilib
-            echo "CC=gcc-${{ matrix.version }}" >> $GITHUB_ENV
-            echo "CXX=g++-${{ matrix.version }}" >> $GITHUB_ENV
-          else
-            sudo apt-get install -y clang-${{ matrix.version }} g++-multilib
-            echo "CC=clang-${{ matrix.version }}" >> $GITHUB_ENV
-            echo "CXX=clang++-${{ matrix.version }}" >> $GITHUB_ENV
-          fi
-
-      
+          sudo apt-get -y install cmake build-essential pkg-config libpython3-dev python3-numpy libicu-dev ninja-build
+          sudo apt-get install -y clang-${{ matrix.version }} g++-multilib mold
+          echo "CC=clang-${{ matrix.version }}" >> $GITHUB_ENV
+          echo "CXX=clang++-${{ matrix.version }}" >> $GITHUB_ENV
 
       - name: Set Allow Deprecated Flag
         if: matrix.flag == 'deprecated'
