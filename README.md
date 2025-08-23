@@ -55,7 +55,7 @@ Boost is now *optional*. Two cmake flags govern its behavior:
 If one or both of these flags are `ON`, you need to install [Boost](http://www.boost.org/users/download/) >= 1.70
     - Mac: `brew install boost`
     - Ubuntu: `sudo apt-get install libboost-all-dev`
-    - Windows: recommend https://github.com/microsoft/vcpkg
+    - Windows: We highly recommend using the [vcpkg](https://github.com/microsoft/vcpkg) package manager. For other installation methods or troubleshooting, please see the guidance in the [cmake/HandleBoost.cmake](cmake/HandleBoost.cmake) script.
 
 Optional prerequisites - used automatically if findable by CMake:
 
