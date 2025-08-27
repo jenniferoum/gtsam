@@ -103,13 +103,17 @@ class FrobeniusFactor : public NoiseModelFactorN<T, T> {
 };
 
 /**
- * FrobeniusBetweenFactor is a BetweenFactor that evaluates the Frobenius norm
+ * FrobeniusBetweenFactorNL is a BetweenFactor that evaluates the Frobenius norm
  * of the rotation error between measured and predicted (rather than the
  * Logmap of the error). This factor is only defined for fixed-dimension types,
  * that are matrix Lie groups.
+ *
+ * This version is called NL, because it minimizes |inv(T2)*T1*T12_ - I|_F
+ * as opposed to the (historically older) FrobeniusBetweenFactor, that minimizes
+ * ||T2 - T1*T12_||_F. This only holds for certain groups, e.g., not Sim(3).
  */
 template <class T>
-class FrobeniusBetweenFactor : public NoiseModelFactorN<T, T> {
+class FrobeniusBetweenFactorNL : public NoiseModelFactorN<T, T> {
   GTSAM_CONCEPT_ASSERT(IsMatrixLieGroup<T>);
   inline constexpr static auto N = T::LieAlgebra::RowsAtCompileTime;
   inline constexpr static auto Dim = N * N;
@@ -131,8 +135,8 @@ class FrobeniusBetweenFactor : public NoiseModelFactorN<T, T> {
   /// @{
 
   /// Construct from two keys and measured rotation
-  FrobeniusBetweenFactor(Key j1, Key j2, const T& T12,
-                         const SharedNoiseModel& model = nullptr)
+  FrobeniusBetweenFactorNL(Key j1, Key j2, const T& T12,
+                           const SharedNoiseModel& model = nullptr)
       : NoiseModelFactorN<T, T>(ConvertNoiseModel(model, Dim), j1, j2),
         T12_(T12) {}
 
@@ -143,7 +147,7 @@ class FrobeniusBetweenFactor : public NoiseModelFactorN<T, T> {
   /// print with optional string
   void print(const std::string& s, const KeyFormatter& keyFormatter =
                                        DefaultKeyFormatter) const override {
-    std::cout << s << "FrobeniusBetweenFactor<" << demangle(typeid(T).name())
+    std::cout << s << "FrobeniusBetweenFactorNL<" << demangle(typeid(T).name())
               << ">(" << keyFormatter(this->key1()) << ","
               << keyFormatter(this->key2()) << ")\n";
     traits<T>::Print(T12_, "  T12: ");
@@ -153,7 +157,7 @@ class FrobeniusBetweenFactor : public NoiseModelFactorN<T, T> {
   /// assert equality up to a tolerance
   bool equals(const NonlinearFactor& expected,
               double tol = 1e-9) const override {
-    auto e = dynamic_cast<const FrobeniusBetweenFactor*>(&expected);
+    auto e = dynamic_cast<const FrobeniusBetweenFactorNL*>(&expected);
     return e != nullptr && NoiseModelFactorN<T, T>::equals(*e, tol) &&
            traits<T>::Equals(this->T12_, e->T12_, tol);
   }
@@ -179,10 +183,10 @@ class FrobeniusBetweenFactor : public NoiseModelFactorN<T, T> {
 
     // Calculate error
     Eigen::Matrix<double, Dim, T::dimension> H_vec_pred;
-    Vector error = vecI - traits<T>::Vec(pred, H1 ? &H_vec_pred : nullptr);
+    Vector error = traits<T>::Vec(pred, H1 ? &H_vec_pred : nullptr) - vecI;
 
     // Do chain rule
-    const auto H_error_hat21 = - H_vec_pred * H_pred_hat;
+    const auto H_error_hat21 = H_vec_pred * H_pred_hat;
     if (H1) *H1 = H_error_hat21;  // H_pred_T1 is identity
     if (H2) *H2 = H_error_hat21 * H_T21_T2;
     return error;
@@ -191,11 +195,11 @@ class FrobeniusBetweenFactor : public NoiseModelFactorN<T, T> {
 };
 
 /**
- * OldFrobeniusBetweenFactor uses ||T2 - T1*T12_||_F, which only works if the
+ * FrobeniusBetweenFactor uses ||T2 - T1*T12_||_F, which only works if the
  * Frobenius error is invariant to multiplying with an arbitrary element T.
  */
 template <class T>
-class OldFrobeniusBetweenFactor : public FrobeniusBetweenFactor<T> {
+class FrobeniusBetweenFactor : public FrobeniusBetweenFactorNL<T> {
   inline constexpr static auto N = T::LieAlgebra::RowsAtCompileTime;
   inline constexpr static auto Dim = N * N;
 
@@ -208,9 +212,9 @@ class OldFrobeniusBetweenFactor : public FrobeniusBetweenFactor<T> {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   /// Construct from two keys and measured rotation
-  OldFrobeniusBetweenFactor(Key j1, Key j2, const T& T12,
-                            const SharedNoiseModel& model = nullptr)
-      : FrobeniusBetweenFactor<T>(j1, j2, T12, model),
+  FrobeniusBetweenFactor(Key j1, Key j2, const T& T12,
+                         const SharedNoiseModel& model = nullptr)
+      : FrobeniusBetweenFactorNL<T>(j1, j2, T12, model),
         T2hat_H_T1_(traits<T>::AdjointMap(traits<T>::Inverse(T12))) {}
 
   /// Error is Frobenius norm between T1*T12 and T2.
