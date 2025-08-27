@@ -48,6 +48,31 @@ GTSAM_EXPORT SharedNoiseModel ConvertNoiseModel(const SharedNoiseModel& model,
                                                 bool defaultToUnit = true);
 
 /**
+ * @brief Ensure a noise model has the correct dimension for a given type.
+ *
+ * If the model is already of dimension Dim, it is returned as-is.
+ * Otherwise, ConvertNoiseModel is called to convert it.
+ * Asserts that the model's dimension matches T's expected dimension before
+ * conversion.
+ *
+ * @tparam T The type whose dimension is checked.
+ * @tparam Dim The required dimension.
+ * @param model The input noise model.
+ * @return A noise model of dimension Dim.
+ */
+template <class T, size_t Dim>
+inline SharedNoiseModel ConvertModel(const SharedNoiseModel& model) {
+  if (!model || model->dim() == Dim) {
+    return model;
+  }
+  if (model->dim() != T::dimension) {
+    throw std::runtime_error(
+        "Noise model dimension does not match expected dimension for T.");
+  }
+  return ConvertNoiseModel(model, Dim);
+}
+
+/**
  * FrobeniusPrior calculates the Frobenius norm between a given matrix and an
  * element of SO(3) or SO(4).
  */
@@ -68,7 +93,7 @@ class FrobeniusPrior : public NoiseModelFactorN<T> {
   /// Constructor
   FrobeniusPrior(Key j, const MatrixNN& M,
                  const SharedNoiseModel& model = nullptr)
-      : NoiseModelFactorN<T>(ConvertNoiseModel(model, Dim), j) {
+      : NoiseModelFactorN<T>(ConvertModel<T, Dim>(model), j) {
     vecM_ << Eigen::Map<const Matrix>(M.data(), Dim, 1);
   }
 
@@ -95,7 +120,7 @@ class FrobeniusFactor : public NoiseModelFactorN<T, T> {
 
   /// Constructor
   FrobeniusFactor(Key j1, Key j2, const SharedNoiseModel& model = nullptr)
-      : NoiseModelFactorN<T, T>(ConvertNoiseModel(model, Dim), j1, j2) {}
+      : NoiseModelFactorN<T, T>(ConvertModel<T, Dim>(model), j1, j2) {}
 
   /// Error is just Frobenius norm between rotation matrices.
   Vector evaluateError(const T& T1, const T& T2, OptionalMatrixType H1,
@@ -107,13 +132,14 @@ class FrobeniusFactor : public NoiseModelFactorN<T, T> {
 };
 
 /**
- * FrobeniusBetweenFactorNL is a BetweenFactor that evaluates the Frobenius norm
- * of the rotation error between measured and predicted (rather than the
- * Logmap of the error). This factor is only defined for fixed-dimension types,
- * that are matrix Lie groups.
+ * FrobeniusBetweenFactorNL is a BetweenFactor that evaluates the Frobenius
+ * norm of the rotation error between measured and predicted (rather than the
+ * Logmap of the error). This factor is only defined for fixed-dimension
+ * types, that are matrix Lie groups.
  *
  * This version is called NL, because it minimizes |inv(T2)*T1*T12_ - I|_F
- * as opposed to the (historically older) FrobeniusBetweenFactor, that minimizes
+ * as opposed to the (historically older) FrobeniusBetweenFactor, that
+ * minimizes
  * ||T2 - T1*T12_||_F. This only holds for certain groups, e.g., not Sim(3).
  */
 template <class T>
@@ -141,7 +167,7 @@ class FrobeniusBetweenFactorNL : public NoiseModelFactorN<T, T> {
   /// Construct from two keys and measured rotation
   FrobeniusBetweenFactorNL(Key j1, Key j2, const T& T12,
                            const SharedNoiseModel& model = nullptr)
-      : NoiseModelFactorN<T, T>(ConvertNoiseModel(model, Dim), j1, j2),
+      : NoiseModelFactorN<T, T>(ConvertModel<T, Dim>(model), j1, j2),
         T12_(T12) {}
 
   /// @}

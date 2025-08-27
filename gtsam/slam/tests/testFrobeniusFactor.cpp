@@ -239,7 +239,7 @@ namespace pose3 {
 /* ************************************************************************* */
 TEST(FrobeniusFactorPose3, EvaluateError) {
   using namespace ::pose3;
-  auto factor = FrobeniusFactor<Pose3>(1, 2, noiseModel::Unit::Create(12));
+  auto factor = FrobeniusFactor<Pose3>(1, 2, noiseModel::Unit::Create(6));
   Vector actual = factor.evaluateError(P1, P2);
   Vector expected = P2.vec() - P1.vec();
   EXPECT(assert_equal(expected, actual, 1e-9));
@@ -391,7 +391,7 @@ const SL4 T2(T_matrix2);
 /* ************************************************************************* */
 TEST(FrobeniusFactorSL4, EvaluateError) {
   using namespace ::sl4;
-  auto factor = FrobeniusFactor<SL4>(1, 2, noiseModel::Unit::Create(25));
+  auto factor = FrobeniusFactor<SL4>(1, 2, noiseModel::Unit::Create(16));
   Vector actual = factor.evaluateError(T1, T2);
   Vector expected = T2.vec() - T1.vec();
   EXPECT(assert_equal(expected, actual, 1e-9));
