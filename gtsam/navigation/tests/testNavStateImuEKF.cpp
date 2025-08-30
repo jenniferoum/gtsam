@@ -20,6 +20,13 @@
 #include <gtsam/navigation/NavState.h>
 #include <gtsam/navigation/NavStateImuEKF.h>
 #include <gtsam/navigation/PreintegrationParams.h>
+// Linear Gaussian graph includes for sanity-checking updates
+#include <gtsam/linear/GaussianFactorGraph.h>
+#include <gtsam/linear/JacobianFactor.h>
+#include <gtsam/linear/HessianFactor.h>
+#include <gtsam/linear/NoiseModel.h>
+#include <gtsam/linear/VectorValues.h>
+#include <gtsam/inference/Symbol.h>
 
 using namespace gtsam;
 
@@ -150,9 +157,9 @@ TEST(NavStateImuEKF, PositionUpdateSanity) {
 
   // GIVEN an EKF with diagonal covariance (no cross-terms)
   Matrix9 P0 = Matrix9::Zero();
-  P0.block<3, 3>(0, 0) = Matrix3::Identity() * 1e-3;  // rot
-  P0.block<3, 3>(3, 3) = Matrix3::Identity() * 1.0;   // pos
-  P0.block<3, 3>(6, 6) = Matrix3::Identity() * 0.5;   // vel
+  P0.block<3, 3>(0, 0) = I_3x3 * 1e-3;  // rot
+  P0.block<3, 3>(3, 3) = I_3x3 * 1.0;   // pos
+  P0.block<3, 3>(6, 6) = I_3x3 * 0.5;   // vel
   auto params = PreintegrationParams::MakeSharedU(9.81);
   NavStateImuEKF ekf(X0, P0, params);
 
@@ -177,7 +184,7 @@ TEST(NavStateImuEKF, PositionUpdateSanity) {
 
   // Reasonable measurement noise
   const double sigma = 0.1;  // meters
-  Matrix3 Rmeas = Matrix3::Identity() * (sigma * sigma);
+  Matrix3 Rmeas = I_3x3 * (sigma * sigma);
 
   // Manually compute K and delta_xi expected
   const Matrix3 S = H * P_prior * H.transpose() + Rmeas;
@@ -191,8 +198,8 @@ TEST(NavStateImuEKF, PositionUpdateSanity) {
 
   // THEN: delta_xi applied equals expected (within tolerance)
   const NavState& X_after = ekf.state();
-  const Vector9 delta_applied = X_before.localCoordinates(X_after);
-  EXPECT(assert_equal(delta_expected, delta_applied, 1e-9));
+  const Vector9 delta_ekf = X_before.localCoordinates(X_after);
+  EXPECT(assert_equal(delta_expected, delta_ekf, 1e-9));
 
   // AND: position moved toward z in world frame approximately by R*dp
   const Vector3 dp_body = delta_expected.segment<3>(3);
@@ -204,6 +211,26 @@ TEST(NavStateImuEKF, PositionUpdateSanity) {
   const double trace_pos_prior = P_prior.block<3, 3>(3, 3).trace();
   const double trace_pos_post = P_post.block<3, 3>(3, 3).trace();
   CHECK(trace_pos_post < trace_pos_prior);
+
+  // Compare EKF position update to solving an equivalent GaussianFactorGraph using JacobianFactors.
+  using symbol_shorthand::X;
+  const Key key = X(0);
+  GaussianFactorGraph gfg;
+
+  // Prior as JacobianFactor using full Gaussian covariance: || I * x - 0 ||_{P^{-1}}
+  Vector b = Vector::Zero(9);
+  gfg.add(key, I_9x9, b, noiseModel::Diagonal::Variances(P_prior.diagonal()));
+
+  // Measurement as JacobianFactor using full Gaussian covariance: || H * x - innovation ||_{R^{-1}}
+  Vector b_meas = innovation; // 3x1
+  gfg.add(key, H, b_meas, noiseModel::Isotropic::Sigma(3, sigma));
+
+  // Solve for MAP delta
+  VectorValues delta_map = gfg.optimize();
+  const Vector delta_graph = delta_map.at(key);
+
+  // THEN: Graph solution equals EKF correction
+  EXPECT(assert_equal(delta_graph, delta_ekf, 1e-9));
 }
 
 int main() {
