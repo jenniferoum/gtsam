@@ -620,9 +620,16 @@ template <G = {gtsam::Rot3, gtsam::Pose2, gtsam::Pose3, gtsam::NavState, gtsam::
 virtual class LieGroupEKF : gtsam::ManifoldEKF<G> {
   // Constructors
   LieGroupEKF(const G& X0, gtsam::Matrix P0);
-
+  
   // Increment-based predict (precomputed increment and Jacobian)
   void predictWithCompose(const G& U, gtsam::Matrix J_UX, gtsam::Matrix Q);
+};
+
+#include <gtsam/navigation/LeftLinearEKF.h>
+template <G = {gtsam::Rot3, gtsam::Pose2, gtsam::Pose3, gtsam::NavState, gtsam::Gal3}>
+virtual class LeftLinearEKF : gtsam::LieGroupEKF<G> {
+  // Constructors
+  LeftLinearEKF(const G& X0, gtsam::Matrix P0);
 };
 
 #include <gtsam/navigation/InvariantEKF.h>
@@ -633,22 +640,30 @@ virtual class InvariantEKF : gtsam::LieGroupEKF<G> {
 
   // Left-invariant predict APIs
   void predict(const G& U, gtsam::Matrix Q);
-  void predict(gtsam::Vector u, double dt, gtsam::Matrix Q);
+  void predict(const gtsam::Vector& u, double dt, gtsam::Matrix Q);
 };
 
 // Specialized NavState IMU EKF
 #include <gtsam/navigation/NavStateImuEKF.h>
-class NavStateImuEKF : gtsam::LieGroupEKF<gtsam::NavState> {
+class NavStateImuEKF : gtsam::LeftLinearEKF<gtsam::NavState> {
   // Constructors
   NavStateImuEKF(const gtsam::NavState& X0, gtsam::Matrix P0,
                  const gtsam::PreintegrationParams* params);
 
   // Predict using IMU measurements
-  void predict(gtsam::Vector gyro, gtsam::Vector accel, double dt);
+  void predict(const gtsam::Vector& omega_b, const gtsam::Vector& f_b, double dt);
 
   // Accessors
   gtsam::Matrix processNoise() const;
   gtsam::Vector gravity() const;
+  const gtsam::PreintegrationParams* params() const;
+
+  // Static methods
+   gtsam::NavState Gravity(const gtsam::Vector& n_gravity, double dt);
+   gtsam::NavState IMU(const gtsam::Vector& omega_b, const gtsam::Vector& f_b, double dt);
+   gtsam::NavState Dynamics(const gtsam::Vector& n_gravity, const gtsam::NavState& X,
+                           const gtsam::Vector& omega_b, const gtsam::Vector& f_b,
+                           double dt);
 };
 
 }
