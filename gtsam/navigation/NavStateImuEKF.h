@@ -19,56 +19,75 @@
 
 #pragma once
 
-#include <gtsam/navigation/LieGroupEKF.h>  // Include the base class
+#include <gtsam/navigation/LeftLinearEKF.h>  // Include the base class
 #include <gtsam/navigation/NavState.h>
 #include <gtsam/navigation/PreintegrationParams.h>
 
 namespace gtsam {
 
-/**
- * IMU-driven NavState on SE_2(3).
- * Returns a group increment U(X) that realizes a kinematic, second-order
- * integration step which cannot be reproduced by the Euler tangent-based
- * step in LieGroupEKF. Specifically, for X = (R,p,v):
- *   dR = Exp(gyro * dt)
- *   dv_body = (accel + R^T n_gravity) * dt
- *   dp_body = (R^T v) * dt + 0.5 * (accel + R^T n_gravity) * dt^2
- * and U = (dR, dp_body, dv_body). Composition X+ = X * U then yields exactly:
- *   R+ = R dR,
- *   v+ = v + (R accel + n_gravity) dt,
- *   p+ = p + v dt + (R accel + n_gravity) 0.5 dt^2.
- *
- * Note that this implements a custom integration and is intentionally
- * different from the Euler update used by LieGroupEKF::predict with a tangent
- * dynamics functor.
- */
-GTSAM_EXPORT NavState navStateImuDynamics(const NavState& X,
-                                          const Vector3& gyro,
-                                          const Vector3& accel, double dt,
-                                          const Vector3& n_gravity,
-                                          OptionalJacobian<9, 9> H = {});
-
 /// Specialized EKF for IMU-driven NavState on SE_2(3)
-class GTSAM_EXPORT NavStateImuEKF : public LieGroupEKF<NavState> {
+class GTSAM_EXPORT NavStateImuEKF : public LeftLinearEKF<NavState> {
  public:
-  using Base = LieGroupEKF<NavState>;
+  using Base = LeftLinearEKF<NavState>;
   using TangentVector = typename Base::TangentVector;  // Vector9
   using Jacobian = typename Base::Jacobian;            // 9x9
   using Covariance = typename Base::Covariance;        // 9x9
 
-  /// Construct with initial state/covariance and preintegration params (for
-  /// gravity and IMU covariances)
-  /// @param X0 Initial NavState.
-  /// @param P0 Initial covariance in tangent space at X0.
-  /// @param params Preintegration parameters providing gravity and options.
+  /**
+   * Construct with initial state/covariance and preintegration params (for
+   * gravity and IMU covariances)
+   * @param X0 Initial NavState.
+   * @param P0 Initial covariance in tangent space at X0.
+   * @param params Preintegration parameters providing gravity and options.
+   */
   NavStateImuEKF(const NavState& X0, const Covariance& P0,
                  const std::shared_ptr<PreintegrationParams>& params);
 
-  /// Predict with gyro and accel using the custom increment integrator above.
-  /// @param gyro Body angular velocity measurement (rad/s).
-  /// @param accel Body specific force measurement (m/s^2).
-  /// @param dt Time step in seconds.
-  void predict(const Vector3& gyro, const Vector3& accel, double dt);
+  // Calculate W (gravity-only left composition, world-frame increments)
+  static NavState Gravity(const Vector3& n_gravity, double dt) {
+    return {Rot3(), n_gravity * (0.5 * dt * dt), n_gravity * dt};
+  }
+
+  // Calculate U from raw IMU (no gravity): body-frame increments
+  static NavState IMU(const Vector3& omega_b, const Vector3& f_b, double dt) {
+    return {Rot3::Expmap(omega_b * dt), f_b * (0.5 * dt * dt), f_b * dt};
+  }
+
+  /**
+   * @brief Compute the dynamics of the system.
+   *
+   * This function computes the next state of the system based on the current
+   * state, gravity, body angular velocity, body specific force, and time step.
+   * The dynamics are defined as:
+   * X_{k+1} = f(X_k; g, omega_b, f_b, dt)
+   *         = W(g, dt) \psi_dt(X_k) U(omega_b, f_b, dt)
+   * where W, \psi, and U are the gravity, (autonomous) position update, and
+   * IMU increment functions, respectively.
+   *
+   * @param n_gravity Gravity vector in the navigation frame.
+   * @param X Current NavState.
+   * @param omega_b Body angular velocity measurement (rad/s).
+   * @param f_b Body specific force measurement (m/s^2).
+   * @param dt Time step in seconds.
+   * @param A Optional Jacobian of the dynamics with respect to the state.
+   * @return The next NavState after applying the dynamics.
+   */
+  static NavState Dynamics(const Vector3& n_gravity, const NavState& X,
+                           const Vector3& omega_b, const Vector3& f_b,
+                           double dt, OptionalJacobian<9, 9> A = {});
+
+  /**
+   * @brief Predict the next state using gyro and accelerometer measurements.
+   *
+   * This method updates the state of the system based on the provided body
+   * angular velocity (omega_b) and body specific force (f_b)
+   * measurements over a given time step.
+   *
+   * @param omega_b Body angular velocity measurement (rad/s).
+   * @param f_b Body specific force measurement (m/s^2).
+   * @param dt Time step in seconds.
+   */
+  void predict(const Vector3& omega_b, const Vector3& f_b, double dt);
 
   /// Accessors
   const std::shared_ptr<PreintegrationParams>& params() const;
