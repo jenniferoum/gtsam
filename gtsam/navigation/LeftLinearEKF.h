@@ -68,7 +68,7 @@ class LeftLinearEKF : public LieGroupEKF<G> {
    * Returns W · ψ(X) · U, and optional Jacobian A = Ad_{U^{-1}} Φ,  Φ := dψ|_e.
    */
   template <class Psi, typename = std::enable_if_t<is_automorphism<Psi>::value>>
-  static G dynamics(const G& W, const Psi& psi, const G& X, const G& U,
+  static G Dynamics(const G& W, const Psi& psi, const G& X, const G& U,
                     OptionalJacobian<Dim, Dim> A = {}) {
     if (A) {
       const G U_inv = traits<G>::Inverse(U);
@@ -85,7 +85,7 @@ class LeftLinearEKF : public LieGroupEKF<G> {
   template <class Psi, typename = std::enable_if_t<is_automorphism<Psi>::value>>
   void predict(const G& W, const Psi& psi, const G& U, const Covariance& Q) {
     Jacobian A;
-    this->X_ = this->dynamics(W, psi, this->X_, U, A);
+    this->X_ = this->Dynamics(W, psi, this->X_, U, A);
     this->P_ = A * this->P_ * A.transpose() + Q;
   }
 };

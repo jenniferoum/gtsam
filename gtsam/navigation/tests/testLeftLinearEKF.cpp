@@ -53,7 +53,7 @@ TEST(LeftLinearEKF, WPsiU_matches_IMU_dynamics_with_gravity) {
   // Run LeftLinearEKF predict with Q = 0
   NavState::Jacobian A;
   using EKF = LeftLinearEKF<NavState>;
-  NavState Xp = EKF::dynamics(W, psi, X0, U, A);
+  NavState Xp = EKF::Dynamics(W, psi, X0, U, A);
 
   // Closed-form expected result of NavState IMU dynamics with gravity
   const Rot3 R_expected = R0 * dR;
@@ -67,7 +67,7 @@ TEST(LeftLinearEKF, WPsiU_matches_IMU_dynamics_with_gravity) {
   // Check A against numerical derivative
 
   auto numericalA = numericalDerivative11<NavState, NavState>(
-      [&](const NavState& X) { return EKF::dynamics(W, psi, X, U); }, X0);
+      [&](const NavState& X) { return EKF::Dynamics(W, psi, X, U); }, X0);
   CHECK(assert_equal(numericalA, A, 1e-9));
 
   // Initialize filter
