@@ -43,6 +43,7 @@ template <typename G>
 class LeftLinearEKF : public LieGroupEKF<G> {
  public:
   using Base = LieGroupEKF<G>;
+  static constexpr int Dim = Base::Dim;  ///< Compile-time dimension of G.
   using TangentVector = typename Base::TangentVector;
   using Jacobian = typename Base::Jacobian;
   using Covariance = typename Base::Covariance;
@@ -63,18 +64,28 @@ class LeftLinearEKF : public LieGroupEKF<G> {
   };
 
   /**
+   * General left–linear dynamics using a ψ functor and its differential at e.
+   * Returns W · ψ(X) · U, and optional Jacobian A = Ad_{U^{-1}} Φ,  Φ := dψ|_e.
+   */
+  template <class Psi, typename = std::enable_if_t<is_automorphism<Psi>::value>>
+  static G dynamics(const G& W, const Psi& psi, const G& X, const G& U,
+                    OptionalJacobian<Dim, Dim> A = {}) {
+    if (A) {
+      const G U_inv = traits<G>::Inverse(U);
+      *A = traits<G>::AdjointMap(U_inv) * psi.dIdentity();
+    }
+    return W * psi(X) * U;
+  }
+
+  /**
    * General left–linear predict using a ψ functor and its differential at e.
-   * Psi must provide: G operator()(const G&) const; and Jacobian dIdentity()
-   * const. Update: X⁺ = W · ψ(X) · U;  Covariance: P⁺ = A P Aᵀ + Q with A =
-   * Ad_{U^{-1}} Φ.
+   *   Update: X⁺ = W · ψ(X) · U
+   *   Covariance: P⁺ = A P Aᵀ + Q with A = Ad_{U^{-1}} Φ,  Φ := dψ|_e.
    */
   template <class Psi, typename = std::enable_if_t<is_automorphism<Psi>::value>>
   void predict(const G& W, const Psi& psi, const G& U, const Covariance& Q) {
-    // State update: X ← W · ψ(X) · U
-    this->X_ = traits<G>::Compose(traits<G>::Compose(W, psi(this->X_)), U);
-    // Linearization: A = Ad_{U^{-1}} · Φ,  Φ := dψ|_e
-    const G U_inv = traits<G>::Inverse(U);
-    const Jacobian A = traits<G>::AdjointMap(U_inv) * psi.dIdentity();
+    Jacobian A;
+    this->X_ = this->dynamics(W, psi, this->X_, U, A);
     this->P_ = A * this->P_ * A.transpose() + Q;
   }
 };

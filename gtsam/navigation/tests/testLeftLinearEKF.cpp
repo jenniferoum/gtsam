@@ -15,15 +15,107 @@
  */
 
 #include <CppUnitLite/TestHarness.h>
-#include <gtsam/base/Testable.h>
 #include <gtsam/base/numericalDerivative.h>
-#include <gtsam/geometry/Pose2.h>
+#include <gtsam/geometry/Rot3.h>
 #include <gtsam/navigation/LeftLinearEKF.h>
+#include <gtsam/navigation/NavState.h>
 
 #include <iostream>
 
-using namespace std;
 using namespace gtsam;
+namespace {
+// Ψ: autonomous flow where velocity acts on position for
+//   dt (R, p, v) -> p += v·dt.
+struct VelocityActsOnPosition {
+  double dt;
+  // Differential at identity (right-trivialized): Φ = I with ∂p/∂v = dt·I.
+  NavState::Jacobian dIdentity() const {
+    NavState::Jacobian Phi = NavState::Jacobian::Identity();
+    Phi.template block<3, 3>(3, 6) = I_3x3 * dt;
+    return Phi;
+  }
+
+  // Apply ψ(x) by composing a body-frame position increment of Rᵀ v · dt
+  NavState operator()(const NavState& X) const {
+    const Rot3& R = X.attitude();
+    const Vector3& v = X.velocity();
+    const Vector3 dp_body = R.unrotate(v) * dt;  // Rᵀ v dt so that p ← p + v dt
+    const NavState U_id(Rot3(), dp_body, Vector3::Zero());
+    return traits<NavState>::Compose(X, U_id);
+  }
+};
+}  // namespace
+
+/// Test dIdentity using numerical derivatives
+TEST(VelocityActsOnPosition, dIdentity) {
+  const double dt = 0.01;
+  VelocityActsOnPosition psi{dt};
+
+  // Numerical derivative of psi at identity
+  auto numericalPhi = numericalDerivative11<NavState, NavState>(
+      [&](const NavState& X) { return psi(X); }, NavState());
+
+  // Check analytical derivative against numerical derivative
+  auto analyticalPhi = psi.dIdentity();
+  CHECK(assert_equal(numericalPhi, analyticalPhi, 1e-9));
+}
+
+TEST(LeftLinearEKF, WPsiU_matches_IMU_dynamics_with_gravity) {
+  const double dt = 1e-2;  // 10 ms
+  const Vector3 n_gravity(0, 0, -9.81);
+  const Vector3 gyro(0.01, -0.02, 0.03);   // rad/s (body)
+  const Vector3 accel(0.10, -0.05, 0.20);  // m/s^2 (body specific force)
+
+  // Initial state X0 = (R, p, v)
+  const Rot3 R0 = Rot3::RzRyRx(0.10, -0.20, 0.05);
+  const Point3 p0(1.0, 2.0, 3.0);
+  const Vector3 v0(0.5, -0.3, 0.8);
+  const NavState X0(R0, p0, v0);
+
+  // Build W (gravity-only left composition, world-frame increments)
+  const Point3 pW = 0.5 * n_gravity * dt * dt;
+  const Vector3 vW = n_gravity * dt;
+  const NavState W(Rot3(), pW, vW);
+
+  // Ψ functor: velocity acts on position
+  VelocityActsOnPosition psi{dt};
+
+  // Build U from raw IMU (no gravity): body-frame increments
+  const Rot3 dR = Rot3::Expmap(gyro * dt);
+  const Vector3 dp_body = accel * (0.5 * dt * dt);
+  const Vector3 dv_body = accel * dt;
+  const NavState U(dR, dp_body, dv_body);
+
+  // Run LeftLinearEKF predict with Q = 0
+  NavState::Jacobian A;
+  using EKF = LeftLinearEKF<NavState>;
+  NavState Xp = EKF::dynamics(W, psi, X0, U, A);
+
+  // Closed-form expected result of NavState IMU dynamics with gravity
+  const Rot3 R_expected = R0 * dR;
+  // v + R a dt + g dt:
+  const Vector3 v_expected = v0 + R0.rotate(dv_body) + n_gravity * dt;
+  // p + v dt + R(0.5 a dt^2) + 0.5 g dt^2:
+  const Point3 p_expected = pW + p0 + v0 * dt + R0.rotate(dp_body);
+  const NavState X_expected(R_expected, p_expected, v_expected);
+  CHECK(assert_equal(X_expected, Xp));
+
+  // Check A against numerical derivative
+
+  auto numericalA = numericalDerivative11<NavState, NavState>(
+      [&](const NavState& X) { return EKF::dynamics(W, psi, X, U); }, X0);
+  CHECK(assert_equal(numericalA, A, 1e-9));
+
+  // Initialize filter
+  EKF::Covariance P0 = I_9x9;
+  EKF ekf(X0, P0);
+
+  // Run LeftLinearEKF predict with Q = I
+  EKF::Covariance Q = Z_9x9;
+  ekf.predict(W, psi, U, Q);
+  CHECK(assert_equal(X_expected, ekf.state()));
+  CHECK(assert_equal<NavState::Jacobian>(A * A.transpose(), ekf.covariance()));
+}
 
 int main() {
   TestResult tr;
