@@ -45,12 +45,12 @@ NavState NavStateImuEKF::Dynamics(const Vector3& n_gravity, const NavState& X,
         "NavStateImuEKF::Dynamics: dt must be positive");
   }
 
-  // Calculate W, Psi, and U
+  // Calculate W, phi, and U
   const NavState W = Gravity(n_gravity, dt);
-  NavState::AutonomousFlow psi{dt};  // Ψ: velocity acts on position
+  NavState::AutonomousFlow phi{dt};  // Φ: velocity acts on position
   const NavState U = IMU(omega_b, f_b, dt);
 
-  return Base::Dynamics(W, psi, X, U, A);
+  return Base::Dynamics(W, phi, X, U, A);
 }
 
 void NavStateImuEKF::predict(const Vector3& omega_b, const Vector3& f_b,
@@ -62,16 +62,16 @@ void NavStateImuEKF::predict(const Vector3& omega_b, const Vector3& f_b,
   // Get gravity from params
   const Vector3 n_gravity = params_->n_gravity;
 
-  // Calculate W, Psi, and U
+  // Calculate W, phi, and U
   const NavState W = Gravity(n_gravity, dt);
-  NavState::AutonomousFlow psi{dt};  // Ψ: velocity acts on position
+  NavState::AutonomousFlow phi{dt};  // Φ: velocity acts on position
   const NavState U = IMU(omega_b, f_b, dt);
 
   // Scale continuous-time process noise to the discrete interval [t, t+dt]
   Covariance Qdt = Q_ * dt;
 
   // EKF predict
-  Base::predict(W, psi, U, Qdt);
+  Base::predict(W, phi, U, Qdt);
 }
 
 const std::shared_ptr<PreintegrationParams>& NavStateImuEKF::params() const {

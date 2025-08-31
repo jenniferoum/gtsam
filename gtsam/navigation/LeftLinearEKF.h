@@ -56,36 +56,36 @@ class LeftLinearEKF : public LieGroupEKF<G> {
    * - G operator()(const G&) const
    * - Jacobian dIdentity() const
    */
-  template <typename Psi>
+  template <typename Phi>
   struct is_automorphism
       : std::conjunction<
-            std::is_invocable_r<G, Psi, const G&>,
-            std::is_same<decltype(std::declval<Psi>().dIdentity()), Jacobian>> {
+            std::is_invocable_r<G, Phi, const G&>,
+            std::is_same<decltype(std::declval<Phi>().dIdentity()), Jacobian>> {
   };
 
   /**
-   * General left–linear dynamics using a ψ functor and its differential at e.
-   * Returns W · ψ(X) · U, and optional Jacobian A = Ad_{U^{-1}} Φ,  Φ := dψ|_e.
+   * General left–linear dynamics using a φ functor and its differential at e.
+   * Returns W · φ(X) · U, and optional Jacobian A = Ad_{U^{-1}} Φ,  Φ := dφ|_e.
    */
-  template <class Psi, typename = std::enable_if_t<is_automorphism<Psi>::value>>
-  static G Dynamics(const G& W, const Psi& psi, const G& X, const G& U,
+  template <class Phi, typename = std::enable_if_t<is_automorphism<Phi>::value>>
+  static G Dynamics(const G& W, const Phi& phi, const G& X, const G& U,
                     OptionalJacobian<Dim, Dim> A = {}) {
     if (A) {
       const G U_inv = traits<G>::Inverse(U);
-      *A = traits<G>::AdjointMap(U_inv) * psi.dIdentity();
+      *A = traits<G>::AdjointMap(U_inv) * phi.dIdentity();
     }
-    return W * psi(X) * U;
+    return W * phi(X) * U;
   }
 
   /**
-   * General left–linear predict using a ψ functor and its differential at e.
-   *   Update: X⁺ = W · ψ(X) · U
-   *   Covariance: P⁺ = A P Aᵀ + Q with A = Ad_{U^{-1}} Φ,  Φ := dψ|_e.
+   * General left–linear predict using a φ functor and its differential at e.
+   *   Update: X⁺ = W · φ(X) · U
+   *   Covariance: P⁺ = A P Aᵀ + Q with A = Ad_{U^{-1}} Φ,  Φ := dφ|_e.
    */
-  template <class Psi, typename = std::enable_if_t<is_automorphism<Psi>::value>>
-  void predict(const G& W, const Psi& psi, const G& U, const Covariance& Q) {
+  template <class Phi, typename = std::enable_if_t<is_automorphism<Phi>::value>>
+  void predict(const G& W, const Phi& phi, const G& U, const Covariance& Q) {
     Jacobian A;
-    this->X_ = this->Dynamics(W, psi, this->X_, U, A);
+    this->X_ = this->Dynamics(W, phi, this->X_, U, A);
     this->P_ = A * this->P_ * A.transpose() + Q;
   }
 };

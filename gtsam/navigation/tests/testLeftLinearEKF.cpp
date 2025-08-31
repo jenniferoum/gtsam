@@ -41,8 +41,8 @@ TEST(LeftLinearEKF, WPsiU_matches_IMU_dynamics_with_gravity) {
   const Vector3 vW = n_gravity * dt;
   const NavState W(Rot3(), pW, vW);
 
-  // Ψ functor: velocity acts on position
-  NavState::AutonomousFlow psi{dt};
+  // Φ functor: velocity acts on position
+  NavState::AutonomousFlow phi{dt};
 
   // Build U from raw IMU (no gravity): body-frame increments
   const Rot3 dR = Rot3::Expmap(gyro * dt);
@@ -53,7 +53,7 @@ TEST(LeftLinearEKF, WPsiU_matches_IMU_dynamics_with_gravity) {
   // Run LeftLinearEKF predict with Q = 0
   NavState::Jacobian A;
   using EKF = LeftLinearEKF<NavState>;
-  NavState Xp = EKF::Dynamics(W, psi, X0, U, A);
+  NavState Xp = EKF::Dynamics(W, phi, X0, U, A);
 
   // Closed-form expected result of NavState IMU dynamics with gravity
   const Rot3 R_expected = R0 * dR;
@@ -67,7 +67,7 @@ TEST(LeftLinearEKF, WPsiU_matches_IMU_dynamics_with_gravity) {
   // Check A against numerical derivative
 
   auto numericalA = numericalDerivative11<NavState, NavState>(
-      [&](const NavState& X) { return EKF::Dynamics(W, psi, X, U); }, X0);
+      [&](const NavState& X) { return EKF::Dynamics(W, phi, X, U); }, X0);
   CHECK(assert_equal(numericalA, A, 1e-9));
 
   // Initialize filter
@@ -76,7 +76,7 @@ TEST(LeftLinearEKF, WPsiU_matches_IMU_dynamics_with_gravity) {
 
   // Run LeftLinearEKF predict with Q = I
   EKF::Covariance Q = Z_9x9;
-  ekf.predict(W, psi, U, Q);
+  ekf.predict(W, phi, U, Q);
   CHECK(assert_equal(X_expected, ekf.state()));
   CHECK(assert_equal<NavState::Jacobian>(A * A.transpose(), ekf.covariance()));
 }

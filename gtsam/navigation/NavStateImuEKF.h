@@ -60,8 +60,8 @@ class GTSAM_EXPORT NavStateImuEKF : public LeftLinearEKF<NavState> {
    * state, gravity, body angular velocity, body specific force, and time step.
    * The dynamics are defined as:
    * X_{k+1} = f(X_k; g, omega_b, f_b, dt)
-   *         = W(g, dt) \psi_dt(X_k) U(omega_b, f_b, dt)
-   * where W, \psi, and U are the gravity, (autonomous) position update, and
+   *         = W(g, dt) \phi_dt(X_k) U(omega_b, f_b, dt)
+   * where W, \phi, and U are the gravity, (autonomous) position update, and
    * IMU increment functions, respectively.
    *
    * @param n_gravity Gravity vector in the navigation frame.
