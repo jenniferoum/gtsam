@@ -233,6 +233,39 @@ TEST(NavStateImuEKF, PositionUpdateSanity) {
   EXPECT(assert_equal(delta_graph, delta_ekf, 1e-9));
 }
 
+/* ************************************************************************* */
+// Verify dynamics with a "null" automorphism to isolate W and U.
+TEST(Gal3ImuEKF, PredictWithNullAutomorphism) {
+  using namespace nontrivial_gal3_example;
+
+  // Define a null automorphism  w/ J = I, operator() = X
+  struct NullAutomorphism {
+    using Jacobian = Matrix10;
+    Jacobian dIdentity() const { return I_10x10; }
+    Gal3 operator()(const Gal3& X) const { return X; }
+  };
+
+  double dt = 0.01;
+  NullAutomorphism phi; // Use the null automorphism
+
+  const Gal3 W = Gal3ImuEKF::Gravity(params->n_gravity, dt);
+  const Gal3 U = Gal3ImuEKF::IMU(omega_b, f_b, dt);
+
+  //Compute dynamics
+  Matrix10 A_ekf;
+  Gal3 X_predicted = Gal3ImuEKF::Base::Dynamics(W, phi, X0, U, A_ekf);
+
+  // New state: W*X0*U
+  Gal3 X_expected = W * X0 * U;
+  EXPECT(assert_equal(X_expected, X_predicted, 1e-12));
+
+  // Expected: J = Ad_U^(-1)
+  Matrix10 A_expected = U.inverse().AdjointMap();
+  EXPECT(assert_equal(A_expected, A_ekf, 1e-9));
+}
+
+
+
 // /* ************************************************************************* */
 // NavState oldNavStateImuDynamics(const NavState& X, const Vector3& omega_b,
 //                                 const Vector3& f_b, double dt,
