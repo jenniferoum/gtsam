@@ -18,13 +18,6 @@ jobs:
     name: ${{ matrix.name }} ${{ matrix.build_type }}
     runs-on: ${{ matrix.os }}
 
-    env:
-      CTEST_OUTPUT_ON_FAILURE: ON
-      CTEST_PARALLEL_LEVEL: 2
-      CMAKE_BUILD_TYPE: ${{ matrix.build_type }}
-      GTSAM_BUILD_UNSTABLE: ON
-      GTSAM_SINGLE_TEST_EXE: ON
-
     strategy:
       fail-fast: false
 
@@ -98,7 +91,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Pull Docker Image
-        run: docker pull gargsuveer/gtsam-ci:${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.version }}
+        run: docker pull borglab/gtsam-ci:${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.version }}
 
       - name: Set Allow Deprecated Flag
         if: matrix.flag == 'deprecated'
@@ -167,9 +160,7 @@ jobs:
 
       - name: Build & Test
         run: |
-          docker run -v $GITHUB_WORKSPACE:/gtsam gargsuveer/gtsam-ci:${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.version }} \
-            -e CTEST_OUTPUT_ON_FAILURE=ON \
-            -e CTEST_PARALLEL_LEVEL=2 \
+          docker run -v $GITHUB_WORKSPACE:/gtsam borglab/gtsam-ci:${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.version }} \
             -e CMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -e GTSAM_BUILD_UNSTABLE=${{ env.GTSAM_BUILD_UNSTABLE || 'ON' }} \
             -e GTSAM_ALLOW_DEPRECATED_SINCE_V43=${{ env.GTSAM_ALLOW_DEPRECATED_SINCE_V43 || 'OFF' }} \

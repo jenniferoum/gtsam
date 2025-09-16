@@ -4,7 +4,7 @@
 set -e
 
 # Docker Hub username
-DOCKER_USERNAME="gargsuveer"
+DOCKER_USERNAME="borglab"
 DOCKER_REPOSITORY="gtsam-ci"
 
 # Define arrays for Ubuntu versions and compilers
