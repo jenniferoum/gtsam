@@ -103,7 +103,8 @@ TEST(Gal3ImuEKF, PredictMatchesExplicitIntegration) {
   Vector3 a_world = R0 * f_b + params->n_gravity;
   Vector3 v_new = v0 + a_world * dt;
   Point3 p_new = p0 + v0 * dt + a_world * (0.5 * dt * dt);
-  double t_new = t0 + dt;
+  // double t_new = t0 + dt;
+  double t_new = t0;
   Gal3 X_explicit(R_new, p_new, v_new, t_new);
 
   // Increment-based integration should match exactly
@@ -262,6 +263,75 @@ TEST(Gal3ImuEKF, PredictWithNullAutomorphism) {
   // Expected: J = Ad_U^(-1)
   Matrix10 A_expected = U.inverse().AdjointMap();
   EXPECT(assert_equal(A_expected, A_ekf, 1e-9));
+}
+
+/* ************************************************************************* */
+// Ensure W, U, X match the T_j = Gamma_ij * T_i*Upsilon_ij
+TEST(Gal3ImuEKF, ComponentsMatchGamma) {
+  using namespace nontrivial_gal3_example;
+
+  // Nontrivial variables
+  const double dt = 0.01;
+  const Vector3& g = params->n_gravity;
+
+  // Create X, W, U
+  const Gal3& X = X0; // A state snapshot
+  const Gal3 W = Gal3ImuEKF::Gravity(g, dt);
+  const Gal3 U = Gal3ImuEKF::IMU(omega_b, f_b, dt);
+
+
+  // 1. Check state time
+  EXPECT_DOUBLES_EQUAL(0.0, X.time(), 1e-12);
+
+  // 2. Check W
+  EXPECT(assert_equal(Rot3(), W.attitude(), 1e-9));
+  EXPECT(assert_equal(Point3(-0.5 * g * dt * dt), W.position(), 1e-9));
+  EXPECT(assert_equal(Vector3(g * dt), W.velocity(), 1e-9));
+  EXPECT_DOUBLES_EQUAL(-dt, W.time(), 1e-12);
+
+  // 3. Check U
+  EXPECT(assert_equal(Rot3::Expmap(omega_b * dt), U.attitude(), 1e-9));
+  EXPECT(assert_equal(Point3(0.5 * f_b * dt * dt), U.position(), 1e-9));
+  EXPECT(assert_equal(Vector3(f_b * dt), U.velocity(), 1e-9));
+  EXPECT_DOUBLES_EQUAL(dt, U.time(), 1e-12);
+}
+
+/* ************************************************************************* */
+// Verify W, U match the Exp (G,N) function
+TEST(Gal3ImuEKF, FormulationsMatchMatrixExponential) {
+  using namespace nontrivial_gal3_example;
+
+  const double dt = 0.01;
+  const Vector3& g = params->n_gravity;
+
+  // Create tangent vectors for G, N,
+  Gal3::TangentVector xiG = Gal3::TangentVector::Zero(); // G
+  Gal3::TangentVector xiN = Gal3::TangentVector::Zero(); // N
+
+  // Gravity Matrix W
+  xiG.segment<3>(3) = g*dt;
+  // N is given by a dt contribution
+  xiN(9) = dt;
+
+  // Compare W
+  // W is given by exp((G-N)*dt) = Expmap(xiG - xiN);
+  Gal3 W_expected = Gal3::Expmap(xiG-xiN);
+  Gal3 W_actual = Gal3ImuEKF::Gravity(g, dt);
+  EXPECT(assert_equal(W_expected, W_actual, 1e-9));
+
+  // Compare U
+  // U is given by exp((w^ - b^ + N)*dt)
+  Gal3::TangentVector xi_w = Gal3::TangentVector::Zero(); // w^
+  xi_w.head<3>() = omega_b*dt; // Angular velocity
+  xi_w.segment<3>(3) = f_b*dt; // Accelerometer
+  Vector3 rho(0.0, 0.0, 0.0);
+  xi_w.segment<3>(6) = rho*dt; // Position
+  xi_w(9) = 0; // Time
+
+  Gal3 U_expected = Gal3::Expmap(xi_w + xiN);
+  Gal3 U_actual = Gal3ImuEKF::IMU(omega_b, f_b, dt);
+  EXPECT(assert_equal(U_expected, U_actual, 1e-9));
+
 }
 
 
