@@ -34,14 +34,10 @@ struct AutonomousFlow {
     return Phi;
   }
 
-  // Apply φ(x) by p += v·dt //
-  // TODO: Check if t = 0 or t = X.time. I don't think it matters, as long as we do not add a +dt
-  // dt shouldn't be added - because in gravity
   Gal3 operator()(const Gal3& X) const {
     return {X};
   }
 };
-
 
 Gal3ImuEKF::Gal3ImuEKF(const Gal3& X0, const Covariance& P0,
                                const std::shared_ptr<PreintegrationParams>& p)
