@@ -86,9 +86,7 @@ endforeach(subdir)
 
 # To add additional sources to gtsam when building the full library (static or shared)
 # append the subfolder with _srcs appended to the end to this list
-set(gtsam_srcs ${3rdparty_srcs}
-        navigation/Gal3ImuEKF.cpp
-        navigation/Gal3ImuEKF.h)
+set(gtsam_srcs ${3rdparty_srcs})
 foreach(subdir ${gtsam_subdirs})
 	list(APPEND gtsam_srcs ${${subdir}_srcs})
 endforeach(subdir)
