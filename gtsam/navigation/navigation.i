@@ -545,6 +545,7 @@ virtual class Scenario {
   gtsam::NavState navState(double t) const;
   gtsam::Vector velocity_b(double t) const;
   gtsam::Vector acceleration_b(double t) const;
+  gtsam::Gal3 gal3(double t) const;
 };
 
 virtual class ConstantTwistScenario : gtsam::Scenario {
@@ -594,7 +595,7 @@ class ScenarioRunner {
 
 // ---------------------------------------------------------------------------
 // EKF classes
-
+#include <gtsam/geometry/Gal3.h>
 #include <gtsam/navigation/ManifoldEKF.h>
 template <M = {gtsam::Unit3, gtsam::Rot3, gtsam::Pose2, gtsam::Pose3, gtsam::NavState, gtsam::Gal3}>
 virtual class ManifoldEKF {
@@ -615,7 +616,6 @@ virtual class ManifoldEKF {
 };
 
 #include <gtsam/navigation/LieGroupEKF.h>
-#include <gtsam/geometry/Gal3.h>
 template <G = {gtsam::Rot3, gtsam::Pose2, gtsam::Pose3, gtsam::NavState, gtsam::Gal3}>
 virtual class LieGroupEKF : gtsam::ManifoldEKF<G> {
   // Constructors
@@ -666,4 +666,29 @@ class NavStateImuEKF : gtsam::LeftLinearEKF<gtsam::NavState> {
                            double dt);
 };
 
+#include <gtsam/navigation/Gal3ImuEKF.h>
+class Gal3ImuEKF : gtsam::LeftLinearEKF<gtsam::Gal3> {
+  // Constructors
+  Gal3ImuEKF(const gtsam::Gal3& X0, gtsam::Matrix P0,
+             const gtsam::PreintegrationParams* params);
+
+  // Predict using IMU measurements
+  void predict(const gtsam::Vector& omega_b, const gtsam::Vector& f_b, double dt);
+
+  // Accessors
+  gtsam::Matrix processNoise() const;
+  gtsam::Vector gravity() const;
+  const gtsam::PreintegrationParams* params() const;
+
+  // Static methods
+   gtsam::Gal3 Gravity(const gtsam::Vector& n_gravity, double dt);
+   gtsam::Gal3 IMU(const gtsam::Vector& omega_b, const gtsam::Vector& f_b, double dt);
+   gtsam::Gal3 Dynamics(const gtsam::Vector& n_gravity, const gtsam::Gal3& X,
+                       const gtsam::Vector& omega_b, const gtsam::Vector& f_b,
+                       double dt);
+};
+
 }
+
+
+
