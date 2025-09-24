@@ -12,12 +12,9 @@
 /**
  * @file  Gal3ImuEKF.h
  * @brief Extended Kalman Filter for IMU-driven Gal3
- * We use an Extended Kalman Filter on the Gal3 Lie group to propagate from one state to another.
- * X_(k+1) = W*X*U
- * where X(k) ∈ Gal3 follows format of
- * [R, v, p;
- * 0, 1, dt;
- * 0, 0, 1]
+ * We use an Extended Kalman Filter on the Gal3 Lie group to propagate from one
+ * state to another. X_(k+1) = W*X*U where X(k) ∈ Gal3 follows format of [R, v,
+ * p; 0, 1, dt; 0, 0, 1]
  *
  * W is the gravity matrix that transforms body to world frame where
  * W ∈ Gal3= [I_3, g * dt, -0.5*g*dt^2
@@ -34,8 +31,8 @@
 
 #pragma once
 
-#include <gtsam/navigation/LeftLinearEKF.h>  // Include the base class
 #include <gtsam/geometry/Gal3.h>
+#include <gtsam/navigation/LeftLinearEKF.h>  // Include the base class
 #include <gtsam/navigation/PreintegrationParams.h>
 
 namespace gtsam {
@@ -56,7 +53,7 @@ class GTSAM_EXPORT Gal3ImuEKF : public LeftLinearEKF<Gal3> {
    * @param params Preintegration parameters providing gravity and options.
    */
   Gal3ImuEKF(const Gal3& X0, const Covariance& P0,
-                 const std::shared_ptr<PreintegrationParams>& params);
+             const std::shared_ptr<PreintegrationParams>& params);
 
   /// Calculate W (gravity-only left composition, world-frame increments)
   /// Gal3:
@@ -65,12 +62,14 @@ class GTSAM_EXPORT Gal3ImuEKF : public LeftLinearEKF<Gal3> {
   /// 0, 0, 1]        0, 1, dt
   ///                 0, 0, 1]
   static Gal3 Gravity(const Vector3& n_gravity, double dt) {
-    return {Rot3(), -0.5*n_gravity*dt*dt, n_gravity*dt, -dt};
+    return {Rot3(), -0.5 * n_gravity * dt * dt, n_gravity * dt, -dt};
   }
 
   /// Calculate U from raw IMU (no gravity): body-frame increments
   static Gal3 IMU(const Vector3& omega_b, const Vector3& f_b, double dt) {
-    return {Rot3::Expmap(omega_b * dt), f_b * (0.5 * dt * dt), f_b * dt, dt};
+    Gal3::TangentVector xi;
+    xi << omega_b, f_b, Vector3::Zero(), 1.0;
+    return Gal3::Expmap(xi * dt);
   }
 
   /**
@@ -93,8 +92,8 @@ class GTSAM_EXPORT Gal3ImuEKF : public LeftLinearEKF<Gal3> {
    * @return The next Gal3 after applying the dynamics.
    */
   static Gal3 Dynamics(const Vector3& n_gravity, const Gal3& X,
-                           const Vector3& omega_b, const Vector3& f_b,
-                           double dt, OptionalJacobian<10, 10> A = {});
+                       const Vector3& omega_b, const Vector3& f_b, double dt,
+                       OptionalJacobian<10, 10> A = {});
 
   /**
    * @brief Predict the next state using gyro and accelerometer measurements.
