@@ -19,8 +19,6 @@
 #include <gtsam/base/MatrixLieGroup.h>
 #include <gtsam/geometry/Event.h>
 #include <gtsam/geometry/Pose3.h>
-#include <Eigen/Dense>
-
 
 #include <cmath>       // For std::sqrt, std::cos, std::sin
 #include <functional>  // For std::function used in numerical derivatives
@@ -219,15 +217,6 @@ class GTSAM_EXPORT Gal3 : public MatrixLieGroup<Gal3, 10, 5> {
   static TangentVector Vee(const LieAlgebra& X);
 
   /// @}
-  /// @name Dynamics
-  /// @{
-
-  // φ: autonomous flow where velocity acts on position for
-  //    (R, p, v) -> p += v·dt.
-  // TODO: Check if Gal3 Jacobian is this on the left
-
-  /// @}
-  ///
 
  private:
   /// @name Serialization
