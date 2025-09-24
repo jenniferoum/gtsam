@@ -11,8 +11,8 @@
 
 /**
  * @file  Gal3ImuEKF.h
- * @brief Extended Kalman Filter for IMU-driven Gal3
- * We use an Extended Kalman Filter on the Gal3 Lie group to propagate from one
+ * @brief (Invariant) Extended Kalman Filter for IMU-driven Gal3
+ * We use an invariant Kalman Filter on the Gal3 Lie group to propagate from one
  * state to another. X_(k+1) = W*X*U where X(k) ∈ Gal3 follows format of [R, v,
  * p; 0, 1, dt; 0, 0, 1]
  *
@@ -32,15 +32,15 @@
 #pragma once
 
 #include <gtsam/geometry/Gal3.h>
-#include <gtsam/navigation/LeftLinearEKF.h>  // Include the base class
+#include <gtsam/navigation/InvariantEKF.h>  // Include the base class
 #include <gtsam/navigation/PreintegrationParams.h>
 
 namespace gtsam {
 
 /// Specialized EKF for IMU-driven on Gal3
-class GTSAM_EXPORT Gal3ImuEKF : public LeftLinearEKF<Gal3> {
+class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
  public:
-  using Base = LeftLinearEKF<Gal3>;
+  using Base = InvariantEKF<Gal3>;
   using TangentVector = typename Base::TangentVector;  // Vector10
   using Jacobian = typename Base::Jacobian;            // 10x10
   using Covariance = typename Base::Covariance;        // 10x10
