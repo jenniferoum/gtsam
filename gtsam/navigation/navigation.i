@@ -659,11 +659,11 @@ class NavStateImuEKF : gtsam::LeftLinearEKF<gtsam::NavState> {
   const gtsam::PreintegrationParams* params() const;
 
   // Static methods
-   gtsam::NavState Gravity(const gtsam::Vector& n_gravity, double dt);
-   gtsam::NavState IMU(const gtsam::Vector& omega_b, const gtsam::Vector& f_b, double dt);
-   gtsam::NavState Dynamics(const gtsam::Vector& n_gravity, const gtsam::NavState& X,
-                           const gtsam::Vector& omega_b, const gtsam::Vector& f_b,
-                           double dt);
+  static gtsam::NavState Gravity(const gtsam::Vector& n_gravity, double dt);
+  static gtsam::NavState IMU(const gtsam::Vector& omega_b, const gtsam::Vector& f_b, double dt);
+  static gtsam::NavState Dynamics(const gtsam::Vector& n_gravity, const gtsam::NavState& X,
+                                   const gtsam::Vector& omega_b, const gtsam::Vector& f_b,
+                                   double dt);
 };
 
 #include <gtsam/navigation/Gal3ImuEKF.h>
