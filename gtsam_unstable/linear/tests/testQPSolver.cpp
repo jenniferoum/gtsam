@@ -17,7 +17,9 @@
  * @author Ivan Dario Jimenez
  */
 
+#if GTSAM_USE_BOOST_FEATURES
 #include <gtsam_unstable/linear/QPSParser.h>
+#endif
 #include <gtsam_unstable/linear/QPSolver.h>
 
 #include <gtsam/base/Testable.h>
@@ -197,7 +199,6 @@ TEST(QPSolver, iterate) {
 }
 
 /* ************************************************************************* */
-
 TEST(QPSolver, optimizeForst10book_pg171Ex5) {
   QP qp = createTestCase();
   QPSolver solver(qp);
@@ -211,6 +212,8 @@ TEST(QPSolver, optimizeForst10book_pg171Ex5) {
   CHECK(assert_equal(expected, solution, 1e-100));
 }
 
+/* ************************************************************************* */
+#if GTSAM_USE_BOOST_FEATURES
 pair<QP, QP> testParser(QPSParser parser) {
   QP exampleqp = parser.Parse();
   QP expected;
@@ -309,6 +312,7 @@ TEST(QPSolver, QPTEST) { // REQUIRES Jacobian Fix
   double error_actual = problem.cost.error(actual);
   CHECK(assert_equal(0.437187500e01, error_actual, 1e-7))
 }
+#endif
 
 /* ************************************************************************* */
 // Create Matlab's test graph as in
