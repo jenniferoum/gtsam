@@ -9,7 +9,7 @@
 
 /**
  * @file testGal3ImuEKF.cpp
- * @brief Unit test for GalImuEKF, as well as dynamics used.
+ * @brief Unit test for Gal3ImuEKF, as well as dynamics used.
  * @date September 2025
  * @authors Scott Baker, Matt Kielo, Frank Dellaert
  */
