@@ -8,8 +8,8 @@
  * Estimation with Online Calibration" by Fornasier et al. Authors: Darshan
  * Rajasekaran & Jennifer Oum
  */
-#include "ABC.h"
-#include "EquivariantFilter.h"
+#include <gtsam_unstable/geometry/ABC.h>
+#include <gtsam/navigation/EquivariantFilter.h>
 
 // Use namespace for convenience
 using namespace gtsam::abc_eqf_lib;
