@@ -43,7 +43,7 @@ Gal3 Gal3ImuEKF::Dynamics(const Vector3& n_gravity, const Gal3& X,
   }
 
   // Calculate W, phi, and U
-  const Gal3 W = Gravity(n_gravity, dt, X.time());
+  const Gal3 W = CompensatedGravity(n_gravity, dt, X.time());
   const Gal3 U = IMU(omega_b, f_b, dt);
 
   const Gal3 X_next = Base::Dynamics(W, X, U, A);
@@ -67,7 +67,7 @@ void Gal3ImuEKF::predict(const Vector3& omega_b, const Vector3& f_b,
   }
 
   // Calculate W, phi, and U
-  const Gal3 W = Gravity(params_->n_gravity, dt, X_.time());
+  const Gal3 W = CompensatedGravity(params_->n_gravity, dt, X_.time());
   const Gal3 U = IMU(omega_b, f_b, dt);
 
   // Scale continuous-time process noise to the discrete interval [t, t+dt]

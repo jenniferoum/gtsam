@@ -252,7 +252,7 @@ TEST(Gal3ImuEKF, PredictWithWandU) {
 
   double dt = 0.1;
 
-  const Gal3 W = Gal3ImuEKF::Gravity(params->n_gravity, dt);
+  const Gal3 W = Gal3ImuEKF::CompensatedGravity(params->n_gravity, dt, t0);
   const Gal3 U = Gal3ImuEKF::IMU(omega_b, f_b, dt);
 
   // Compute dynamics
@@ -265,7 +265,7 @@ TEST(Gal3ImuEKF, PredictWithWandU) {
 
   // Check times
   EXPECT_DOUBLES_EQUAL(t0, X0.time(), 1e-12);
-  EXPECT_DOUBLES_EQUAL(t0, X_predicted.time(), 1e-12);
+  EXPECT_DOUBLES_EQUAL(t0 + dt, X_predicted.time(), 1e-12);
 
   // Expected: J = Ad_U^(-1)
   Matrix10 A_expected = U.inverse().AdjointMap();
@@ -283,7 +283,7 @@ TEST(Gal3ImuEKF, ComponentsMatchGamma) {
 
   // Create X, W, U
   const Gal3& X = X0;  // A state snapshot
-  const Gal3 W = Gal3ImuEKF::Gravity(g, dt);
+  const Gal3 W = Gal3ImuEKF::TimeZeroingGravity(g, dt);
   const Gal3 U = Gal3ImuEKF::IMU(omega_b, f_b, dt);
 
   // 1. Check state time
@@ -313,7 +313,7 @@ TEST(Gal3ImuEKF, FormulationsMatchMatrixExponential) {
 
   // Create tangent vectors for G, N,
 
-  // Gravity Matrix W
+  // W Matrix W
   Gal3::TangentVector xiG = Gal3::TangentVector::Zero();
   xiG.segment<3>(3) = g;
 
@@ -323,7 +323,7 @@ TEST(Gal3ImuEKF, FormulationsMatchMatrixExponential) {
 
   // Compare W
   Gal3 W_expected = Gal3::Expmap((xiG - xiN) * dt);
-  Gal3 W_actual = Gal3ImuEKF::Gravity(g, dt);
+  Gal3 W_actual = Gal3ImuEKF::TimeZeroingGravity(g, dt);
   EXPECT(assert_equal(W_expected, W_actual, 1e-9));
 
   // Compare U

@@ -55,31 +55,34 @@ class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
   Gal3ImuEKF(const Gal3& X0, const Covariance& P0,
              const std::shared_ptr<PreintegrationParams>& params);
 
-  /// Calculate W (gravity left composition, world-frame increments)
-  /// Gal3:
-  /// [R, v, p       [I, g * dt, -1/2 * g * dt^2
-  /// 0, 1, t -> W =  0, 1, -dt
-  /// 0, 0, 1]        0, 0, 1]
-  /// This is exp((G-N)*dt) needed to anticipate IMU update on the right.
+  /// Calculate gravity-only left composition, world-frame increments
+  /// p = +1/2 g dt^2, v = g dt, t = 0
   static Gal3 Gravity(const Vector3& n_gravity, double dt) {
-    const Point3 pW(-0.5 * n_gravity * dt * dt);
-    const Vector3 vW = n_gravity * dt;
-    return {Rot3(), pW, vW, -dt};
+    return {Rot3(), n_gravity * (0.5 * dt * dt), n_gravity * dt, 0.0};
   }
 
-  /// Time-compensated gravity (left composition) that supports absolute time
-  /// in-state. Using this W(t_k) together with IMU() yields the exact blockwise
-  /// updates with t_{k+1} = t_k + dt and no drift.
-  static Gal3 Gravity(const Vector3& n_gravity, double dt, double t_current) {
-    const Point3 pW(-t_current * n_gravity * dt - 0.5 * n_gravity * dt * dt);
-    const Vector3 vW = n_gravity * dt;
-    return {Rot3(), pW, vW, 0.0};
+  /// Calculate W: gravity with correction to neutralize time change,
+  /// So we stay within the NavState sub-group at all times.
+  static Gal3 TimeZeroingGravity(const Vector3& n_gravity, double dt) {
+    const Gal3 G = Gravity(n_gravity, dt);
+    const Gal3 C{Rot3(), Z_3x1, Z_3x1, -dt};
+    return G * C;
+  }
+
+  /// Position-compensated gravity (left composition) that absolute time in-state.
+  /// Using this W(t_k) together with IMU() yields the exact dynamics update
+  /// with additionally t_{k+1} = t_k + dt.
+  static Gal3 CompensatedGravity(const Vector3& n_gravity, double dt,
+                                 double t_k) {
+    const Gal3 G = Gravity(n_gravity, dt);
+    const Gal3 C{Rot3(), -t_k * G.velocity() - 2.0 * G.translation(), Z_3x1, 0};
+    return G * C;
   }
 
   /// Calculate U from raw IMU (no gravity): body-frame increments
   static Gal3 IMU(const Vector3& omega_b, const Vector3& f_b, double dt) {
     Gal3::TangentVector xi;
-    xi << omega_b, f_b, Vector3::Zero(), 1.0;
+    xi << omega_b, f_b, Z_3x1, 1.0;
     return Gal3::Expmap(xi * dt);
   }
 
