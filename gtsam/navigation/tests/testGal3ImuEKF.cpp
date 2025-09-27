@@ -78,18 +78,22 @@ TEST(Gal3ImuEKF, DefaultProcessNoiseFromParams) {
 }
 
 /* ************************************************************************* */
+// Check the Jacobian of dynamics, for all three modes.
 TEST(Gal3ImuEKF, DynamicsJacobian) {
   using namespace nontrivial_gal3_example;
-  // Check the Jacobian of dynamics
-  double dt = 0.01;
   Matrix10 A;
-  (void)Gal3ImuEKF::Dynamics(params->n_gravity, X0, omega_b, f_b, dt, A);
-  std::function<Gal3(const Gal3&)> f = [&](const Gal3& Xq) -> Gal3 {
-    return Gal3ImuEKF::Dynamics(params->n_gravity, Xq, omega_b, f_b, dt);
-  };
-  Matrix10 expected = numericalDerivative11(f, X0);
-
-  EXPECT(assert_equal(expected, A, 1e-6));
+  double dt = 0.01;
+  const Vector3& n_g = params->n_gravity;
+  // Gal3ImuEKF::TRACK_TIME_NO_COVARIANCE is not expected to pass.
+  for (auto mode :
+       {Gal3ImuEKF::NO_TIME, Gal3ImuEKF::TRACK_TIME_WITH_COVARIANCE}) {
+    (void)Gal3ImuEKF::Dynamics(n_g, X0, omega_b, f_b, dt, mode, A);
+    std::function<Gal3(const Gal3&)> f = [&](const Gal3& Xq) -> Gal3 {
+      return Gal3ImuEKF::Dynamics(n_g, Xq, omega_b, f_b, dt, mode);
+    };
+    Matrix10 expected = numericalDerivative11(f, X0);
+    EXPECT(assert_equal(expected, A, 1e-6));
+  }
 }
 
 /* ************************************************************************* */
@@ -128,7 +132,8 @@ TEST(Gal3ImuEKF, PredictMatchesScenario) {
   }
 }
 
-// /* *************************************************************************
+// /*
+// *************************************************************************
 // Check Jacobian for world-position measurement h(X)=position(X).
 TEST(Gal3ImuEKF, PositionMeasurementJacobian) {
   using namespace nontrivial_gal3_example;
@@ -153,7 +158,8 @@ TEST(Gal3ImuEKF, PositionMeasurementJacobian) {
   EXPECT(assert_equal(expected, H, 1e-6));
 }
 //
-// /* *************************************************************************
+// /*
+// *************************************************************************
 // */ Sanity-check a single position update using updateWithVector. Verifies
 // delta_xi = K * innovation and covariance reduction in pos block.
 TEST(Gal3ImuEKF, PositionUpdateSanity) {
@@ -245,7 +251,8 @@ TEST(Gal3ImuEKF, PositionUpdateSanity) {
   EXPECT(assert_equal(delta_graph, delta_ekf, 1e-9));
 }
 
-/* ************************************************************************* */
+/* *************************************************************************
+ */
 // Verify dynamics W and U.
 TEST(Gal3ImuEKF, PredictWithWandU) {
   using namespace nontrivial_gal3_example;
@@ -272,7 +279,8 @@ TEST(Gal3ImuEKF, PredictWithWandU) {
   EXPECT(assert_equal(A_expected, A_ekf, 1e-9));
 }
 
-/* ************************************************************************* */
+/* *************************************************************************
+ */
 // Ensure W, U, X match the T_j = Gamma_ij * T_i * Upsilon_ij
 TEST(Gal3ImuEKF, ComponentsMatchGamma) {
   using namespace nontrivial_gal3_example;
@@ -303,7 +311,8 @@ TEST(Gal3ImuEKF, ComponentsMatchGamma) {
   EXPECT_DOUBLES_EQUAL(dt, U.time(), 1e-12);
 }
 
-/* ************************************************************************* */
+/* *************************************************************************
+ */
 // Verify W, U match the Exp (G,N) function
 TEST(Gal3ImuEKF, FormulationsMatchMatrixExponential) {
   using namespace nontrivial_gal3_example;
@@ -336,7 +345,8 @@ TEST(Gal3ImuEKF, FormulationsMatchMatrixExponential) {
   Gal3 U_actual = Gal3ImuEKF::IMU(omega_b, f_b, dt);
   EXPECT(assert_equal(U_expected, U_actual, 1e-5));
 }
-/* ************************************************************************* */
+/* *************************************************************************
+ */
 // Check that TimeZeroingGravity and CompensatedGravity match the "correction:
 // math" formulas from the paper.
 TEST(Gal3ImuEKF, TestCorrectionFormulas) {
@@ -366,10 +376,12 @@ TEST(Gal3ImuEKF, TestCorrectionFormulas) {
   EXPECT(assert_equal(W_comp_math, W_comp_actual, 1e-9));
 }
 
-/* ************************************************************************* */
+/* *************************************************************************
+ */
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);
 }
 
-/* ************************************************************************* */
+/* *************************************************************************
+ */

@@ -24,30 +24,30 @@
 namespace gtsam {
 
 Gal3ImuEKF::Gal3ImuEKF(const Gal3& X0, const Covariance& P0,
-                       const std::shared_ptr<PreintegrationParams>& p)
-    : Base(X0, P0), params_(p) {
-  // Build process noise Q_ = block_diag(Cg, Ci, Ca, 0)
-  // TODO: Check rows here since p, v switched
+                       const std::shared_ptr<PreintegrationParams>& p,
+                       Mode mode)
+    : Base(X0, P0), params_(p), mode_(mode) {
+  // Build process noise Q_ = block_diag(Cg, Ca, Ci, 0)
   Q_.setZero();
   Q_.template block<3, 3>(0, 0) = p->gyroscopeCovariance;
-  Q_.template block<3, 3>(3, 3) =
-      p->accelerometerCovariance;  // switched for v, p ?
+  Q_.template block<3, 3>(3, 3) = p->accelerometerCovariance;
   Q_.template block<3, 3>(6, 6) = p->integrationCovariance;
 }
 
 Gal3 Gal3ImuEKF::Dynamics(const Vector3& g_n, const Gal3& X,
                           const Vector3& omega_b, const Vector3& f_b, double dt,
-                          OptionalJacobian<10, 10> A) {
+                          Mode mode, OptionalJacobian<10, 10> A) {
   if (dt <= 0.0) {
     throw std::invalid_argument("Gal3ImuEKF::Dynamics: dt must be positive");
   }
 
   // Calculate W, phi, and U
-  const Gal3 W = CompensatedGravity(g_n, dt, X.time());
+  const Gal3 W = (mode == NO_TIME) ? TimeZeroingGravity(g_n, dt)
+                                   : CompensatedGravity(g_n, dt, X.time());
   const Gal3 U = IMU(omega_b, f_b, dt);
 
   const Gal3 X_next = Base::Dynamics(W, X, U, A);
-  if (A) {
+  if (A && mode == TRACK_TIME_WITH_COVARIANCE) {
     // Extra column from state-dependent left factor W(t_k):
     // right-trivialized increment at W due to δt is e_t := [0; 0; -g dt; 0] in
     Vector e_t(10);
@@ -66,15 +66,15 @@ void Gal3ImuEKF::predict(const Vector3& omega_b, const Vector3& f_b,
     throw std::invalid_argument("Gal3ImuEKF::predict: dt must be positive");
   }
 
-  // Calculate W, phi, and U
-  const Gal3 W = CompensatedGravity(params_->n_gravity, dt, X_.time());
-  const Gal3 U = IMU(omega_b, f_b, dt);
+  // Calculate next state, with covariance
+  Gal3::Jacobian A;
+  X_ = Dynamics(params_->n_gravity, X_, omega_b, f_b, dt, mode_, A);
 
   // Scale continuous-time process noise to the discrete interval [t, t+dt]
   Covariance Qdt = Q_ * dt;
 
-  // EKF predict
-  Base::predict(W, U, Qdt);
+  // Update covariance
+  P_ = A * P_ * A.transpose() + Qdt;
 }
 
 const std::shared_ptr<PreintegrationParams>& Gal3ImuEKF::params() const {

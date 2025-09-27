@@ -45,6 +45,13 @@ class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
   using Jacobian = typename Base::Jacobian;            // 10x10
   using Covariance = typename Base::Covariance;        // 10x10
 
+  /// The Gal3 EKF has three modes of operation
+  enum Mode {
+    NO_TIME,  ///< Do not track time, state remains in NavState sub-group
+    TRACK_TIME_NO_COVARIANCE,  ///< Track time, but not its covariance (default)
+    TRACK_TIME_WITH_COVARIANCE,  ///< Track time and its covariance.
+  };
+
   /**
    * Construct with initial state/covariance and preintegration params (for
    * gravity and IMU covariances)
@@ -53,7 +60,8 @@ class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
    * @param params Preintegration parameters providing gravity and options.
    */
   Gal3ImuEKF(const Gal3& X0, const Covariance& P0,
-             const std::shared_ptr<PreintegrationParams>& params);
+             const std::shared_ptr<PreintegrationParams>& params,
+             Mode mode = TRACK_TIME_NO_COVARIANCE);
 
   /// Calculate gravity-only left composition, world-frame increments
   /// p = +1/2 g dt^2, v = g dt, t = 0
@@ -105,6 +113,7 @@ class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
    */
   static Gal3 Dynamics(const Vector3& g_n, const Gal3& X,
                        const Vector3& omega_b, const Vector3& f_b, double dt,
+                       Mode mode = TRACK_TIME_WITH_COVARIANCE,
                        OptionalJacobian<10, 10> A = {});
 
   /**
@@ -127,6 +136,7 @@ class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
 
  private:
   std::shared_ptr<PreintegrationParams> params_;
+  Mode mode_{TRACK_TIME_NO_COVARIANCE};
   Covariance Q_ = Covariance::Zero();
 };
 
