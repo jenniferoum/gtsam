@@ -33,7 +33,7 @@ NavStateImuEKF::NavStateImuEKF(const NavState& X0, const Covariance& P0,
   Q_.template block<3, 3>(6, 6) = p->accelerometerCovariance;
 }
 
-NavState NavStateImuEKF::Dynamics(const Vector3& n_gravity, const NavState& X,
+NavState NavStateImuEKF::Dynamics(const Vector3& g_n, const NavState& X,
                                   const Vector3& omega_b, const Vector3& f_b,
                                   double dt, OptionalJacobian<9, 9> A) {
   if (dt <= 0.0) {
@@ -42,7 +42,7 @@ NavState NavStateImuEKF::Dynamics(const Vector3& n_gravity, const NavState& X,
   }
 
   // Calculate W, phi, and U
-  const NavState W = Gravity(n_gravity, dt);
+  const NavState W = Gravity(g_n, dt);
   NavState::AutonomousFlow phi{dt};  // Φ: velocity acts on position
   const NavState U = IMU(omega_b, f_b, dt);
 
