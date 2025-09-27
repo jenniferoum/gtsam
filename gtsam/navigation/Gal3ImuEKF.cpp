@@ -35,7 +35,7 @@ Gal3ImuEKF::Gal3ImuEKF(const Gal3& X0, const Covariance& P0,
   Q_.template block<3, 3>(6, 6) = p->integrationCovariance;
 }
 
-Gal3 Gal3ImuEKF::Dynamics(const Vector3& n_gravity, const Gal3& X,
+Gal3 Gal3ImuEKF::Dynamics(const Vector3& g_n, const Gal3& X,
                           const Vector3& omega_b, const Vector3& f_b, double dt,
                           OptionalJacobian<10, 10> A) {
   if (dt <= 0.0) {
@@ -43,7 +43,7 @@ Gal3 Gal3ImuEKF::Dynamics(const Vector3& n_gravity, const Gal3& X,
   }
 
   // Calculate W, phi, and U
-  const Gal3 W = CompensatedGravity(n_gravity, dt, X.time());
+  const Gal3 W = CompensatedGravity(g_n, dt, X.time());
   const Gal3 U = IMU(omega_b, f_b, dt);
 
   const Gal3 X_next = Base::Dynamics(W, X, U, A);
@@ -52,7 +52,7 @@ Gal3 Gal3ImuEKF::Dynamics(const Vector3& n_gravity, const Gal3& X,
     // right-trivialized increment at W due to δt is e_t := [0; 0; -g dt; 0] in
     Vector e_t(10);
     e_t.setZero();
-    e_t.segment<3>(6) = -n_gravity * dt;  // p-block (indices 6..8)
+    e_t.segment<3>(6) = -g_n * dt;  // p-block (indices 6..8)
 
     // Bring to the right-side through the adjoint of X_next and add on to A:
     A->col(9) += X_next.inverse().Adjoint(e_t);

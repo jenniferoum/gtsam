@@ -336,6 +336,35 @@ TEST(Gal3ImuEKF, FormulationsMatchMatrixExponential) {
   Gal3 U_actual = Gal3ImuEKF::IMU(omega_b, f_b, dt);
   EXPECT(assert_equal(U_expected, U_actual, 1e-5));
 }
+/* ************************************************************************* */
+// Check that TimeZeroingGravity and CompensatedGravity match the "correction:
+// math" formulas from the paper.
+TEST(Gal3ImuEKF, TestCorrectionFormulas) {
+  using namespace nontrivial_gal3_example;
+  const Vector3 g_n = params->n_gravity;
+  double dt = 0.1;
+  double t_k = 5.0;
+
+  // Check that TimeZeroingGravity matches the math
+  auto timeZeroingGravity = [g_n](double dt) -> Gal3 {
+    const Gal3 G = Gal3ImuEKF::Gravity(g_n, dt);
+    const Gal3 C{Rot3(), Z_3x1, Z_3x1, -dt};
+    return G * C;
+  };
+  Gal3 W_math = timeZeroingGravity(dt);
+  Gal3 W_actual = Gal3ImuEKF::TimeZeroingGravity(g_n, dt);
+  EXPECT(assert_equal(W_math, W_actual, 1e-9));
+
+  // Check that CompensatedGravity matches the math
+  auto compensatedGravity = [g_n](double dt, double t_k) -> Gal3 {
+    const Gal3 G = Gal3ImuEKF::Gravity(g_n, dt);
+    const Gal3 C{Rot3(), -t_k * G.velocity() - 2.0 * G.translation(), Z_3x1, 0};
+    return G * C;
+  };
+  Gal3 W_comp_math = compensatedGravity(dt, t_k);
+  Gal3 W_comp_actual = Gal3ImuEKF::CompensatedGravity(g_n, dt, t_k);
+  EXPECT(assert_equal(W_comp_math, W_comp_actual, 1e-9));
+}
 
 /* ************************************************************************* */
 int main() {

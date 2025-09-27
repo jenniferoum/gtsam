@@ -57,26 +57,23 @@ class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
 
   /// Calculate gravity-only left composition, world-frame increments
   /// p = +1/2 g dt^2, v = g dt, t = 0
-  static Gal3 Gravity(const Vector3& n_gravity, double dt) {
-    return {Rot3(), n_gravity * (0.5 * dt * dt), n_gravity * dt, 0.0};
+  static Gal3 Gravity(const Vector3& g_n, double dt) {
+    return {Rot3(), g_n * (0.5 * dt * dt), g_n * dt, 0.0};
   }
 
   /// Calculate W: gravity with correction to neutralize time change,
   /// So we stay within the NavState sub-group at all times.
-  static Gal3 TimeZeroingGravity(const Vector3& n_gravity, double dt) {
-    const Gal3 G = Gravity(n_gravity, dt);
-    const Gal3 C{Rot3(), Z_3x1, Z_3x1, -dt};
-    return G * C;
+  static Gal3 TimeZeroingGravity(const Vector3& g_n, double dt) {
+    return {Rot3(), -g_n * (0.5 * dt * dt), g_n * dt, -dt};
   }
 
-  /// Position-compensated gravity (left composition) that absolute time in-state.
-  /// Using this W(t_k) together with IMU() yields the exact dynamics update
-  /// with additionally t_{k+1} = t_k + dt.
-  static Gal3 CompensatedGravity(const Vector3& n_gravity, double dt,
-                                 double t_k) {
-    const Gal3 G = Gravity(n_gravity, dt);
-    const Gal3 C{Rot3(), -t_k * G.velocity() - 2.0 * G.translation(), Z_3x1, 0};
-    return G * C;
+  /// Position-compensated gravity (left composition) that absolute time
+  /// in-state. Using this W(t_k) together with IMU() yields the exact dynamics
+  /// update with additionally t_{k+1} = t_k + dt.
+  static Gal3 CompensatedGravity(const Vector3& g_n, double dt, double t_k) {
+    const Point3 pW(-t_k * g_n * dt - g_n * (0.5 * dt * dt));
+    const Vector3 vW = g_n * dt;
+    return {Rot3(), pW, vW, 0.0};
   }
 
   /// Calculate U from raw IMU (no gravity): body-frame increments
@@ -97,7 +94,7 @@ class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
    * where W, \phi, and U are the gravity, (autonomous) position update, and
    * IMU increment functions, respectively.
    *
-   * @param n_gravity Gravity vector in the navigation frame.
+   * @param g_n Gravity vector in the navigation frame.
    * @param X Current Gal3.
    * @param omega_b Body angular velocity measurement (rad/s).
    * @param f_b Body specific force measurement (m/s^2).
@@ -105,7 +102,7 @@ class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
    * @param A Optional Jacobian of the dynamics with respect to the state.
    * @return The next Gal3 after applying the dynamics.
    */
-  static Gal3 Dynamics(const Vector3& n_gravity, const Gal3& X,
+  static Gal3 Dynamics(const Vector3& g_n, const Gal3& X,
                        const Vector3& omega_b, const Vector3& f_b, double dt,
                        OptionalJacobian<10, 10> A = {});
 
