@@ -44,7 +44,7 @@ Gal3 Gal3ImuEKF::Dynamics(const Vector3& g_n, const Gal3& X,
   // Calculate W, phi, and U
   const Gal3 W = (mode == NO_TIME) ? TimeZeroingGravity(g_n, dt)
                                    : CompensatedGravity(g_n, dt, X.time());
-  const Gal3 U = IMU(omega_b, f_b, dt);
+  const Gal3 U = Imu(omega_b, f_b, dt);
 
   const Gal3 X_next = Base::Dynamics(W, X, U, A);
   if (A && mode == TRACK_TIME_WITH_COVARIANCE) {

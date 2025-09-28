@@ -109,7 +109,7 @@ TEST(Gal3ImuEKF, PredictMatchesExplicitIntegration) {
   const Gal3 U{Rot3::Expmap(phi_b), N_l * f_b * dt * dt, J_l * f_b * dt, dt};
 
   // Check against static IMU function:
-  const Gal3 U_static = Gal3ImuEKF::IMU(omega_b, f_b, dt);
+  const Gal3 U_static = Gal3ImuEKF::Imu(omega_b, f_b, dt);
   EXPECT(assert_equal(U, U_static, 1e-9));
 
   // Check against Gal3::Expmap
@@ -292,7 +292,7 @@ TEST(Gal3ImuEKF, PredictWithWandU) {
   double dt = 0.1;
 
   const Gal3 W = Gal3ImuEKF::CompensatedGravity(params->n_gravity, dt, t0);
-  const Gal3 U = Gal3ImuEKF::IMU(omega_b, f_b, dt);
+  const Gal3 U = Gal3ImuEKF::Imu(omega_b, f_b, dt);
 
   // Compute dynamics
   Matrix10 A_ekf;
@@ -323,7 +323,7 @@ TEST(Gal3ImuEKF, ComponentsMatchGamma) {
   // Create X, W, U
   const Gal3& X = X0;  // A state snapshot
   const Gal3 W = Gal3ImuEKF::TimeZeroingGravity(g, dt);
-  const Gal3 U = Gal3ImuEKF::IMU(omega_b, f_b, dt);
+  const Gal3 U = Gal3ImuEKF::Imu(omega_b, f_b, dt);
 
   // 1. Check state time
   EXPECT_DOUBLES_EQUAL(t0, X.time(), 1e-12);
@@ -372,7 +372,7 @@ TEST(Gal3ImuEKF, FormulationsMatchMatrixExponential) {
   w << omega_b, f_b, rho, 0;
 
   Gal3 U_expected = Gal3::Expmap((w + xiN) * dt);
-  Gal3 U_actual = Gal3ImuEKF::IMU(omega_b, f_b, dt);
+  Gal3 U_actual = Gal3ImuEKF::Imu(omega_b, f_b, dt);
   EXPECT(assert_equal(U_expected, U_actual, 1e-5));
 }
 

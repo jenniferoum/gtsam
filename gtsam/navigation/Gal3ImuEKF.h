@@ -70,14 +70,14 @@ class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
   }
 
   /// Calculate W: gravity with correction to neutralize time change,
-  /// Using this W(t_k) together with IMU() yields the exact dynamics update,
+  /// Using this W(t_k) together with Imu() yields the exact dynamics update,
   /// but t stays 0, and hence we stay within NavState sub-group at all times.
   static Gal3 TimeZeroingGravity(const Vector3& g_n, double dt) {
     return {Rot3(), -g_n * (0.5 * dt * dt), g_n * dt, -dt};
   }
 
   /// Calculate W: position-compensated gravity (left composition) that enables
-  /// tracking absolute time in-state. Using this W(t_k) together with IMU()
+  /// tracking absolute time in-state. Using this W(t_k) together with Imu()
   /// yields the exact dynamics update with additionally t_{k+1} = t_k + dt.
   static Gal3 CompensatedGravity(const Vector3& g_n, double dt, double t_k) {
     const Point3 pW(-t_k * g_n * dt - g_n * (0.5 * dt * dt));
@@ -86,7 +86,7 @@ class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
   }
 
   /// Calculate U from raw IMU (no gravity): body-frame increments
-  static Gal3 IMU(const Vector3& omega_b, const Vector3& f_b, double dt) {
+  static Gal3 Imu(const Vector3& omega_b, const Vector3& f_b, double dt) {
     Gal3::TangentVector xi;
     xi << omega_b, f_b, Z_3x1, 1.0;
     return Gal3::Expmap(xi * dt);
