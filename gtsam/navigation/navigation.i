@@ -698,8 +698,4 @@ class Gal3ImuEKF : gtsam::LeftLinearEKF<gtsam::Gal3> {
   // Predict using IMU measurements
   void predict(const gtsam::Vector& omega_b, const gtsam::Vector& f_b, double dt);
 };
-
 }
-
-
-
