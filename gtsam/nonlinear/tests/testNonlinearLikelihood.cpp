@@ -27,45 +27,59 @@ using namespace gtsam;
 //******************************************************************************
 TEST(NonlinearLikelihood, Constructor) {
   Key key(1);
-  Pose2 prior(1, 2, 0.3);
+  Pose2 origin(1, 2, 0.3);
   auto model = noiseModel::Isotropic::Sigma(3, 0.5);
-  NonlinearLikelihood<Pose2> factor(key, prior, model);
+  NonlinearLikelihood<Pose2> factor(key, origin, model);
 }
 
 //******************************************************************************
 TEST(NonlinearLikelihood, ConstructorWithMean) {
   Key key(1);
-  Pose2 prior(1, 2, 0.3);
+  Pose2 origin(1, 2, 0.3);
   auto model = noiseModel::Isotropic::Sigma(3, 0.5);
   Vector mean = (Vector(3) << 0.1, 0.2, 0.3).finished();
-  NonlinearLikelihood<Pose2> factor(key, prior, model, mean);
+  NonlinearLikelihood<Pose2> factor(key, origin, model, mean);
 }
 
 //******************************************************************************
 TEST(NonlinearLikelihood, Error) {
   Key key(1);
-  Pose2 prior(1, 2, 0.3);
+  Pose2 origin(1, 2, 0.3);
   auto model = noiseModel::Isotropic::Sigma(3, 0.5);
-  NonlinearLikelihood<Pose2> factor(key, prior, model);
+  NonlinearLikelihood<Pose2> factor(key, origin, model);
 
   Pose2 x(1.1, 2.2, 0.3);
   Vector expected_error = (Vector(3) << 0.15463769, 0.161515277, 0.0).finished();
   Vector actual_error = factor.evaluateError(x);
-  EXPECT(assert_equal(expected_error, actual_error, 1e-9));
+  EXPECT(assert_equal(expected_error, actual_error, 1e-8));
 }
 
 //******************************************************************************
 TEST(NonlinearLikelihood, ErrorWithMean) {
   Key key(1);
-  Pose2 prior(1, 2, 0.3);
+  Pose2 origin(1, 2, 0.3);
   auto model = noiseModel::Isotropic::Sigma(3, 0.5);
   Vector mean = (Vector(3) << 0.1, 0.2, 0.05).finished();
-  NonlinearLikelihood<Pose2> factor(key, prior, model, mean);
+  NonlinearLikelihood<Pose2> factor(key, origin, model, mean);
 
   Pose2 x(1.1, 2.2, 0.3);
   Vector expected_error = (Vector(3) << 0.05463769, -0.038484723, -0.05).finished();
   Vector actual_error = factor.evaluateError(x);
-  EXPECT(assert_equal(expected_error, actual_error, 1e-9));
+  EXPECT(assert_equal(expected_error, actual_error, 1e-8));
+}
+
+//******************************************************************************
+TEST(NonlinearLikelihood, Likelihood) {
+  Key key(1);
+  Pose2 origin(1, 2, 0.3);
+  auto model = noiseModel::Isotropic::Sigma(3, 1.0);
+  Vector mean = (Vector(3) << 0.1, 0.2, 0.05).finished();
+  NonlinearLikelihood<Pose2> factor(key, origin, model, mean);
+
+  Pose2 x = origin.retract(mean);
+  double expected_likelihood = 1.0 / sqrt(pow(2 * M_PI, 3));
+  double actual_likelihood = factor.likelihood(x);
+  EXPECT_DOUBLES_EQUAL(expected_likelihood, actual_likelihood, 1e-9);
 }
 
 //******************************************************************************

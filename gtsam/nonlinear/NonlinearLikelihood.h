@@ -16,16 +16,20 @@
 #pragma once
 
 #include <gtsam/nonlinear/PriorFactor.h>
+#include <gtsam/linear/NoiseModel.h>
 
 #include <optional>
 
 namespace gtsam {
 
-  /**
-   * A class for a soft prior on any Value type, but with a non-zero mean
-   * in the tangent space.
-   * @ingroup nonlinear
-   **/
+/**
+ * A class for a soft prior on any Value type, but with a non-zero mean
+ * in the tangent space.
+ * The error is `e(x) = Local(origin, x) - mean`.
+ * The negative log-likelihood is `0.5 * ||e(x)||^2_Sigma`,
+ * where `Sigma` is the covariance from the noise model.
+ * @ingroup nonlinear
+ **/
   template<class VALUE>
   class NonlinearLikelihood: public NoiseModelFactorN<VALUE> {
 
@@ -40,43 +44,43 @@ namespace gtsam {
 
     typedef NoiseModelFactorN<VALUE> Base;
 
-    VALUE prior_; /** The measurement */
-    std::optional<Vector> mean_; /** The mean in the tangent space */
+    VALUE origin_; /** The point in the manifold at which the tangent space is taken. */
+    std::optional<Vector> mean_; /** The mean in the tangent space, default is zero vector. */
 
     /** concept check by type */
     GTSAM_CONCEPT_TESTABLE_TYPE(T)
 
   public:
-
-    /// shorthand for a smart pointer to a factor
-    typedef typename std::shared_ptr<NonlinearLikelihood<VALUE> > shared_ptr;
-
     /// Typedef to this class
     typedef NonlinearLikelihood<VALUE> This;
+
+    /// @name Standard Constructors
+    /// @{
 
     /** default constructor - only use for serialization */
     NonlinearLikelihood() {}
 
-    ~NonlinearLikelihood() override {}
-
     /** Constructor */
-    NonlinearLikelihood(Key key, const VALUE& prior, const SharedNoiseModel& model,
+    NonlinearLikelihood(Key key, const VALUE& origin, const SharedNoiseModel& model,
       const std::optional<Vector>& mean = {}) :
-      Base(model, key), prior_(prior), mean_(mean) {
+      Base(model, key), origin_(origin), mean_(mean) {
     }
 
-    /// @return a deep copy of this factor
-    gtsam::NonlinearFactor::shared_ptr clone() const override {
-      return std::static_pointer_cast<gtsam::NonlinearFactor>(
-          gtsam::NonlinearFactor::shared_ptr(new This(*this))); }
+    /// @}
+    /// @name Standard Destructor
+    /// @{
 
-    /** implement functions needed for Testable */
+    ~NonlinearLikelihood() override {}
+
+    /// @}
+    /// @name Testable
+    /// @{
 
     /** print */
     void print(const std::string& s,
        const KeyFormatter& keyFormatter = DefaultKeyFormatter) const override {
       std::cout << s << "NonlinearLikelihood on " << keyFormatter(this->key()) << "\n";
-      traits<T>::Print(prior_, "  prior mean: ");
+      traits<T>::Print(origin_, "  origin: ");
       if (mean_) {
         gtsam::print(*mean_, "  tangent space mean: ");
       }
@@ -90,24 +94,49 @@ namespace gtsam {
     bool equals(const NonlinearFactor& expected, double tol=1e-9) const override {
       const This* e = dynamic_cast<const This*> (&expected);
       bool mean_equals = (!mean_ && !e->mean_) || (mean_ && e->mean_ && equal_with_abs_tol(*mean_, *e->mean_, tol));
-      return e != nullptr && Base::equals(*e, tol) && traits<T>::Equals(prior_, e->prior_, tol) && mean_equals;
+      return e != nullptr && Base::equals(*e, tol) && traits<T>::Equals(origin_, e->origin_, tol) && mean_equals;
     }
 
-    /** implement functions needed to derive from Factor */
+    /// @}
+    /// @name Factor
+    /// @{
+
+    /// @return a deep copy of this factor
+    gtsam::NonlinearFactor::shared_ptr clone() const override {
+      return std::static_pointer_cast<gtsam::NonlinearFactor>(
+          gtsam::NonlinearFactor::shared_ptr(new This(*this))); }
 
     /** vector of errors */
     Vector evaluateError(const T& x, OptionalMatrixType H) const override {
       if (H) (*H) = Matrix::Identity(traits<T>::GetDimension(x),traits<T>::GetDimension(x));
       // manifold equivalent of (x-z)-mu -> Local(z,x)-mu
-      Vector error = traits<T>::Local(prior_, x);
+      Vector error = traits<T>::Local(origin_, x);
       if (mean_) {
         return error - *mean_;
       }
       return error;
     }
 
-    const VALUE & prior() const { return prior_; }
+    /** Compute the likelihood of a given value */
+    double likelihood(const T& x) const {
+      Vector e = evaluateError(x);
+      double squared_error = this->noiseModel_->squaredMahalanobisDistance(e);
+      if (auto gaussian = std::dynamic_pointer_cast<const gtsam::noiseModel::Gaussian>(this->noiseModel_)) {
+        return exp(-0.5 * squared_error - gaussian->negLogConstant());
+      } else {
+        // We don't know the normalization constant, so just return exp(-0.5*error)
+        return exp(-0.5 * squared_error);
+      }
+    }
+
+    /// @}
+    /// @name Access
+    /// @{
+
+    const VALUE & origin() const { return origin_; }
     const std::optional<Vector>& mean() const { return mean_; }
+
+    /// @}
 
   private:
 
@@ -119,7 +148,7 @@ namespace gtsam {
       // NoiseModelFactor1 instead of NoiseModelFactorN for backward compatibility
       ar & boost::serialization::make_nvp("NoiseModelFactor1",
           boost::serialization::base_object<Base>(*this));
-      ar & BOOST_SERIALIZATION_NVP(prior_);
+      ar & BOOST_SERIALIZATION_NVP(origin_);
       ar & BOOST_SERIALIZATION_NVP(mean_);
     }
 #endif

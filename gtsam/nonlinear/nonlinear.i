@@ -674,11 +674,12 @@ template <T = {double,
                gtsam::NavState,
                gtsam::imuBias::ConstantBias}>
 virtual class NonlinearLikelihood : gtsam::NoiseModelFactor {
-  NonlinearLikelihood(gtsam::Key key, const T& prior,
+  NonlinearLikelihood(gtsam::Key key, const T& origin,
               const gtsam::noiseModel::Base* noiseModel);
-  NonlinearLikelihood(gtsam::Key key, const T& prior,
+  NonlinearLikelihood(gtsam::Key key, const T& origin,
               const gtsam::noiseModel::Base* noiseModel, const gtsam::Vector& mean);
-  T prior() const;
+  T origin() const;
+  double likelihood(const T& x) const;
 
   // enabling serialization functionality
   void serialize() const;
