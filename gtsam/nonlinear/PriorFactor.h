@@ -15,32 +15,22 @@
  **/
 #pragma once
 
-#include <gtsam/nonlinear/NonlinearFactor.h>
-#include <gtsam/base/Testable.h>
-
-#include <string>
+#include <gtsam/nonlinear/NonlinearLikelihood.h>
 
 namespace gtsam {
 
   /**
-   * A class for a soft prior on any Value type
+   * A class for a soft prior on any Value type.
    * @ingroup nonlinear
    */
   template<class VALUE>
-  class PriorFactor: public NoiseModelFactorN<VALUE> {
+  class PriorFactor: public NonlinearLikelihood<VALUE> {
 
   public:
     typedef VALUE T;
-
-    // Provide access to the Matrix& version of evaluateError:
-    using NoiseModelFactor1<VALUE>::evaluateError;
-
+    typedef NonlinearLikelihood<VALUE> Base;
 
   private:
-
-    typedef NoiseModelFactorN<VALUE> Base;
-
-    VALUE prior_; /** The measurement */
 
     /** concept check by type */
     GTSAM_CONCEPT_TESTABLE_TYPE(T)
@@ -60,12 +50,12 @@ namespace gtsam {
 
     /** Constructor */
     PriorFactor(Key key, const VALUE& prior, const SharedNoiseModel& model = nullptr) :
-      Base(model, key), prior_(prior) {
+      Base(key, prior, model) {
     }
 
     /** Convenience constructor that takes a full covariance argument */
     PriorFactor(Key key, const VALUE& prior, const Matrix& covariance) :
-      Base(noiseModel::Gaussian::Covariance(covariance), key), prior_(prior) {
+      Base(key, prior, noiseModel::Gaussian::Covariance(covariance)) {
     }
 
     /// @return a deep copy of this factor
@@ -73,13 +63,11 @@ namespace gtsam {
       return std::static_pointer_cast<gtsam::NonlinearFactor>(
           gtsam::NonlinearFactor::shared_ptr(new This(*this))); }
 
-    /** implement functions needed for Testable */
-
     /** print */
     void print(const std::string& s,
        const KeyFormatter& keyFormatter = DefaultKeyFormatter) const override {
       std::cout << s << "PriorFactor on " << keyFormatter(this->key()) << "\n";
-      traits<T>::Print(prior_, "  prior mean: ");
+      traits<T>::Print(this->origin(), "  prior mean: ");
       if (this->noiseModel_)
         this->noiseModel_->print("  noise model: ");
       else
@@ -88,20 +76,11 @@ namespace gtsam {
 
     /** equals */
     bool equals(const NonlinearFactor& expected, double tol=1e-9) const override {
-      const This* e = dynamic_cast<const This*> (&expected);
-      return e != nullptr && Base::equals(*e, tol) && traits<T>::Equals(prior_, e->prior_, tol);
+      const auto* e = dynamic_cast<const This*>(&expected);
+      return e && Base::equals(*e, tol);
     }
 
-    /** implement functions needed to derive from Factor */
-
-    /** vector of errors */
-    Vector evaluateError(const T& x, OptionalMatrixType H) const override {
-      if (H) (*H) = Matrix::Identity(traits<T>::GetDimension(x),traits<T>::GetDimension(x));
-      // manifold equivalent of z-x -> Local(x,z)
-      return -traits<T>::Local(x, prior_);
-    }
-
-    const VALUE & prior() const { return prior_; }
+    const VALUE & prior() const { return this->origin(); }
 
   private:
 
@@ -110,10 +89,11 @@ namespace gtsam {
     friend class boost::serialization::access;
     template<class ARCHIVE>
     void serialize(ARCHIVE & ar, const unsigned int /*version*/) {
-      // NoiseModelFactor1 instead of NoiseModelFactorN for backward compatibility
+      // For backwards compatibility, we manually serialize the base class members
+      // as if we were a PriorFactor from before the refactor.
       ar & boost::serialization::make_nvp("NoiseModelFactor1",
-          boost::serialization::base_object<Base>(*this));
-      ar & BOOST_SERIALIZATION_NVP(prior_);
+          boost::serialization::base_object<NoiseModelFactorN<VALUE>>(*this));
+      ar & boost::serialization::make_nvp("prior_", this->origin_);
     }
 #endif
 

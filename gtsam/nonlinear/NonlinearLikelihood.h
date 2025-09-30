@@ -16,7 +16,7 @@
 #pragma once
 
 #include <gtsam/linear/NoiseModel.h>
-#include <gtsam/nonlinear/PriorFactor.h>
+#include <gtsam/nonlinear/NonlinearFactor.h>
 
 #include <optional>
 
@@ -39,7 +39,7 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
   // Provide access to the Matrix& version of evaluateError:
   using NoiseModelFactor1<VALUE>::evaluateError;
 
- private:
+ protected:
   typedef NoiseModelFactorN<VALUE> Base;
 
   VALUE origin_; /** The point in the manifold at which the tangent space is
