@@ -42,7 +42,7 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
  public:
   typedef VALUE T;
 
-  // Provide access to the Matrix& version of evaluateError:
+  /// Provide access to the Matrix& version of evaluateError:
   using NoiseModelFactor1<VALUE>::evaluateError;
 
  protected:
@@ -53,7 +53,7 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
   std::optional<Vector>
       mean_; /** The mean in the tangent space, default is zero vector. */
 
-  /** concept check by type */
+  /// concept check by type
   GTSAM_CONCEPT_TESTABLE_TYPE(T)
 
  public:
@@ -63,10 +63,10 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
   /// @name Standard Constructors
   /// @{
 
-  /** default constructor - only use for serialization */
+  /// default constructor - only use for serialization
   NonlinearLikelihood() {}
 
-  /** Constructor */
+  /// Constructor
   NonlinearLikelihood(Key key, const VALUE& origin,
                       const SharedNoiseModel& model,
                       const std::optional<Vector>& mean = {})
@@ -82,7 +82,7 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
   /// @name Testable
   /// @{
 
-  /** print */
+  /// print
   void print(const std::string& s, const KeyFormatter& keyFormatter =
                                        DefaultKeyFormatter) const override {
     std::cout << s << "NonlinearLikelihood on " << keyFormatter(this->key())
@@ -97,7 +97,7 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
       std::cout << "no noise model" << std::endl;
   }
 
-  /** equals */
+  /// equals
   bool equals(const NonlinearFactor& expected,
               double tol = 1e-9) const override {
     const This* e = dynamic_cast<const This*>(&expected);
@@ -118,6 +118,7 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
         gtsam::NonlinearFactor::shared_ptr(new This(*this)));
   }
 
+  /// vector of errors
   Vector evaluateError(const T& x, OptionalMatrixType H) const override {
     if (H) {
       (*H) = Matrix::Identity(traits<T>::GetDimension(x),
@@ -131,7 +132,7 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
     return error;
   }
 
-  /** Compute the likelihood of a given value */
+  /// Compute the likelihood of a given value
   double likelihood(const T& x) const {
     Vector e = evaluateError(x);
     double squared_mahalanobis_distance =
@@ -151,7 +152,7 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
 
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
-  /** Serialization function */
+  /// Serialization function
   friend class boost::serialization::access;
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
@@ -163,8 +164,8 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
   }
 #endif
 
-  // Alignment, see
-  // https://eigen.tuxfamily.org/dox/group__TopicStructHavingEigenMembers.html
+  /// Alignment, see
+  /// https://eigen.tuxfamily.org/dox/group__TopicStructHavingEigenMembers.html
   inline constexpr static auto NeedsToAlign = (sizeof(T) % 16) == 0;
 
  public:

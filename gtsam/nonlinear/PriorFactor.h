@@ -19,93 +19,109 @@
 
 namespace gtsam {
 
-  /**
-   * A class for a soft prior on any Value type.
-   * @ingroup nonlinear
-   */
-  template<class VALUE>
-  class PriorFactor: public NonlinearLikelihood<VALUE> {
+/**
+ * A class for a soft prior on any Value type.
+ * @ingroup nonlinear
+ **/
+template <class VALUE>
+class PriorFactor : public NonlinearLikelihood<VALUE> {
+ public:
+  typedef VALUE T;
+  typedef NonlinearLikelihood<VALUE> Base;
 
-  public:
-    typedef VALUE T;
-    typedef NonlinearLikelihood<VALUE> Base;
+ private:
+  /// concept check by type
+  GTSAM_CONCEPT_TESTABLE_TYPE(T)
 
-  private:
+ public:
+  /// @name Standard Constructors
+  /// @{
 
-    /** concept check by type */
-    GTSAM_CONCEPT_TESTABLE_TYPE(T)
+  /// shorthand for a smart pointer to a factor
+  typedef typename std::shared_ptr<PriorFactor<VALUE>> shared_ptr;
 
-  public:
+  /// Typedef to this class
+  typedef PriorFactor<VALUE> This;
 
-    /// shorthand for a smart pointer to a factor
-    typedef typename std::shared_ptr<PriorFactor<VALUE> > shared_ptr;
+  /// default constructor - only use for serialization
+  PriorFactor() {}
 
-    /// Typedef to this class
-    typedef PriorFactor<VALUE> This;
+  /// Constructor
+  PriorFactor(Key key, const VALUE& prior,
+              const SharedNoiseModel& model = nullptr)
+      : Base(key, prior, model) {}
 
-    /** default constructor - only use for serialization */
-    PriorFactor() {}
+  /// Convenience constructor that takes a full covariance argument
+  PriorFactor(Key key, const VALUE& prior, const Matrix& covariance)
+      : Base(key, prior, noiseModel::Gaussian::Covariance(covariance)) {}
 
-    ~PriorFactor() override {}
+  /// @}
+  /// @name Standard Destructor
+  /// @{
 
-    /** Constructor */
-    PriorFactor(Key key, const VALUE& prior, const SharedNoiseModel& model = nullptr) :
-      Base(key, prior, model) {
-    }
+  ~PriorFactor() override {}
 
-    /** Convenience constructor that takes a full covariance argument */
-    PriorFactor(Key key, const VALUE& prior, const Matrix& covariance) :
-      Base(key, prior, noiseModel::Gaussian::Covariance(covariance)) {
-    }
+  /// @}
+  /// @name Testable
+  /// @{
 
-    /// @return a deep copy of this factor
-    gtsam::NonlinearFactor::shared_ptr clone() const override {
-      return std::static_pointer_cast<gtsam::NonlinearFactor>(
-          gtsam::NonlinearFactor::shared_ptr(new This(*this))); }
+  /// @return a deep copy of this factor
+  gtsam::NonlinearFactor::shared_ptr clone() const override {
+    return std::static_pointer_cast<gtsam::NonlinearFactor>(
+        gtsam::NonlinearFactor::shared_ptr(new This(*this)));
+  }
 
-    /** print */
-    void print(const std::string& s,
-       const KeyFormatter& keyFormatter = DefaultKeyFormatter) const override {
-      std::cout << s << "PriorFactor on " << keyFormatter(this->key()) << "\n";
-      traits<T>::Print(this->origin(), "  prior mean: ");
-      if (this->noiseModel_)
-        this->noiseModel_->print("  noise model: ");
-      else
-        std::cout << "no noise model" << std::endl;
-    }
+  /// print
+  void print(const std::string& s, const KeyFormatter& keyFormatter =
+                                       DefaultKeyFormatter) const override {
+    std::cout << s << "PriorFactor on " << keyFormatter(this->key()) << "\n";
+    traits<T>::Print(this->origin(), "  prior mean: ");
+    if (this->noiseModel_)
+      this->noiseModel_->print("  noise model: ");
+    else
+      std::cout << "no noise model" << std::endl;
+  }
 
-    /** equals */
-    bool equals(const NonlinearFactor& expected, double tol=1e-9) const override {
-      const auto* e = dynamic_cast<const This*>(&expected);
-      return e && Base::equals(*e, tol);
-    }
+  /// equals
+  bool equals(const NonlinearFactor& expected,
+              double tol = 1e-9) const override {
+    const auto* e = dynamic_cast<const This*>(&expected);
+    return e && Base::equals(*e, tol);
+  }
 
-    const VALUE & prior() const { return this->origin(); }
+  /// @}
+  /// @name Access
+  /// @{
 
-  private:
+  const VALUE& prior() const { return this->origin(); }
 
+  /// @}
+
+ private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
-    /** Serialization function */
-    friend class boost::serialization::access;
-    template<class ARCHIVE>
-    void serialize(ARCHIVE & ar, const unsigned int /*version*/) {
-      // For backwards compatibility, we manually serialize the base class members
-      // as if we were a PriorFactor from before the refactor.
-      ar & boost::serialization::make_nvp("NoiseModelFactor1",
-          boost::serialization::base_object<NoiseModelFactorN<VALUE>>(*this));
-      ar & boost::serialization::make_nvp("prior_", this->origin_);
-    }
+  /// Serialization function
+  friend class boost::serialization::access;
+  template <class ARCHIVE>
+  void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
+    // For backwards compatibility, we manually serialize the base class members
+    // as if we were a PriorFactor from before the refactor.
+    ar& boost::serialization::make_nvp(
+        "NoiseModelFactor1",
+        boost::serialization::base_object<NoiseModelFactorN<VALUE>>(*this));
+    ar& boost::serialization::make_nvp("prior_", this->origin_);
+  }
 #endif
 
-  // Alignment, see https://eigen.tuxfamily.org/dox/group__TopicStructHavingEigenMembers.html
+  // Alignment, see
+  // https://eigen.tuxfamily.org/dox/group__TopicStructHavingEigenMembers.html
   inline constexpr static auto NeedsToAlign = (sizeof(T) % 16) == 0;
-  public:
+
+ public:
   GTSAM_MAKE_ALIGNED_OPERATOR_NEW_IF(NeedsToAlign)
-  };
+};
 
-  /// traits
-  template<class VALUE>
-  struct traits<PriorFactor<VALUE> > : public Testable<PriorFactor<VALUE> > {};
+/// traits
+template <class VALUE>
+struct traits<PriorFactor<VALUE>> : public Testable<PriorFactor<VALUE>> {};
 
-
-} /// namespace gtsam
+}  // namespace gtsam
