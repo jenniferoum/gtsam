@@ -48,8 +48,7 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
  protected:
   typedef NoiseModelFactorN<VALUE> Base;
 
-  VALUE origin_; /** The point in the manifold at which the tangent space is
-                    taken. */
+  VALUE origin_; /** The point in manifold at which tangent space is rooted. */
   std::optional<Vector>
       mean_; /** The mean in the tangent space, default is zero vector. */
 
@@ -132,14 +131,20 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
     return error;
   }
 
-  /// Compute the likelihood of a given value
-  double likelihood(const T& x) const {
+  /// Bring the error(const Values&) method into scope.
+  using Base::error;
+
+  /// default constructor - only use for serialization
+  /// Compute the negative log-likelihood of a given value
+  double error(const T& x) const {
     Vector e = evaluateError(x);
     double squared_mahalanobis_distance =
         this->noiseModel_->squaredMahalanobisDistance(e);
-    double loss = this->noiseModel_->loss(squared_mahalanobis_distance);
-    return exp(-loss);
+    return this->noiseModel_->loss(squared_mahalanobis_distance);
   }
+
+  /// Compute the likelihood of a given value
+  double likelihood(const T& x) const { return exp(-error(x)); }
 
   /// @}
   /// @name Access
