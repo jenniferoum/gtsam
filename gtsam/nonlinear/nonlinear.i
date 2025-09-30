@@ -685,6 +685,15 @@ virtual class NonlinearLikelihood : gtsam::NoiseModelFactor {
   void serialize() const;
 };
 
+#include <gtsam/nonlinear/NonlinearDensity.h>
+template<T = {gtsam::Pose2, gtsam::Pose3, gtsam::Point2, gtsam::Point3, gtsam::Rot2, gtsam::Rot3}>
+class NonlinearDensity : gtsam::NonlinearLikelihood<T> {
+  NonlinearDensity();
+  NonlinearDensity(gtsam::Key key, const T& prior, const gtsam::SharedNoiseModel& noiseModel);
+  double logProbability(const T& x) const;
+  double evaluate(const T& x) const;
+};
+
 #include <gtsam/nonlinear/NonlinearEquality.h>
 template <T = {gtsam::Point2, gtsam::StereoPoint2, gtsam::Point3, gtsam::Rot2,
                gtsam::SO3, gtsam::SO4, gtsam::SOn, gtsam::SL4, gtsam::Rot3, gtsam::Pose2, gtsam::Gal3,
