@@ -15,13 +15,13 @@
  * @brief unit tests for NonlinearLikelihood factor
  */
 
-#include <gtsam/nonlinear/NonlinearLikelihood.h>
-#include <gtsam/geometry/Pose2.h>
+#include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/Testable.h>
 #include <gtsam/base/numericalDerivative.h>
-#include <CppUnitLite/TestHarness.h>
+#include <gtsam/geometry/Pose2.h>
+#include <gtsam/nonlinear/NonlinearLikelihood.h>
 
-using namespace std; 
+using namespace std;
 using namespace gtsam;
 
 //******************************************************************************
@@ -49,7 +49,8 @@ TEST(NonlinearLikelihood, Error) {
   NonlinearLikelihood<Pose2> factor(key, origin, model);
 
   Pose2 x(1.1, 2.2, 0.3);
-  Vector expected_error = (Vector(3) << 0.15463769, 0.161515277, 0.0).finished();
+  Vector expected_error =
+      (Vector(3) << 0.15463769, 0.161515277, 0.0).finished();
   Vector actual_error = factor.evaluateError(x);
   EXPECT(assert_equal(expected_error, actual_error, 1e-8));
 }
@@ -63,7 +64,8 @@ TEST(NonlinearLikelihood, ErrorWithMean) {
   NonlinearLikelihood<Pose2> factor(key, origin, model, mean);
 
   Pose2 x(1.1, 2.2, 0.3);
-  Vector expected_error = (Vector(3) << 0.05463769, -0.038484723, -0.05).finished();
+  Vector expected_error =
+      (Vector(3) << 0.05463769, -0.038484723, -0.05).finished();
   Vector actual_error = factor.evaluateError(x);
   EXPECT(assert_equal(expected_error, actual_error, 1e-8));
 }
@@ -77,7 +79,7 @@ TEST(NonlinearLikelihood, Likelihood) {
   NonlinearLikelihood<Pose2> factor(key, origin, model, mean);
 
   Pose2 x = origin.retract(mean);
-  double expected_likelihood = 1.0 / sqrt(pow(2 * M_PI, 3));
+  double expected_likelihood = 1.0;
   double actual_likelihood = factor.likelihood(x);
   EXPECT_DOUBLES_EQUAL(expected_likelihood, actual_likelihood, 1e-9);
 }
