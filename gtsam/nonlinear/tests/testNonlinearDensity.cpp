@@ -22,7 +22,6 @@
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/nonlinear/NonlinearDensity.h>
 
-using namespace std;
 using namespace gtsam;
 
 //******************************************************************************
@@ -95,6 +94,30 @@ TEST(NonlinearDensity, Pose2WithMean) {
   EXPECT_DOUBLES_EQUAL(factor.logProbability(x), factor.logProbability(values),
                        1e-9);
   EXPECT_DOUBLES_EQUAL(factor.evaluate(x), factor.evaluate(values), 1e-9);
+}
+
+//******************************************************************************
+TEST(NonlinearDensity, FusionPose2Identical) {
+  Key key(1);
+  Pose2 origin(1.0, 2.0, 0.3);
+  Matrix3 Sigma;
+  Sigma << 0.04, 0.0, 0.0, 0.0, 0.09, 0.0, 0.0, 0.0,
+      0.16;  // covariances (not sigmas)
+  SharedNoiseModel model = noiseModel::Gaussian::Covariance(Sigma);
+
+  NonlinearDensity<Pose2> a(key, origin, model);
+  NonlinearDensity<Pose2> b(key, origin, model);
+
+  NonlinearDensity<Pose2> fused = a * b;
+
+  // Expect origin unchanged for identical inputs
+  EXPECT(assert_equal(origin, fused.origin()));
+
+  // Covariance should be halved: (Σ^{-1}+Σ^{-1})^{-1} = Σ/2
+  auto gf = std::dynamic_pointer_cast<noiseModel::Gaussian>(fused.noiseModel());
+  CHECK(gf);
+  Matrix3 Sigma_f = gf->covariance();
+  EXPECT(assert_equal<Matrix3>(0.5 * Sigma, Sigma_f, 1e-9));
 }
 
 //******************************************************************************
