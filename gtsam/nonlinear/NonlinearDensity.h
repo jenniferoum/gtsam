@@ -221,6 +221,16 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
     return resetFrom(xhat, fg.mean, fg.covariance, /*isInformation=*/false);
   }
 
+  /// Return T element corresponding to the mean, with optional Jacobian
+  T retractMean(Matrix* xHm = nullptr) const {
+    const size_t n = this->dim();
+    const bool zeroMean = !this->mean_;
+    if (xHm && zeroMean) xHm->setIdentity(n, n);
+    return zeroMean
+               ? this->origin_
+               : traits<T>::Retract(this->origin_, *(this->mean_), {}, xHm);
+  }
+
   /**
    * Transport this density to a new origin x̂, returning a density at x̂
    * with nonzero mean in that chart. Uses a full first-order Jacobian for the
@@ -228,48 +238,35 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
    *   J = ∂Local(x̂,x)/∂x · ∂Retract(origin,m)/∂m
    * @note: Only Gaussian noise models are supported.
    */
-  NonlinearDensity transportTo(const T& newOrigin) const {
+  NonlinearDensity transportTo(const T& x_hat) const {
     auto g = getGaussian("transportTo");
-    const Matrix& dSd = g->covariance();
 
-    Matrix xHd;
-    const T x = this->mean_ ? traits<T>::Retract(this->origin_, *(this->mean()),
-                                                 {}, xHd)
-                            : this->origin_;
+    Matrix xHm;
+    const T x = retractMean(&xHm);
 
-    Matrix mHx;  // d Local(x̂,q)/d p and d Local(x̂,q)/d q
-    Vector muHat = traits<T>::Local(newOrigin, x, {}, mHx);
-    const Matrix mJd = mHx * xHd;  // chain rule
-    const Matrix covHat = mJd * dSd * mJd.transpose();
+    Matrix hatHx;  // d Local(x̂,q)/d p and d Local(x̂,q)/d q
+    Vector muHat = traits<T>::Local(x_hat, x, {}, hatHx);
+    const Matrix hatJm = hatHx * xHm;  // chain rule
+    const Matrix covHat = hatJm * g->covariance() * hatJm.transpose();
 
-    return NonlinearDensity(this->key(), newOrigin, covHat, muHat);
+    return NonlinearDensity(this->key(), x_hat, covHat, muHat);
   }
 
   /**
-   * Create a new NonlinearDensity with zero mean by moving the origin to x⁺ =
-   * Retract(origin, mean). Returns an ECG with origin=x⁺, zero mean, and
-   * covariance transported to x⁺.
-   * @note Requires a Gaussian noise model; throws otherwise.
+   * Create a new NonlinearDensity with zero mean by moving the origin to x̂ =
+   * Retract(origin, mean). Returns an ECG with origin=x̂, zero mean, and
+   * covariance transported to x̂.
+   * @note: Only Gaussian noise models are supported.
    */
   NonlinearDensity reset() const {
+    if (!this->mean_) return *this;  // already zero-mean
     auto g = getGaussian("reset");
-    const size_t n = this->dim();
-    const Vector m = this->mean_.value_or(Vector::Zero(n));
 
-    // If already zero-mean, nothing to do.
-    if (m.isZero(0)) return *this;
+    Matrix hatJm;
+    const T x_hat = retractMean(&hatJm);
+    const Matrix covHat = hatJm * g->covariance() * hatJm.transpose();
 
-    // New origin is Retract(origin, mean)
-    const T newOrigin = traits<T>::Retract(this->origin_, m);
-
-    // Transport to newOrigin to obtain mapped covariance; then drop the mean
-    NonlinearDensity mapped = this->transportTo(newOrigin);
-    auto g_mapped =
-        std::dynamic_pointer_cast<noiseModel::Gaussian>(mapped.noiseModel());
-    const Matrix S_hat = g_mapped->covariance();
-
-    const SharedNoiseModel modelPlus = noiseModel::Gaussian::Covariance(S_hat);
-    return NonlinearDensity(this->key(), newOrigin, modelPlus);  // zero-mean
+    return NonlinearDensity(this->key(), x_hat, covHat);
   }
 
   /** Reset given a reference x̂ and a nonzero mean μ in its chart, returning
