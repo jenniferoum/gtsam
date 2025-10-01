@@ -53,7 +53,9 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
   /// @}
   /// @name Standard Destructor
   /// @{
+
   ~NonlinearDensity() override {}
+
   /// @}
   /// @name Testable
   /// @{
@@ -81,6 +83,48 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
   /// @}
   /// @name Standard API
   /// @{
+
+  /// Return T element corresponding to the mean, with optional Jacobian
+  T retractMean(Matrix* xHm = nullptr) const {
+    const size_t n = this->dim();
+    const bool zeroMean = !this->mean_;
+    if (xHm && zeroMean) xHm->setIdentity(n, n);
+    return zeroMean
+               ? this->origin_
+               : traits<T>::Retract(this->origin_, *(this->mean_), {}, xHm);
+  }
+
+  /// Get the Gaussian noise model, or throw if not Gaussian
+  noiseModel::Gaussian::shared_ptr gaussianModel(
+      const std::string& method) const {
+    using noiseModel::Gaussian;
+    const auto& model = this->noiseModel();
+    if (!model)
+      throw std::runtime_error("NonlinearDensity::" + method +
+                               " requires a noise model");
+    auto g = std::dynamic_pointer_cast<Gaussian>(model);
+    if (!g)
+      throw std::runtime_error("NonlinearDensity::" + method +
+                               " is only implemented for Gaussian noise "
+                               "models. The noise model used is of type " +
+                               std::string(typeid(*model).name()));
+    return g;
+  }
+
+  /**
+   * Calculate the normalization constant for the density.
+   * For a Gaussian noise model with covariance Σ, we return
+   *   - log k = 0.5 * n * log(2*pi) + 0.5 * log |Σ|
+   * where n = dim().  Note: gaussian->logDeterminant() returns log|Σ|.
+   * For non-Gaussian noise models this is not (easily) defined and we throw.
+   */
+  double negLogConstant() const {
+    const size_t n = this->dim();
+    auto gaussian = gaussianModel("negLogConstant");
+    constexpr double log2pi = 1.8378770664093454835606594728112;  // log(2*pi)
+    const double logDetSigma = gaussian->logDeterminant();        // log |Σ|
+    return 0.5 * n * log2pi + 0.5 * logDetSigma;
+  }
 
   /**
    * Calculate the log-probability of the given value.
@@ -110,54 +154,12 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
 
   /// Evaluate density P(x) using a Values container.
   double evaluate(const Values& values) const {
-    const T& x = values.at<T>(this->key());
-    return evaluate(x);
+    return exp(logProbability(values));
   }
 
-  /// Get the Gaussian noise model, or throw if not Gaussian
-  noiseModel::Gaussian::shared_ptr gaussianModel(
-      const std::string& method) const {
-    using noiseModel::Gaussian;
-    const auto& model = this->noiseModel();
-    auto g = std::dynamic_pointer_cast<Gaussian>(model);
-    if (!g)
-      throw std::runtime_error("NonlinearDensity::" + method +
-                               " is only implemented for  Gaussian noise "
-                               "models. The noise model used is of type " +
-                               std::string(typeid(*model).name()));
-    return g;
-  }
-
-  /// Return T element corresponding to the mean, with optional Jacobian
-  T retractMean(Matrix* xHm = nullptr) const {
-    const size_t n = this->dim();
-    const bool zeroMean = !this->mean_;
-    if (xHm && zeroMean) xHm->setIdentity(n, n);
-    return zeroMean
-               ? this->origin_
-               : traits<T>::Retract(this->origin_, *(this->mean_), {}, xHm);
-  }
-
-  /**
-   * Transport this density to a new origin x̂, returning a density at x̂
-   * with nonzero mean in that chart. Uses a full first-order Jacobian for the
-   * change of coordinates between charts via the chain rule:
-   *   J = ∂Local(x̂,x)/∂x · ∂Retract(origin,m)/∂m
-   * @note: Only Gaussian noise models are supported.
-   */
-  NonlinearDensity transportTo(const T& x_hat) const {
-    auto g = gaussianModel("transportTo");
-
-    Matrix xHm;
-    const T x = retractMean(&xHm);
-
-    Matrix hatHx;  // d Local(x̂,q)/d p and d Local(x̂,q)/d q
-    Vector muHat = traits<T>::Local(x_hat, x, {}, hatHx);
-    const Matrix hatJm = hatHx * xHm;  // chain rule
-    const Matrix covHat = hatJm * g->covariance() * hatJm.transpose();
-
-    return NonlinearDensity(this->key(), x_hat, covHat, muHat);
-  }
+  /// @}
+  /// @name Transport and Fusion
+  /// @{
 
   /**
    * Create a new NonlinearDensity with zero mean by moving the origin to x̂ =
@@ -173,22 +175,28 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
     const T x_hat = retractMean(&hatJm);
     const Matrix covHat = hatJm * g->covariance() * hatJm.transpose();
 
-    return NonlinearDensity(this->key(), x_hat, covHat);
+    return NonlinearDensity(this->key(), x_hat, Symmetrize(covHat));
   }
 
   /**
-   * Calculate the normalization constant for the density.
-   * For a Gaussian noise model with covariance Σ, we return
-   *   - log k = 0.5 * n * log(2*pi) + 0.5 * log |Σ|
-   * where n = dim().  Note: gaussian->logDeterminant() returns log|Σ|.
-   * For non-Gaussian noise models this is not (easily) defined and we throw.
+   * Transport this density to a new origin x̂, returning a density at x̂
+   * with nonzero mean in that chart. Uses a full first-order Jacobian for the
+   * change of coordinates between charts via the chain rule:
+   *   J = ∂Local(x̂,x)/∂x · ∂Retract(origin,m)/∂m
+   * @note: Only Gaussian noise models are supported.
    */
-  double negLogConstant() const {
-    const size_t n = this->dim();
-    auto gaussian = gaussianModel("negLogConstant");
-    constexpr double log2pi = 1.8378770664093454835606594728112;  // log(2*pi)
-    const double logDetSigma = gaussian->logDeterminant();        // log |Σ|
-    return 0.5 * n * log2pi + 0.5 * logDetSigma;
+  NonlinearDensity transportTo(const T& x_hat) const {
+    auto g = gaussianModel("transportTo");
+
+    Matrix xHm;  // ∂Retract(origin,m)/∂m
+    const T x = retractMean(&xHm);
+
+    Matrix hatHx;  // ∂Local(x̂,x)/∂x
+    Vector muHat = traits<T>::Local(x_hat, x, {}, hatHx);
+    const Matrix hatJm = hatHx * xHm;  // chain rule
+    const Matrix covHat = hatJm * g->covariance() * hatJm.transpose();
+
+    return NonlinearDensity(this->key(), x_hat, Symmetrize(covHat), muHat);
   }
 
   /// Simple, non-templated Gaussian fusion in a common tangent space
@@ -202,7 +210,7 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
       const Matrix W2 = other.P.inverse();
       const Matrix P = (W1 + W2).inverse();
       const Vector m = P * (W1 * this->m + W2 * other.m);
-      return {m, P};
+      return {m, Symmetrize(P)};
     }
   };
 
@@ -220,8 +228,8 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
    *   Gaussian Distributions on Lie Groups," in IEEE Control Systems Letters,
    *   vol. 8, pp. 844-849, 2024, https://ieeexplore.ieee.org/document/10539262
    *
-   * We choose our origin as the reference, express other density in our chart,
-   * fuse the Gaussians, then reset to a zero-mean concentrated Gaussian.
+   * We choose this->origin_ as the reference, express other density in our
+   * chart, fuse the Gaussians, then reset to a zero-mean concentrated Gaussian.
    *
    * Notes/assumptions:
    *  - Only supports Gaussian noise models; throws otherwise.
@@ -233,6 +241,9 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
     // 0) Sanity checks
     if (this->key() != other.key())
       throw std::invalid_argument("NonlinearDensity::operator*: keys differ");
+    if (this->dim() != other.dim())
+      throw std::invalid_argument(
+          "NonlinearDensity::operator*: dimension mismatch");
 
     // 1) Transport other to our chart
     NonlinearDensity o = other.transportTo(this->origin_);
@@ -252,6 +263,11 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
   /// @}
 
  private:
+  /// Helper function to symmetrize a covariance matrix.
+  static Matrix Symmetrize(const Matrix& matrix) {
+    return 0.5 * (matrix + matrix.transpose());
+  }
+
 #ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
