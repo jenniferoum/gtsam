@@ -49,8 +49,7 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
   typedef NoiseModelFactorN<VALUE> Base;
 
   VALUE origin_; /** The point in manifold at which tangent space is rooted. */
-  std::optional<Vector>
-      mean_; /** The mean in the tangent space, default is zero vector. */
+  std::optional<Vector> mean_; /** Mean in the tangent space, default zero. */
 
   /// concept check by type
   GTSAM_CONCEPT_TESTABLE_TYPE(T)
@@ -100,10 +99,11 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
   bool equals(const NonlinearFactor& expected,
               double tol = 1e-9) const override {
     const This* e = dynamic_cast<const This*>(&expected);
+    if (!e) return false;
     bool mean_equals =
         (!mean_ && !e->mean_) ||
         (mean_ && e->mean_ && equal_with_abs_tol(*mean_, *e->mean_, tol));
-    return e != nullptr && Base::equals(*e, tol) &&
+    return Base::equals(*e, tol) &&
            traits<T>::Equals(origin_, e->origin_, tol) && mean_equals;
   }
 

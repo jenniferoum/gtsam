@@ -19,6 +19,7 @@
 #pragma once
 
 #include <gtsam/nonlinear/NonlinearLikelihood.h>
+#include <gtsam/nonlinear/Values.h>
 
 namespace gtsam {
 
@@ -39,14 +40,41 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
   NonlinearDensity() {}
 
   /// Constructor
-  NonlinearDensity(Key key, const VALUE& origin, const SharedNoiseModel& model)
-      : Base(key, origin, model) {}
+  NonlinearDensity(Key key, const VALUE& origin, const SharedNoiseModel& model,
+                   const std::optional<Vector>& mean = {})
+      : Base(key, origin, model, mean) {}
 
   /// @}
   /// @name Standard Destructor
   /// @{
   ~NonlinearDensity() override {}
   /// @}
+  /// @name Testable
+  /// @{
+
+  /// print
+  void print(const std::string& s, const KeyFormatter& keyFormatter =
+                                       DefaultKeyFormatter) const override {
+    std::cout << s << "NonlinearDensity on " << keyFormatter(this->key())
+              << "\n";
+    traits<T>::Print(this->origin_, "  origin: ");
+    if (this->mean_) gtsam::print(*this->mean_, "  tangent space mean: ");
+    if (this->noiseModel_)
+      this->noiseModel_->print("  noise model: ");
+    else
+      std::cout << "no noise model\n";
+  }
+
+  /// equals
+  bool equals(const NonlinearFactor& expected,
+              double tol = 1e-9) const override {
+    const auto* e = dynamic_cast<const NonlinearDensity*>(&expected);
+    return e && Base::equals(*e, tol);
+  }
+
+  /// @}
+  /// @name Standard API
+  /// @{
 
   /**
    * Calculate the log-probability of the given value.
@@ -63,6 +91,22 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
    * P(x) = exp(logProbability(x)).
    */
   double evaluate(const T& x) const { return exp(logProbability(x)); }
+
+  /**
+   * Log-probability overload taking a Values container. This mirrors the
+   * linear GaussianConditional interface so densities can be queried in a
+   * uniform way when only a Values is available.
+   */
+  double logProbability(const Values& values) const {
+    const T& x = values.at<T>(this->key());
+    return logProbability(x);
+  }
+
+  /// Evaluate density P(x) using a Values container.
+  double evaluate(const Values& values) const {
+    const T& x = values.at<T>(this->key());
+    return evaluate(x);
+  }
 
   /**
    * Calculate the normalization constant for the density.
@@ -91,6 +135,7 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
         "Gaussian noise models. The noise model used is of type " +
         std::string(typeid(*noiseModel).name()));
   }
+  /// @}
 
  private:
 #ifdef GTSAM_ENABLE_BOOST_SERIALIZATION

@@ -42,13 +42,59 @@ TEST(NonlinearDensity, Pose2) {
   double expected_log_prob =
       -0.5 * 3 * log(2 * M_PI) + log(1.0 / (0.1 * 0.2 * 0.3));
   EXPECT_DOUBLES_EQUAL(expected_log_prob, factor.logProbability(x), 1e-9);
+  EXPECT_DOUBLES_EQUAL(expected_log_prob, factor.logProbability(values), 1e-9);
   EXPECT_DOUBLES_EQUAL(exp(expected_log_prob), factor.evaluate(x), 1e-9);
+  EXPECT_DOUBLES_EQUAL(exp(expected_log_prob), factor.evaluate(values), 1e-9);
 
   // Test with non-Gaussian noise model
   SharedNoiseModel robust_model = noiseModel::Robust::Create(
       noiseModel::mEstimator::Huber::Create(1.345), model);
   NonlinearDensity<Pose2> robust_factor(key, origin, robust_model);
   CHECK_EXCEPTION(robust_factor.logProbability(x), std::runtime_error);
+
+  // Compare value vs values interface consistency
+  EXPECT_DOUBLES_EQUAL(factor.logProbability(x), factor.logProbability(values),
+                       1e-9);
+  EXPECT_DOUBLES_EQUAL(factor.evaluate(x), factor.evaluate(values), 1e-9);
+}
+
+//******************************************************************************
+TEST(NonlinearDensity, Pose2WithMean) {
+  Key key(1);
+  Pose2 origin(1, 2, 0.3);
+  SharedNoiseModel model = noiseModel::Diagonal::Sigmas(Vector3(0.1, 0.2, 0.3));
+
+  Pose2 x = origin;
+  Values values;
+  values.insert(key, x);
+
+  // Non-zero mean in tangent space (dx, dy, dtheta)
+  Vector3 mean(0.05, -0.02, 0.1);
+  NonlinearDensity<Pose2> factor(key, origin, model, mean);
+
+  // Compute expected error = 0.5 * ||-mean||^2_{Sigma^{-1}}
+  Vector sigmas(3);
+  sigmas << 0.1, 0.2, 0.3;
+  Vector invSigmas = sigmas.cwiseInverse();
+  double mahalanobis =
+      (-mean.cwiseProduct(invSigmas)).squaredNorm();  // (r .* invSigmas)^2 sum
+  double expected_error = 0.5 * mahalanobis;
+  EXPECT_DOUBLES_EQUAL(expected_error, factor.error(values), 1e-9);
+
+  // Normalization constant (same as zero-mean case)
+  double logDetSigma =
+      2 * log(0.1) + 2 * log(0.2) + 2 * log(0.3);  // log(σ^2) per component sum
+  double expected_log_k = -0.5 * 3 * log(2 * M_PI) - 0.5 * logDetSigma;
+  double expected_log_prob = expected_log_k - expected_error;
+  EXPECT_DOUBLES_EQUAL(expected_log_prob, factor.logProbability(x), 1e-9);
+  EXPECT_DOUBLES_EQUAL(expected_log_prob, factor.logProbability(values), 1e-9);
+  EXPECT_DOUBLES_EQUAL(exp(expected_log_prob), factor.evaluate(x), 1e-9);
+  EXPECT_DOUBLES_EQUAL(exp(expected_log_prob), factor.evaluate(values), 1e-9);
+
+  // Compare value vs values interface consistency
+  EXPECT_DOUBLES_EQUAL(factor.logProbability(x), factor.logProbability(values),
+                       1e-9);
+  EXPECT_DOUBLES_EQUAL(factor.evaluate(x), factor.evaluate(values), 1e-9);
 }
 
 //******************************************************************************
