@@ -23,12 +23,14 @@
 #include <gtsam/nonlinear/ConcentratedGaussian.h>
 
 using namespace gtsam;
+using sharedGaussianNoiseModel = noiseModel::Gaussian::shared_ptr;
 
 //******************************************************************************
 TEST(ConcentratedGaussian, Pose2) {
   Key key(1);
   Pose2 origin(1, 2, 0.3);
-  SharedNoiseModel model = noiseModel::Diagonal::Sigmas(Vector3(0.1, 0.2, 0.3));
+  sharedGaussianNoiseModel model =
+      noiseModel::Diagonal::Sigmas(Vector3(0.1, 0.2, 0.3));
   ConcentratedGaussian<Pose2> factor(key, origin, model);
 
   // Test error
@@ -44,24 +46,14 @@ TEST(ConcentratedGaussian, Pose2) {
   EXPECT_DOUBLES_EQUAL(expected_log_prob, factor.logProbability(values), 1e-9);
   EXPECT_DOUBLES_EQUAL(exp(expected_log_prob), factor.evaluate(x), 1e-9);
   EXPECT_DOUBLES_EQUAL(exp(expected_log_prob), factor.evaluate(values), 1e-9);
-
-  // Test with non-Gaussian noise model
-  SharedNoiseModel robust_model = noiseModel::Robust::Create(
-      noiseModel::mEstimator::Huber::Create(1.345), model);
-  ConcentratedGaussian<Pose2> robust_factor(key, origin, robust_model);
-  CHECK_EXCEPTION(robust_factor.logProbability(x), std::runtime_error);
-
-  // Compare value vs values interface consistency
-  EXPECT_DOUBLES_EQUAL(factor.logProbability(x), factor.logProbability(values),
-                       1e-9);
-  EXPECT_DOUBLES_EQUAL(factor.evaluate(x), factor.evaluate(values), 1e-9);
 }
 
 //******************************************************************************
 TEST(ConcentratedGaussian, Pose2WithMean) {
   Key key(1);
   Pose2 origin(1, 2, 0.3);
-  SharedNoiseModel model = noiseModel::Diagonal::Sigmas(Vector3(0.1, 0.2, 0.3));
+  sharedGaussianNoiseModel model =
+      noiseModel::Diagonal::Sigmas(Vector3(0.1, 0.2, 0.3));
 
   Pose2 x = origin;
   Values values;
@@ -159,7 +151,7 @@ TEST(ConcentratedGaussian, FusionPose2Identical) {
   Pose2 origin(1.0, 2.0, 0.3);
   Matrix3 Sigma;
   Sigma << 0.04, 0.0, 0.0, 0.0, 0.09, 0.0, 0.0, 0.0, 0.16;
-  SharedNoiseModel model = noiseModel::Gaussian::Covariance(Sigma);
+  sharedGaussianNoiseModel model = noiseModel::Gaussian::Covariance(Sigma);
 
   ConcentratedGaussian<Pose2> a(key, origin, model);
   ConcentratedGaussian<Pose2> b(key, origin, model);

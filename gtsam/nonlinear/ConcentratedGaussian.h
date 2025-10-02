@@ -22,13 +22,11 @@
 #include <gtsam/nonlinear/ExtendedPriorFactor.h>
 #include <gtsam/nonlinear/Values.h>
 
-#include <random>  // for std::mt19937_64
-
 namespace gtsam {
 
 /**
- * A nonlinear density, inherits from ExtendedPriorFactor. With Gaussian noise
- * models, models exactly a (left) extended concentrated Gaussian (L-ECG).
+ * A nonlinear density, inherits from ExtendedPriorFactor. This class models
+ * a (left) extended concentrated Gaussian (L-ECG) with Gaussian noise models.
  * @ingroup nonlinear
  */
 template <class T>
@@ -36,6 +34,7 @@ class ConcentratedGaussian : public ExtendedPriorFactor<T> {
  public:
   using Base = ExtendedPriorFactor<T>;
   using Gaussian = typename Base::Gaussian;
+  using sharedGaussianNoiseModel = noiseModel::Gaussian::shared_ptr;
 
   /// @name Standard Constructors
   /// @{
@@ -44,12 +43,13 @@ class ConcentratedGaussian : public ExtendedPriorFactor<T> {
   ConcentratedGaussian() {}
 
   /// Constructor with noise model and optional mean in tangent space
-  ConcentratedGaussian(Key key, const T& origin, const SharedNoiseModel& model)
+  ConcentratedGaussian(Key key, const T& origin,
+                       const sharedGaussianNoiseModel& model)
       : Base(key, origin, model) {}
 
   /// Constructor with noise model and optional mean in tangent space
   ConcentratedGaussian(Key key, const T& origin, const Vector& mean,
-                   const SharedNoiseModel& model)
+                       const sharedGaussianNoiseModel& model)
       : Base(key, origin, mean, model) {
     if (mean.size() != static_cast<Eigen::Index>(model->dim()))
       throw std::invalid_argument(
@@ -62,12 +62,14 @@ class ConcentratedGaussian : public ExtendedPriorFactor<T> {
 
   /// Constructor with mean (in tangent space) and covariance matrix
   ConcentratedGaussian(Key key, const T& origin, const Vector& mean,
-                   const Matrix& covariance)
+                       const Matrix& covariance)
       : Base(key, origin, mean, covariance) {
-    if (mean.size() != covariance.rows() ||
-        covariance.rows() != covariance.cols())
+    if (mean.size() != covariance.rows())
       throw std::invalid_argument(
-          "ConcentratedGaussian: mean and covariance dimensions do not match");
+          "ConcentratedGaussian: mean dimension does not match covariance");
+    if (covariance.rows() != covariance.cols())
+      throw std::invalid_argument(
+          "ConcentratedGaussian: covariance matrix is not square");
   }
 
   /// @}
@@ -118,8 +120,7 @@ class ConcentratedGaussian : public ExtendedPriorFactor<T> {
    * Calculate the normalization constant for the density.
    * For a Gaussian noise model with covariance Σ, we return
    *   - log k = 0.5 * n * log(2*pi) + 0.5 * log |Σ|
-   * where n = dim().  Note: gaussian->logDeterminant() returns log|Σ|.
-   * For non-Gaussian noise models this is not (easily) defined and we throw.
+   * where n = dim(). Note: gaussian->logDeterminant() returns log|Σ|.
    */
   double negLogConstant() const {
     const size_t n = this->dim();
@@ -166,14 +167,14 @@ class ConcentratedGaussian : public ExtendedPriorFactor<T> {
   /// @{
 
   /**
-   * Create a new ConcentratedGaussian with zero mean by moving the origin to x̂ =
-   * Retract(origin, mean). Returns an ECG with origin=x̂, zero mean, and
+   * Create a new ConcentratedGaussian with zero mean by moving the origin to x̂
+   * = Retract(origin, mean). Returns an ECG with origin=x̂, zero mean, and
    * covariance transported to x̂.
-   * @note: Only Gaussian noise models are supported.
    */
   ConcentratedGaussian reset() const {
     if (!this->mean_) return *this;  // already zero-mean
-    auto g = this->gaussianModel("ConcentratedGaussian::reset", /* throw */ true);
+    auto g =
+        this->gaussianModel("ConcentratedGaussian::reset", /* throw */ true);
 
     Matrix hatJm;
     const T x_hat = retractMean(&hatJm);
@@ -187,11 +188,10 @@ class ConcentratedGaussian : public ExtendedPriorFactor<T> {
    * with nonzero mean in that chart. Uses a full first-order Jacobian for the
    * change of coordinates between charts via the chain rule:
    *   J = ∂Local(x̂,x)/∂x · ∂Retract(origin,m)/∂m
-   * @note: Only Gaussian noise models are supported.
    */
   ConcentratedGaussian transportTo(const T& x_hat) const {
-    auto g =
-        this->gaussianModel("ConcentratedGaussian::transportTo", /* throw */ true);
+    auto g = this->gaussianModel("ConcentratedGaussian::transportTo",
+                                 /* throw */ true);
 
     Matrix xHm;  // ∂Retract(origin,m)/∂m
     const T x = retractMean(&xHm);
@@ -213,17 +213,12 @@ class ConcentratedGaussian : public ExtendedPriorFactor<T> {
    *
    * We choose this->origin_ as the reference, express other density in our
    * chart, fuse the Gaussians, then reset to a zero-mean concentrated Gaussian.
-   *
-   * Notes/assumptions:
-   *  - Only supports Gaussian noise models; throws otherwise.
-   *  - If both inputs share the same origin, this reduces to
-   *    classical Gaussian fusion: Σ⁺ = (Σ₁^{-1}+Σ₂^{-1})^{-1} at the same
-   * origin.
    */
   ConcentratedGaussian operator*(const ConcentratedGaussian& other) const {
     // 0) Sanity checks
     if (this->key() != other.key())
-      throw std::invalid_argument("ConcentratedGaussian::operator*: keys differ");
+      throw std::invalid_argument(
+          "ConcentratedGaussian::operator*: keys differ");
     if (this->dim() != other.dim())
       throw std::invalid_argument(
           "ConcentratedGaussian::operator*: dimension mismatch");
