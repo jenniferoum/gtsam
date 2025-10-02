@@ -10,26 +10,26 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file testNonlinearDensity.cpp
+ * @file testConcentratedGaussian.cpp
  * @date September 30, 2025
  * @author Frank Dellaert
- * @brief Unit tests for NonlinearDensity
+ * @brief Unit tests for ConcentratedGaussian
  */
 
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/Testable.h>
 #include <gtsam/base/TestableAssertions.h>
 #include <gtsam/geometry/Pose2.h>
-#include <gtsam/nonlinear/NonlinearDensity.h>
+#include <gtsam/nonlinear/ConcentratedGaussian.h>
 
 using namespace gtsam;
 
 //******************************************************************************
-TEST(NonlinearDensity, Pose2) {
+TEST(ConcentratedGaussian, Pose2) {
   Key key(1);
   Pose2 origin(1, 2, 0.3);
   SharedNoiseModel model = noiseModel::Diagonal::Sigmas(Vector3(0.1, 0.2, 0.3));
-  NonlinearDensity<Pose2> factor(key, origin, model);
+  ConcentratedGaussian<Pose2> factor(key, origin, model);
 
   // Test error
   Pose2 x = origin;
@@ -48,7 +48,7 @@ TEST(NonlinearDensity, Pose2) {
   // Test with non-Gaussian noise model
   SharedNoiseModel robust_model = noiseModel::Robust::Create(
       noiseModel::mEstimator::Huber::Create(1.345), model);
-  NonlinearDensity<Pose2> robust_factor(key, origin, robust_model);
+  ConcentratedGaussian<Pose2> robust_factor(key, origin, robust_model);
   CHECK_EXCEPTION(robust_factor.logProbability(x), std::runtime_error);
 
   // Compare value vs values interface consistency
@@ -58,7 +58,7 @@ TEST(NonlinearDensity, Pose2) {
 }
 
 //******************************************************************************
-TEST(NonlinearDensity, Pose2WithMean) {
+TEST(ConcentratedGaussian, Pose2WithMean) {
   Key key(1);
   Pose2 origin(1, 2, 0.3);
   SharedNoiseModel model = noiseModel::Diagonal::Sigmas(Vector3(0.1, 0.2, 0.3));
@@ -69,7 +69,7 @@ TEST(NonlinearDensity, Pose2WithMean) {
 
   // Non-zero mean in tangent space (dx, dy, dtheta)
   Vector3 mean(0.05, -0.02, 0.1);
-  NonlinearDensity<Pose2> factor(key, origin, mean, model);
+  ConcentratedGaussian<Pose2> factor(key, origin, mean, model);
 
   // Compute expected error = 0.5 * ||-mean||^2_{Sigma^{-1}}
   Vector sigmas(3);
@@ -97,7 +97,7 @@ TEST(NonlinearDensity, Pose2WithMean) {
 }
 
 //******************************************************************************
-TEST(NonlinearDensity, TransportToSameOrigin) {
+TEST(ConcentratedGaussian, TransportToSameOrigin) {
   Key key(1);
   Pose2 origin(1.0, 2.0, 0.3);
   Matrix3 Sigma;
@@ -106,9 +106,9 @@ TEST(NonlinearDensity, TransportToSameOrigin) {
   // Nonzero mean to verify it's preserved when mapping to same reference
   Vector3 mean;
   mean << 0.01, -0.02, 0.05;
-  NonlinearDensity<Pose2> d(key, origin, mean, Sigma);
+  ConcentratedGaussian<Pose2> d(key, origin, mean, Sigma);
 
-  NonlinearDensity<Pose2> mapped = d.transportTo(origin);
+  ConcentratedGaussian<Pose2> mapped = d.transportTo(origin);
 
   // Origin preserved
   EXPECT(assert_equal(origin, mapped.origin()));
@@ -122,7 +122,7 @@ TEST(NonlinearDensity, TransportToSameOrigin) {
 }
 
 //******************************************************************************
-TEST(NonlinearDensity, ResetMatchesTransport) {
+TEST(ConcentratedGaussian, ResetMatchesTransport) {
   Key key(1);
   Pose2 origin(1.0, 2.0, 0.3);
   Matrix3 Sigma;
@@ -130,18 +130,18 @@ TEST(NonlinearDensity, ResetMatchesTransport) {
 
   Vector3 mean;
   mean << 0.05, -0.02, 0.1;
-  NonlinearDensity<Pose2> d(key, origin, mean, Sigma);
+  ConcentratedGaussian<Pose2> d(key, origin, mean, Sigma);
 
   // Compute expected new origin xplus = Retract(origin, mean)
   Pose2 xplus = traits<Pose2>::Retract(origin, mean);
 
   // Our reset method should move origin to xplus and set zero mean
-  NonlinearDensity<Pose2> r = d.reset();
+  ConcentratedGaussian<Pose2> r = d.reset();
   EXPECT(assert_equal(xplus, r.origin()));
   CHECK(!r.mean().has_value());
 
   // Transport-to(xplus) should yield the same covariance, and near-zero mean
-  NonlinearDensity<Pose2> mapped = d.transportTo(xplus);
+  ConcentratedGaussian<Pose2> mapped = d.transportTo(xplus);
   auto g_r = r.gaussianModel("ResetMatchesTransport");
   auto g_m = mapped.gaussianModel("ResetMatchesTransport");
   CHECK(g_r && g_m);
@@ -154,17 +154,17 @@ TEST(NonlinearDensity, ResetMatchesTransport) {
 }
 
 //******************************************************************************
-TEST(NonlinearDensity, FusionPose2Identical) {
+TEST(ConcentratedGaussian, FusionPose2Identical) {
   Key key(1);
   Pose2 origin(1.0, 2.0, 0.3);
   Matrix3 Sigma;
   Sigma << 0.04, 0.0, 0.0, 0.0, 0.09, 0.0, 0.0, 0.0, 0.16;
   SharedNoiseModel model = noiseModel::Gaussian::Covariance(Sigma);
 
-  NonlinearDensity<Pose2> a(key, origin, model);
-  NonlinearDensity<Pose2> b(key, origin, model);
+  ConcentratedGaussian<Pose2> a(key, origin, model);
+  ConcentratedGaussian<Pose2> b(key, origin, model);
 
-  NonlinearDensity<Pose2> fused = a * b;
+  ConcentratedGaussian<Pose2> fused = a * b;
 
   // Expect origin unchanged for identical inputs
   EXPECT(assert_equal(origin, fused.origin()));

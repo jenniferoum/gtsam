@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- *  @file  NonlinearLikelihood.h
+ *  @file  ExtendedPriorFactor.h
  *  @author Frank Dellaert
  **/
 #pragma once
@@ -38,7 +38,7 @@ namespace gtsam {
  * @ingroup nonlinear
  */
 template <class VALUE>
-class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
+class ExtendedPriorFactor : public NoiseModelFactorN<VALUE> {
  public:
   typedef VALUE T;
 
@@ -57,34 +57,34 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
 
  public:
   /// Typedef to this class
-  typedef NonlinearLikelihood<VALUE> This;
+  typedef ExtendedPriorFactor<VALUE> This;
 
   /// @name Standard Constructors
   /// @{
 
   /// default constructor - only use for serialization
-  NonlinearLikelihood() {}
+  ExtendedPriorFactor() {}
 
   /// Constructor with noise model and optional mean in tangent space
-  NonlinearLikelihood(Key key, const T& origin, const SharedNoiseModel& model)
+  ExtendedPriorFactor(Key key, const T& origin, const SharedNoiseModel& model)
       : Base(model, key), origin_(origin) {}
 
   /// Constructor with noise model and optional mean in tangent space
-  NonlinearLikelihood(Key key, const T& origin, const Vector& mean,
+  ExtendedPriorFactor(Key key, const T& origin, const Vector& mean,
                       const SharedNoiseModel& model)
       : Base(model, key), origin_(origin), mean_(mean) {
     if (mean.size() != static_cast<Eigen::Index>(model->dim()))
       throw std::invalid_argument(
-          "NonlinearDensity: mean dimension does not match noise model");
+          "ConcentratedGaussian: mean dimension does not match noise model");
   }
 
   /// Constructor with covariance matrix (zero mean in tangent space)
-  NonlinearLikelihood(Key key, const T& origin, const Matrix& covariance)
+  ExtendedPriorFactor(Key key, const T& origin, const Matrix& covariance)
       : Base(noiseModel::Gaussian::Covariance(covariance), key),
         origin_(origin) {}
 
   /// Constructor with mean (in tangent space) and covariance matrix
-  NonlinearLikelihood(Key key, const T& origin, const Vector& mean,
+  ExtendedPriorFactor(Key key, const T& origin, const Vector& mean,
                       const Matrix& covariance)
       : Base(noiseModel::Gaussian::Covariance(covariance), key),
         origin_(origin),
@@ -92,14 +92,14 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
     if (mean.size() != covariance.rows() ||
         covariance.rows() != covariance.cols())
       throw std::invalid_argument(
-          "NonlinearDensity: mean and covariance dimensions do not match");
+          "ConcentratedGaussian: mean and covariance dimensions do not match");
   }
 
   /// @}
   /// @name Standard Destructor
   /// @{
 
-  ~NonlinearLikelihood() override {}
+  ~ExtendedPriorFactor() override {}
 
   /// @}
   /// @name Testable
@@ -108,7 +108,7 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
   /// print
   void print(const std::string& s, const KeyFormatter& keyFormatter =
                                        DefaultKeyFormatter) const override {
-    std::cout << s << "NonlinearLikelihood on " << keyFormatter(this->key())
+    std::cout << s << "ExtendedPriorFactor on " << keyFormatter(this->key())
               << "\n";
     traits<T>::Print(origin_, "  origin: ");
     if (mean_) {
@@ -247,7 +247,7 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
 
 /// traits
 template <class VALUE>
-struct traits<NonlinearLikelihood<VALUE> >
-    : public Testable<NonlinearLikelihood<VALUE> > {};
+struct traits<ExtendedPriorFactor<VALUE> >
+    : public Testable<ExtendedPriorFactor<VALUE> > {};
 
 }  // namespace gtsam

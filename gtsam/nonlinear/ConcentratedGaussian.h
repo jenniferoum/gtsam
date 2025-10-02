@@ -10,16 +10,16 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file NonlinearDensity.h
+ * @file ConcentratedGaussian.h
  * @date September 30, 2025
  * @author Frank Dellaert
- * @brief A nonlinear density, inherits from NonlinearLikelihood.
+ * @brief A nonlinear density, inherits from ExtendedPriorFactor.
  */
 
 #pragma once
 
 #include <gtsam/base/utilities.h>
-#include <gtsam/nonlinear/NonlinearLikelihood.h>
+#include <gtsam/nonlinear/ExtendedPriorFactor.h>
 #include <gtsam/nonlinear/Values.h>
 
 #include <random>  // for std::mt19937_64
@@ -27,54 +27,54 @@
 namespace gtsam {
 
 /**
- * A nonlinear density, inherits from NonlinearLikelihood. With Gaussian noise
+ * A nonlinear density, inherits from ExtendedPriorFactor. With Gaussian noise
  * models, models exactly a (left) extended concentrated Gaussian (L-ECG).
  * @ingroup nonlinear
  */
 template <class T>
-class NonlinearDensity : public NonlinearLikelihood<T> {
+class ConcentratedGaussian : public ExtendedPriorFactor<T> {
  public:
-  using Base = NonlinearLikelihood<T>;
+  using Base = ExtendedPriorFactor<T>;
   using Gaussian = typename Base::Gaussian;
 
   /// @name Standard Constructors
   /// @{
 
   /// Default constructor for serialization.
-  NonlinearDensity() {}
+  ConcentratedGaussian() {}
 
   /// Constructor with noise model and optional mean in tangent space
-  NonlinearDensity(Key key, const T& origin, const SharedNoiseModel& model)
+  ConcentratedGaussian(Key key, const T& origin, const SharedNoiseModel& model)
       : Base(key, origin, model) {}
 
   /// Constructor with noise model and optional mean in tangent space
-  NonlinearDensity(Key key, const T& origin, const Vector& mean,
+  ConcentratedGaussian(Key key, const T& origin, const Vector& mean,
                    const SharedNoiseModel& model)
       : Base(key, origin, mean, model) {
     if (mean.size() != static_cast<Eigen::Index>(model->dim()))
       throw std::invalid_argument(
-          "NonlinearDensity: mean dimension does not match noise model");
+          "ConcentratedGaussian: mean dimension does not match noise model");
   }
 
   /// Constructor with covariance matrix (zero mean in tangent space)
-  NonlinearDensity(Key key, const T& origin, const Matrix& covariance)
+  ConcentratedGaussian(Key key, const T& origin, const Matrix& covariance)
       : Base(key, origin, covariance) {}
 
   /// Constructor with mean (in tangent space) and covariance matrix
-  NonlinearDensity(Key key, const T& origin, const Vector& mean,
+  ConcentratedGaussian(Key key, const T& origin, const Vector& mean,
                    const Matrix& covariance)
       : Base(key, origin, mean, covariance) {
     if (mean.size() != covariance.rows() ||
         covariance.rows() != covariance.cols())
       throw std::invalid_argument(
-          "NonlinearDensity: mean and covariance dimensions do not match");
+          "ConcentratedGaussian: mean and covariance dimensions do not match");
   }
 
   /// @}
   /// @name Standard Destructor
   /// @{
 
-  ~NonlinearDensity() override {}
+  ~ConcentratedGaussian() override {}
 
   /// @}
   /// @name Testable
@@ -83,7 +83,7 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
   /// print
   void print(const std::string& s, const KeyFormatter& keyFormatter =
                                        DefaultKeyFormatter) const override {
-    std::cout << s << "NonlinearDensity on " << keyFormatter(this->key())
+    std::cout << s << "ConcentratedGaussian on " << keyFormatter(this->key())
               << "\n";
     traits<T>::Print(this->origin_, "  origin: ");
     if (this->mean_) gtsam::print(*this->mean_, "  tangent space mean: ");
@@ -96,7 +96,7 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
   /// equals
   bool equals(const NonlinearFactor& expected,
               double tol = 1e-9) const override {
-    const auto* e = dynamic_cast<const NonlinearDensity*>(&expected);
+    const auto* e = dynamic_cast<const ConcentratedGaussian*>(&expected);
     return e && Base::equals(*e, tol);
   }
 
@@ -123,7 +123,7 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
    */
   double negLogConstant() const {
     const size_t n = this->dim();
-    auto gaussian = this->gaussianModel("NonlinearDensity::negLogConstant",
+    auto gaussian = this->gaussianModel("ConcentratedGaussian::negLogConstant",
                                         /* throw */ true);
     constexpr double log2pi = 1.8378770664093454835606594728112;  // log(2*pi)
     const double logDetSigma = gaussian->logDeterminant();        // log |Σ|
@@ -166,20 +166,20 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
   /// @{
 
   /**
-   * Create a new NonlinearDensity with zero mean by moving the origin to x̂ =
+   * Create a new ConcentratedGaussian with zero mean by moving the origin to x̂ =
    * Retract(origin, mean). Returns an ECG with origin=x̂, zero mean, and
    * covariance transported to x̂.
    * @note: Only Gaussian noise models are supported.
    */
-  NonlinearDensity reset() const {
+  ConcentratedGaussian reset() const {
     if (!this->mean_) return *this;  // already zero-mean
-    auto g = this->gaussianModel("NonlinearDensity::reset", /* throw */ true);
+    auto g = this->gaussianModel("ConcentratedGaussian::reset", /* throw */ true);
 
     Matrix hatJm;
     const T x_hat = retractMean(&hatJm);
     const Matrix covHat = hatJm * g->covariance() * hatJm.transpose();
 
-    return NonlinearDensity(this->key(), x_hat, Symmetrize(covHat));
+    return ConcentratedGaussian(this->key(), x_hat, Symmetrize(covHat));
   }
 
   /**
@@ -189,9 +189,9 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
    *   J = ∂Local(x̂,x)/∂x · ∂Retract(origin,m)/∂m
    * @note: Only Gaussian noise models are supported.
    */
-  NonlinearDensity transportTo(const T& x_hat) const {
+  ConcentratedGaussian transportTo(const T& x_hat) const {
     auto g =
-        this->gaussianModel("NonlinearDensity::transportTo", /* throw */ true);
+        this->gaussianModel("ConcentratedGaussian::transportTo", /* throw */ true);
 
     Matrix xHm;  // ∂Retract(origin,m)/∂m
     const T x = retractMean(&xHm);
@@ -201,7 +201,7 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
     const Matrix hatJm = hatHx * xHm;  // chain rule
     const Matrix covHat = hatJm * g->covariance() * hatJm.transpose();
 
-    return NonlinearDensity(this->key(), x_hat, muHat, Symmetrize(covHat));
+    return ConcentratedGaussian(this->key(), x_hat, muHat, Symmetrize(covHat));
   }
 
   /**
@@ -220,24 +220,24 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
    *    classical Gaussian fusion: Σ⁺ = (Σ₁^{-1}+Σ₂^{-1})^{-1} at the same
    * origin.
    */
-  NonlinearDensity operator*(const NonlinearDensity& other) const {
+  ConcentratedGaussian operator*(const ConcentratedGaussian& other) const {
     // 0) Sanity checks
     if (this->key() != other.key())
-      throw std::invalid_argument("NonlinearDensity::operator*: keys differ");
+      throw std::invalid_argument("ConcentratedGaussian::operator*: keys differ");
     if (this->dim() != other.dim())
       throw std::invalid_argument(
-          "NonlinearDensity::operator*: dimension mismatch");
+          "ConcentratedGaussian::operator*: dimension mismatch");
 
     // 1) Transport other to our chart
-    NonlinearDensity o = other.transportTo(this->origin_);
+    ConcentratedGaussian o = other.transportTo(this->origin_);
 
     // 2) Fuse the Gaussians in our tangent space
-    const auto g1 = this->gaussian("NonlinearDensity::operator*", true);
-    const auto g2 = o.gaussian("NonlinearDensity::operator*", true);
+    const auto g1 = this->gaussian("ConcentratedGaussian::operator*", true);
+    const auto g2 = o.gaussian("ConcentratedGaussian::operator*", true);
     auto [m, P] = Fuse(*g1, *g2);
 
-    // 3) Create a fused NonlinearDensity at our origin with fused mean
-    NonlinearDensity ecg(this->key(), this->origin_, m, P);
+    // 3) Create a fused ConcentratedGaussian at our origin with fused mean
+    ConcentratedGaussian ecg(this->key(), this->origin_, m, P);
 
     // 4) Reset to zero mean
     return ecg.reset();
@@ -271,7 +271,7 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
     ar& boost::serialization::make_nvp(
-        "NonlinearLikelihood", boost::serialization::base_object<Base>(*this));
+        "ExtendedPriorFactor", boost::serialization::base_object<Base>(*this));
   }
 #endif
 };

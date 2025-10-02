@@ -9,44 +9,44 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file testNonlinearLikelihood.cpp
+ * @file testExtendedPriorFactor.cpp
  * @date September 30, 2025
  * @author Frank Dellaert
- * @brief unit tests for NonlinearLikelihood factor
+ * @brief unit tests for ExtendedPriorFactor factor
  */
 
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/Testable.h>
 #include <gtsam/base/numericalDerivative.h>
 #include <gtsam/geometry/Pose2.h>
-#include <gtsam/nonlinear/NonlinearLikelihood.h>
+#include <gtsam/nonlinear/ExtendedPriorFactor.h>
 
 using namespace std;
 using namespace gtsam;
 
 //******************************************************************************
-TEST(NonlinearLikelihood, Constructor) {
+TEST(ExtendedPriorFactor, Constructor) {
   Key key(1);
   Pose2 origin(1, 2, 0.3);
   auto model = noiseModel::Isotropic::Sigma(3, 0.5);
-  NonlinearLikelihood<Pose2> factor(key, origin, model);
+  ExtendedPriorFactor<Pose2> factor(key, origin, model);
 }
 
 //******************************************************************************
-TEST(NonlinearLikelihood, ConstructorWithMean) {
+TEST(ExtendedPriorFactor, ConstructorWithMean) {
   Key key(1);
   Pose2 origin(1, 2, 0.3);
   auto model = noiseModel::Isotropic::Sigma(3, 0.5);
   Vector mean = (Vector(3) << 0.1, 0.2, 0.3).finished();
-  NonlinearLikelihood<Pose2> factor(key, origin, mean, model);
+  ExtendedPriorFactor<Pose2> factor(key, origin, mean, model);
 }
 
 //******************************************************************************
-TEST(NonlinearLikelihood, Error) {
+TEST(ExtendedPriorFactor, Error) {
   Key key(1);
   Pose2 origin(1, 2, 0.3);
   auto model = noiseModel::Isotropic::Sigma(3, 0.5);
-  NonlinearLikelihood<Pose2> factor(key, origin, model);
+  ExtendedPriorFactor<Pose2> factor(key, origin, model);
 
   Pose2 x(1.1, 2.2, 0.3);
   Vector expected_error =
@@ -56,12 +56,12 @@ TEST(NonlinearLikelihood, Error) {
 }
 
 //******************************************************************************
-TEST(NonlinearLikelihood, ErrorWithMean) {
+TEST(ExtendedPriorFactor, ErrorWithMean) {
   Key key(1);
   Pose2 origin(1, 2, 0.3);
   auto model = noiseModel::Isotropic::Sigma(3, 0.5);
   Vector mean = (Vector(3) << 0.1, 0.2, 0.05).finished();
-  NonlinearLikelihood<Pose2> factor(key, origin, mean, model);
+  ExtendedPriorFactor<Pose2> factor(key, origin, mean, model);
 
   Pose2 x(1.1, 2.2, 0.3);
   Vector expected_error =
@@ -71,12 +71,12 @@ TEST(NonlinearLikelihood, ErrorWithMean) {
 }
 
 //******************************************************************************
-TEST(NonlinearLikelihood, Likelihood) {
+TEST(ExtendedPriorFactor, Likelihood) {
   Key key(1);
   Pose2 origin(1, 2, 0.3);
   auto model = noiseModel::Isotropic::Sigma(3, 1.0);
   Vector mean = (Vector(3) << 0.1, 0.2, 0.05).finished();
-  NonlinearLikelihood<Pose2> factor(key, origin, mean, model);
+  ExtendedPriorFactor<Pose2> factor(key, origin, mean, model);
 
   Pose2 x = origin.retract(mean);
   double expected_likelihood = 1.0;

@@ -15,7 +15,7 @@
  **/
 #pragma once
 
-#include <gtsam/nonlinear/NonlinearLikelihood.h>
+#include <gtsam/nonlinear/ExtendedPriorFactor.h>
 
 namespace gtsam {
 
@@ -24,10 +24,10 @@ namespace gtsam {
  * @ingroup nonlinear
  **/
 template <class VALUE>
-class PriorFactor : public NonlinearLikelihood<VALUE> {
+class PriorFactor : public ExtendedPriorFactor<VALUE> {
  public:
   typedef VALUE T;
-  typedef NonlinearLikelihood<VALUE> Base;
+  typedef ExtendedPriorFactor<VALUE> Base;
 
  private:
   /// concept check by type

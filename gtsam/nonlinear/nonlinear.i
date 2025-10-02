@@ -643,7 +643,7 @@ virtual class PriorFactor : gtsam::NoiseModelFactor {
   void serialize() const;
 };
 
-#include <gtsam/nonlinear/NonlinearLikelihood.h>
+#include <gtsam/nonlinear/ExtendedPriorFactor.h>
 template <T = {double,
                gtsam::Vector,
                gtsam::Point2,
@@ -673,11 +673,11 @@ template <T = {double,
                gtsam::PinholeCamera<gtsam::Cal3Unified>,
                gtsam::NavState,
                gtsam::imuBias::ConstantBias}>
-virtual class NonlinearLikelihood : gtsam::NoiseModelFactor {
-  NonlinearLikelihood(gtsam::Key key, const T& origin, const gtsam::SharedNoiseModel& noiseModel);
-  NonlinearLikelihood(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::SharedNoiseModel& noiseModel);
-  NonlinearLikelihood(gtsam::Key key, const T& origin, const gtsam::Matrix& covariance);
-  NonlinearLikelihood(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::Matrix& covariance);
+virtual class ExtendedPriorFactor : gtsam::NoiseModelFactor {
+  ExtendedPriorFactor(gtsam::Key key, const T& origin, const gtsam::SharedNoiseModel& noiseModel);
+  ExtendedPriorFactor(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::SharedNoiseModel& noiseModel);
+  ExtendedPriorFactor(gtsam::Key key, const T& origin, const gtsam::Matrix& covariance);
+  ExtendedPriorFactor(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::Matrix& covariance);
   T origin() const;
   // Optional tangent space mean (may be empty / None)
   std::optional<gtsam::Vector> mean() const;
@@ -693,7 +693,7 @@ virtual class NonlinearLikelihood : gtsam::NoiseModelFactor {
   void serialize() const;
 };
 
-#include <gtsam/nonlinear/NonlinearDensity.h>
+#include <gtsam/nonlinear/ConcentratedGaussian.h>
 template <T = {double,
                gtsam::Vector,
                gtsam::Point2,
@@ -710,13 +710,13 @@ template <T = {double,
                gtsam::Pose3,
                gtsam::Similarity2,
                gtsam::Similarity3}>
-class NonlinearDensity : gtsam::NonlinearLikelihood<T> {
-  NonlinearDensity();
+class ConcentratedGaussian : gtsam::ExtendedPriorFactor<T> {
+  ConcentratedGaussian();
   // Constructors mirroring header (origin terminology)
-  NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::SharedNoiseModel& noiseModel);
-  NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::SharedNoiseModel& noiseModel);
-  NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::Matrix& covariance);
-  NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::Matrix& covariance);
+  ConcentratedGaussian(gtsam::Key key, const T& origin, const gtsam::SharedNoiseModel& noiseModel);
+  ConcentratedGaussian(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::SharedNoiseModel& noiseModel);
+  ConcentratedGaussian(gtsam::Key key, const T& origin, const gtsam::Matrix& covariance);
+  ConcentratedGaussian(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::Matrix& covariance);
   // Return element corresponding to mean (no Jacobian variant)
   T retractMean() const;
   // Normalization constant (negative log) and log-probability helpers
@@ -726,10 +726,10 @@ class NonlinearDensity : gtsam::NonlinearLikelihood<T> {
   double evaluate(const T& x) const;
   double evaluate(const gtsam::Values& values) const;
   // Chart transport / reset operations
-  NonlinearDensity reset() const;
-  NonlinearDensity transportTo(const T& x_hat) const;
+  ConcentratedGaussian reset() const;
+  ConcentratedGaussian transportTo(const T& x_hat) const;
   // Fusion operator
-  NonlinearDensity operator*(const NonlinearDensity& other) const;
+  ConcentratedGaussian operator*(const ConcentratedGaussian& other) const;
 };
 
 #include <gtsam/nonlinear/NonlinearEquality.h>
