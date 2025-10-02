@@ -153,6 +153,50 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
   const VALUE& origin() const { return origin_; }
   const std::optional<Vector>& mean() const { return mean_; }
 
+  /// Get the Gaussian noise model, or return nullopt/throw if not Gaussian.
+  noiseModel::Gaussian::shared_ptr gaussianModel(
+      const std::string& method, bool throwOnFailure = false) const {
+    using noiseModel::Gaussian;
+    const auto& model = this->noiseModel();
+    if (!model) {
+      if (throwOnFailure) {
+        throw std::runtime_error("NonlinearDensity::" + method +
+                                 " requires a noise model");
+      }
+      return nullptr;
+    }
+    auto g = std::dynamic_pointer_cast<Gaussian>(model);
+    if (!g) {
+      if (throwOnFailure) {
+        throw std::runtime_error("NonlinearDensity::" + method +
+                                 " is only implemented for Gaussian noise "
+                                 "models. The noise model used is of type " +
+                                 std::string(typeid(*model).name()));
+      }
+      return nullptr;
+    }
+    return g;
+  }
+
+  /// Get Gaussian covariance, or return nullopt/throw if not Gaussian.
+  std::optional<Matrix> covariance(const std::string& method = "<unknown>",
+                                   bool throwOnFailure = false) const {
+    auto gaussian = gaussianModel(method, throwOnFailure);
+    if (!gaussian) return std::nullopt;
+    return gaussian->covariance();
+  }
+
+  /// Simple, non-templated Gaussian fusion in a common tangent space
+  using Gaussian = std::pair<Vector, Matrix>;  // mean, covariance
+
+  /// Get a Gaussian, or return nullopt if not Gaussian and throw is false
+  std::optional<Gaussian> gaussian(const std::string& method = "<unknown>",
+                                      bool throwOnFailure = false) const {
+    auto cov = covariance(method, throwOnFailure);
+    if (!cov) return std::nullopt;
+    return Gaussian{this->mean_.value_or(Vector::Zero(this->dim())), *cov};
+  }
+
   /// @}
 
  private:

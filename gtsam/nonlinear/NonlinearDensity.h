@@ -18,8 +18,11 @@
 
 #pragma once
 
+#include <gtsam/base/utilities.h>
 #include <gtsam/nonlinear/NonlinearLikelihood.h>
 #include <gtsam/nonlinear/Values.h>
+
+#include <random>  // for std::mt19937_64
 
 namespace gtsam {
 
@@ -28,11 +31,11 @@ namespace gtsam {
  * models, models exactly a (left) extended concentrated Gaussian (L-ECG).
  * @ingroup nonlinear
  */
-template <class VALUE>
-class NonlinearDensity : public NonlinearLikelihood<VALUE> {
+template <class T>
+class NonlinearDensity : public NonlinearLikelihood<T> {
  public:
-  typedef VALUE T;
-  typedef NonlinearLikelihood<VALUE> Base;
+  using Base = NonlinearLikelihood<T>;
+  using Gaussian = typename Base::Gaussian;
 
   /// @name Standard Constructors
   /// @{
@@ -41,12 +44,12 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
   NonlinearDensity() {}
 
   /// Constructor with noise model and optional mean in tangent space
-  NonlinearDensity(Key key, const VALUE& origin, const SharedNoiseModel& model,
+  NonlinearDensity(Key key, const T& origin, const SharedNoiseModel& model,
                    const std::optional<Vector>& mean = {})
       : Base(key, origin, model, mean) {}
 
   /// Constructor with covariance matrix and optional mean in tangent space
-  NonlinearDensity(Key key, const VALUE& origin, const Matrix& covariance,
+  NonlinearDensity(Key key, const T& origin, const Matrix& covariance,
                    const std::optional<Vector>& mean = {})
       : Base(key, origin, noiseModel::Gaussian::Covariance(covariance), mean) {}
 
@@ -94,23 +97,6 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
                : traits<T>::Retract(this->origin_, *(this->mean_), {}, xHm);
   }
 
-  /// Get the Gaussian noise model, or throw if not Gaussian
-  noiseModel::Gaussian::shared_ptr gaussianModel(
-      const std::string& method) const {
-    using noiseModel::Gaussian;
-    const auto& model = this->noiseModel();
-    if (!model)
-      throw std::runtime_error("NonlinearDensity::" + method +
-                               " requires a noise model");
-    auto g = std::dynamic_pointer_cast<Gaussian>(model);
-    if (!g)
-      throw std::runtime_error("NonlinearDensity::" + method +
-                               " is only implemented for Gaussian noise "
-                               "models. The noise model used is of type " +
-                               std::string(typeid(*model).name()));
-    return g;
-  }
-
   /**
    * Calculate the normalization constant for the density.
    * For a Gaussian noise model with covariance Σ, we return
@@ -120,7 +106,7 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
    */
   double negLogConstant() const {
     const size_t n = this->dim();
-    auto gaussian = gaussianModel("negLogConstant");
+    auto gaussian = this->gaussianModel("negLogConstant", /* throw */ true);
     constexpr double log2pi = 1.8378770664093454835606594728112;  // log(2*pi)
     const double logDetSigma = gaussian->logDeterminant();        // log |Σ|
     return 0.5 * n * log2pi + 0.5 * logDetSigma;
@@ -169,7 +155,7 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
    */
   NonlinearDensity reset() const {
     if (!this->mean_) return *this;  // already zero-mean
-    auto g = gaussianModel("reset");
+    auto g = this->gaussianModel("reset", /* throw */ true);
 
     Matrix hatJm;
     const T x_hat = retractMean(&hatJm);
@@ -186,7 +172,7 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
    * @note: Only Gaussian noise models are supported.
    */
   NonlinearDensity transportTo(const T& x_hat) const {
-    auto g = gaussianModel("transportTo");
+    auto g = this->gaussianModel("transportTo", /* throw */ true);
 
     Matrix xHm;  // ∂Retract(origin,m)/∂m
     const T x = retractMean(&xHm);
@@ -197,28 +183,6 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
     const Matrix covHat = hatJm * g->covariance() * hatJm.transpose();
 
     return NonlinearDensity(this->key(), x_hat, Symmetrize(covHat), muHat);
-  }
-
-  /// Simple, non-templated Gaussian fusion in a common tangent space
-  struct Gaussian {
-    Vector m;  //  mean
-    Matrix P;  //  covariance
-
-    /// Fuse two Gaussian distributions into a single Gaussian.
-    inline Gaussian operator*(const Gaussian& other) {
-      const Matrix W1 = this->P.inverse();
-      const Matrix W2 = other.P.inverse();
-      const Matrix P = (W1 + W2).inverse();
-      const Vector m = P * (W1 * this->m + W2 * other.m);
-      return {m, Symmetrize(P)};
-    }
-  };
-
-  /// Get a Gaussian, or throw if not Gaussian
-  Gaussian getGaussian(const std::string& method) const {
-    auto gaussian = gaussianModel(method);
-    return {this->mean_.value_or(Vector::Zero(this->dim())),
-            gaussian->covariance()};
   }
 
   /**
@@ -249,12 +213,12 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
     NonlinearDensity o = other.transportTo(this->origin_);
 
     // 2) Fuse the Gaussians in our tangent space
-    auto g1 = this->getGaussian("operator*");
-    auto g2 = o.getGaussian("operator*");
-    Gaussian fused = g1 * g2;
+    const auto g1 = this->gaussian("operator*", /* throw */ true);
+    const auto g2 = o.gaussian("operator*", /* throw */ true);
+    auto [m, P] = Fuse(*g1, *g2);
 
     // 3) Create a fused NonlinearDensity at our origin with fused mean
-    NonlinearDensity ecg(this->key(), this->origin_, fused.P, fused.m);
+    NonlinearDensity ecg(this->key(), this->origin_, P, m);
 
     // 4) Reset to zero mean
     return ecg.reset();
@@ -266,6 +230,20 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
   /// Helper function to symmetrize a covariance matrix.
   static Matrix Symmetrize(const Matrix& matrix) {
     return 0.5 * (matrix + matrix.transpose());
+  }
+
+  /// Fuse two Gaussian distributions into a single Gaussian.
+  static Gaussian Fuse(const Gaussian& g1, const Gaussian& g2) {
+    const Matrix& P1 = g1.second;
+    const Matrix& P2 = g2.second;
+    const Vector& m1 = g1.first;
+    const Vector& m2 = g2.first;
+
+    const Matrix W1 = P1.inverse();
+    const Matrix W2 = P2.inverse();
+    const Matrix P = (W1 + W2).inverse();
+    const Vector m = P * (W1 * m1 + W2 * m2);
+    return {m, Symmetrize(P)};
   }
 
 #ifdef GTSAM_ENABLE_BOOST_SERIALIZATION

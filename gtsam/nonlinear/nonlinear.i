@@ -681,11 +681,13 @@ virtual class NonlinearLikelihood : gtsam::NoiseModelFactor {
   T origin() const;
   // Optional tangent space mean (may be empty / None)
   std::optional<gtsam::Vector> mean() const;
-  double likelihood(const T& x) const;
-  // Tangent space residual (no Jacobian return variant)
-  gtsam::Vector evaluateError(const T& x) const;
-  // Negative log-likelihood (robust) for a single VALUE (not the Values-based factor interface)
+  std::optional<gtsam::Matrix> covariance() const;
+  std::optional<std::pair<gtsam::Matrix, gtsam::Matrix>> gaussian() const;
+
+  // T-versions (vs. values)
   double error(const T& x) const;
+  double likelihood(const T& x) const;
+  gtsam::Vector evaluateError(const T& x) const;
 
   // enabling serialization functionality
   void serialize() const;
