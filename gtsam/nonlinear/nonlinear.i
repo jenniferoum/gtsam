@@ -713,8 +713,8 @@ template <T = {double,
 class ConcentratedGaussian : gtsam::ExtendedPriorFactor<T> {
   ConcentratedGaussian();
   // Constructors mirroring header (origin terminology)
-  ConcentratedGaussian(gtsam::Key key, const T& origin, const gtsam::SharedNoiseModel& noiseModel);
-  ConcentratedGaussian(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::SharedNoiseModel& noiseModel);
+  ConcentratedGaussian(gtsam::Key key, const T& origin, const gtsam::noiseModel::Gaussian::shared_ptr& noiseModel);
+  ConcentratedGaussian(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::noiseModel::Gaussian::shared_ptr& noiseModel);
   ConcentratedGaussian(gtsam::Key key, const T& origin, const gtsam::Matrix& covariance);
   ConcentratedGaussian(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::Matrix& covariance);
   // Return element corresponding to mean (no Jacobian variant)
