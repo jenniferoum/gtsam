@@ -106,7 +106,8 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
    */
   double negLogConstant() const {
     const size_t n = this->dim();
-    auto gaussian = this->gaussianModel("negLogConstant", /* throw */ true);
+    auto gaussian = this->gaussianModel("NonlinearDensity::negLogConstant",
+                                        /* throw */ true);
     constexpr double log2pi = 1.8378770664093454835606594728112;  // log(2*pi)
     const double logDetSigma = gaussian->logDeterminant();        // log |Σ|
     return 0.5 * n * log2pi + 0.5 * logDetSigma;
@@ -155,7 +156,7 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
    */
   NonlinearDensity reset() const {
     if (!this->mean_) return *this;  // already zero-mean
-    auto g = this->gaussianModel("reset", /* throw */ true);
+    auto g = this->gaussianModel("NonlinearDensity::reset", /* throw */ true);
 
     Matrix hatJm;
     const T x_hat = retractMean(&hatJm);
@@ -172,7 +173,8 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
    * @note: Only Gaussian noise models are supported.
    */
   NonlinearDensity transportTo(const T& x_hat) const {
-    auto g = this->gaussianModel("transportTo", /* throw */ true);
+    auto g =
+        this->gaussianModel("NonlinearDensity::transportTo", /* throw */ true);
 
     Matrix xHm;  // ∂Retract(origin,m)/∂m
     const T x = retractMean(&xHm);
@@ -213,8 +215,8 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
     NonlinearDensity o = other.transportTo(this->origin_);
 
     // 2) Fuse the Gaussians in our tangent space
-    const auto g1 = this->gaussian("operator*", /* throw */ true);
-    const auto g2 = o.gaussian("operator*", /* throw */ true);
+    const auto g1 = this->gaussian("NonlinearDensity::operator*", true);
+    const auto g2 = o.gaussian("NonlinearDensity::operator*", true);
     auto [m, P] = Fuse(*g1, *g2);
 
     // 3) Create a fused NonlinearDensity at our origin with fused mean
@@ -246,7 +248,7 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
     return {m, Symmetrize(P)};
   }
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
   template <class ARCHIVE>

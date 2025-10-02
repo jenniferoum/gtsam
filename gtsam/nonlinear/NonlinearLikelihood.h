@@ -134,7 +134,6 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
   /// Bring the error(const Values&) method into scope.
   using Base::error;
 
-  /// default constructor - only use for serialization
   /// Compute the negative log-likelihood of a given value
   double error(const T& x) const {
     Vector e = evaluateError(x);
@@ -155,20 +154,20 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
 
   /// Get the Gaussian noise model, or return nullopt/throw if not Gaussian.
   noiseModel::Gaussian::shared_ptr gaussianModel(
-      const std::string& method, bool throwOnFailure = false) const {
+      const std::string& method = "<unknown>",
+      bool throwOnFailure = false) const {
     using noiseModel::Gaussian;
     const auto& model = this->noiseModel();
     if (!model) {
       if (throwOnFailure) {
-        throw std::runtime_error("NonlinearDensity::" + method +
-                                 " requires a noise model");
+        throw std::runtime_error(method + " requires a noise model");
       }
       return nullptr;
     }
     auto g = std::dynamic_pointer_cast<Gaussian>(model);
     if (!g) {
       if (throwOnFailure) {
-        throw std::runtime_error("NonlinearDensity::" + method +
+        throw std::runtime_error(method +
                                  " is only implemented for Gaussian noise "
                                  "models. The noise model used is of type " +
                                  std::string(typeid(*model).name()));
@@ -191,7 +190,7 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
 
   /// Get a Gaussian, or return nullopt if not Gaussian and throw is false
   std::optional<Gaussian> gaussian(const std::string& method = "<unknown>",
-                                      bool throwOnFailure = false) const {
+                                   bool throwOnFailure = false) const {
     auto cov = covariance(method, throwOnFailure);
     if (!cov) return std::nullopt;
     return Gaussian{this->mean_.value_or(Vector::Zero(this->dim())), *cov};
