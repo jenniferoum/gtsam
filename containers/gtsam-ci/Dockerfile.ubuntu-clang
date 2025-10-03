@@ -31,7 +31,6 @@ RUN add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy main
 
 RUN apt-get update
 RUN apt-get install -y clang-${COMPILER_VERSION} \
-                        g++-multilib \
                         mold \
                         libtbb-dev
 
