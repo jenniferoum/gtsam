@@ -18,7 +18,6 @@ double lbeta(double a, double b);
 
 double btdtr(double a, double b, double x);
 
-double cbrt(double x);
 double chbevl(double x, double array[], int n);
 double chdtrc(double df, double x);
 double chdtr(double df, double x);
@@ -32,7 +31,6 @@ double ellpe(double x);
 int ellpj(double u, double m, double *sn, double *cn, double *dn, double *ph);
 double ellpk(double x);
 double exp10(double x);
-double exp2(double x);
 
 double expn(int n, double x);
 
@@ -68,12 +66,7 @@ double incbet(double aa, double bb, double xx);
 double incbi(double aa, double bb, double yy0);
 
 double iv(double v, double x);
-double j0(double x);
-double y0(double x);
-double j1(double x);
-double y1(double x);
 
-double jn(int n, double x);
 double jv(double n, double x);
 double k0(double x);
 double k0e(double x);
@@ -87,8 +80,6 @@ double nbdtri(int k, int n, double p);
 
 double ndtr(double a);
 double log_ndtr(double a);
-double erfc(double a);
-double erf(double x);
 double erfinv(double y);
 double erfcinv(double y);
 double ndtri(double y0);
@@ -102,7 +93,6 @@ double poch(double x, double m);
 double psi(double x);
 
 double rgamma(double x);
-double round(double x);
 
 int shichi(double x, double *si, double *ci);
 int sici(double x, double *si, double *ci);
@@ -129,13 +119,10 @@ double yv(double v, double x);
 double tandg(double x);
 double cotdg(double x);
 
-double log1p(double x);
 double log1pmx(double x);
-double expm1(double x);
 double cosm1(double x);
 double lgam1p(double x);
 
-double yn(int n, double x);
 double zeta(double x, double q);
 double zetac(double x);
 
