@@ -45,6 +45,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Restore cache dependencies
+        id: cache-restore
         uses: actions/cache/restore@v3
         with:
           path: ${{ matrix.binary_cache }}
@@ -122,6 +123,8 @@ jobs:
           done
 
       - name: Save cache dependencies
+        # Don't save if it's the exact same
+        if: steps.cache-restore.outputs.cache-matched-key != format('{0}-{1}', matrix.os, hashFiles('vcpkg-info/*'))
         uses: actions/cache/save@v4
         with:
           path: ${{ matrix.binary_cache }}
