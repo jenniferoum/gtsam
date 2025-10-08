@@ -29,8 +29,8 @@
  using namespace gtsam;
  using namespace GeographicLib;
  
- #if GEOGRAPHICLIB_VERSION_MINOR<37
- static const auto& kWGS84 = Geocentric::WGS84();
+ #if GEOGRAPHICLIB_VERSION_MAJOR < 2 && GEOGRAPHICLIB_VERSION_MINOR<37
+ static const auto& kWGS84 = Geocentric::WGS84;
  #else
  static const auto& kWGS84 = Geocentric::WGS84();
  #endif

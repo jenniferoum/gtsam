@@ -88,7 +88,7 @@ jobs:
         if: contains(matrix.name, 'geographiclib') && matrix.build_type == 'Release'
         run: |
           brew upgrade geographiclib --quiet || brew install geographiclib --quiet
-          echo "GTSAM_USE_GEOGRAPHICLIB=ON" >> $GITHUB_ENV
+          echo "GTSAM_ENABLE_GEOGRAPHICLIB=ON" >> $GITHUB_ENV
 
       - name: Build and Test
         run: bash .github/scripts/unix.sh -t
