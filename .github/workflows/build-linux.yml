@@ -18,6 +18,13 @@ jobs:
   build:
     name: ${{ matrix.name }} ${{ matrix.build_type }}
     runs-on: ${{ matrix.os }}
+    container:
+      image: borglab/gtsam-ci:${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.version }}
+      env:
+        CMAKE_BUILD_TYPE: ${{ matrix.build_type }}
+        GTSAM_BUILD_UNSTABLE: ${{ matrix.build_unstable }}
+      volumes:
+        - ${{ github.workspace }}:/gtsam
 
     strategy:
       fail-fast: true
@@ -76,31 +83,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Pull Docker Image
-        run: docker pull borglab/gtsam-ci:${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.version }}
       
       - name: Set Boost Environment (Conditional)
         if : contains(matrix.name, 'boost') && matrix.build_type == 'Release'
         run: |
-          echo "GTSAM_USE_BOOST_FEATURES=ON" >> $GITHUB_ENV
-          echo "GTSAM_ENABLE_BOOST_SERIALIZATION=ON" >> $GITHUB_ENV
+          export GTSAM_USE_BOOST_FEATURES=ON
+          export GTSAM_ENABLE_BOOST_SERIALIZATION=ON
           echo "Using Boost features."
       
       - name: Set GeographicLib Environment (Conditional)
         if: contains(matrix.name, 'geographiclib') && matrix.build_type == 'Release'
         run: |
-          echo "GTSAM_ENABLE_GEOGRAPHICLIB=ON" >> $GITHUB_ENV
-      
+          export GTSAM_ENABLE_GEOGRAPHICLIB=ON
+
       - name: Build and Test
         run: |
-          docker run -v $GITHUB_WORKSPACE:/gtsam \
-            -e GTSAM_USE_BOOST_FEATURES=${{ env.GTSAM_USE_BOOST_FEATURES || 'OFF' }} \
-            -e GTSAM_ENABLE_BOOST_SERIALIZATION=${{ env.GTSAM_ENABLE_BOOST_SERIALIZATION || 'OFF' }} \
-            -e CTEST_OUTPUT_ON_FAILURE=ON \
-            -e CTEST_PARALLEL_LEVEL=2 \
-            -e CMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -e GTSAM_BUILD_UNSTABLE=${{ matrix.build_unstable }} \
-            -e GTSAM_ALLOW_DEPRECATED_SINCE_V43=OFF \
-            -e GTSAM_ENABLE_GEOGRAPHICLIB=${{ env.GTSAM_ENABLE_GEOGRAPHICLIB || 'OFF' }} \
-            borglab/gtsam-ci:${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.version }}
+          .github/scripts/unix.sh -t
