@@ -25,7 +25,6 @@ jobs:
         GTSAM_BUILD_UNSTABLE: ${{ matrix.build_unstable }}
       volumes:
         - ${{ github.workspace }}:/gtsam
-
     strategy:
       fail-fast: true
       matrix:
@@ -83,18 +82,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Set Boost Environment (Conditional)
         if : contains(matrix.name, 'boost') && matrix.build_type == 'Release'
         run: |
-          export GTSAM_USE_BOOST_FEATURES=ON
-          export GTSAM_ENABLE_BOOST_SERIALIZATION=ON
+          echo "GTSAM_USE_BOOST_FEATURES=ON" >> $GITHUB_ENV
+          echo "GTSAM_ENABLE_BOOST_SERIALIZATION=ON" >> $GITHUB_ENV
           echo "Using Boost features."
       
       - name: Set GeographicLib Environment (Conditional)
         if: contains(matrix.name, 'geographiclib') && matrix.build_type == 'Release'
         run: |
-          export GTSAM_ENABLE_GEOGRAPHICLIB=ON
+          echo "GTSAM_ENABLE_GEOGRAPHICLIB=ON" >> $GITHUB_ENV
 
       - name: Build and Test
         run: |
