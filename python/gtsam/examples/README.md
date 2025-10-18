@@ -13,7 +13,7 @@
 | HMMExample                                            | :heavy_check_mark: |
 | ImuFactorsExample2                                    | :heavy_check_mark: |
 | ImuFactorsExample                                     |        |
-| IMUKittiExampleGPS                                    |        |
+| IMUKittiExampleGPS                                    | :heavy_check_mark: |
 | InverseKinematicsExampleExpressions.cpp               |        |
 | ISAM2Example_SmartFactor                              |        |
 | ISAM2_SmartFactorStereo_IMU                           |        |
@@ -35,9 +35,9 @@
 | Pose3SLAMExample_g2o                                  | :heavy_check_mark: |
 | Pose3SLAMExample_initializePose3Chordal               | :heavy_check_mark: |
 | Pose3SLAMExample_initializePose3Gradient              |        |
-| RangeISAMExample_plaza2                               |        |
-| SelfCalibrationExample                                |        |
-| SFMdata                                               |        |     
+| RangeISAMExample_plaza2                               | :heavy_check_mark: |
+| SelfCalibrationExample                                | :heavy_check_mark: |
+| SFMdata                                               | :heavy_check_mark: |     
 | SFMExample_bal_COLAMD_METIS                           |        |
 | SFMExample_bal                                        | :heavy_check_mark: |
 | SFMExample                                            | :heavy_check_mark: |
