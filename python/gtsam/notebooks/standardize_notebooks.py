@@ -107,13 +107,12 @@ def process_notebook(notebook_path: Path) -> bool:
     # Check what's already present
     has_colab_button = has_cell_with_content(cells, "colab.research.google.com")
     has_license = has_cell_with_content(cells, "GTSAM Copyright")
-    has_colab_import = has_cell_with_content(cells, "import google.colab")
+    has_colab_import = has_cell_with_content(cells, "pip install --quiet gtsam-develop")
     
     # Find where to insert new cells
     title_index = find_title_cell_index(cells)
     insert_index = title_index + 1
     
-    # Add cells in reverse order since we're inserting at the same index
     cells_to_add = []
     
     if not has_colab_import:
