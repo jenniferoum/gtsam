@@ -22,7 +22,7 @@
 | OdometryExample                                       | :heavy_check_mark: |
 | PlanarSLAMExample                                     | :heavy_check_mark: |
 | Pose2SLAMExample                                      | :heavy_check_mark: |
-| Pose2SLAMExampleExpressions                           | :heavy_check_mark: |
+| Pose2SLAMExampleExpressions                           | ExpressionFactorGraph not yet exposed through Python |
 | Pose2SLAMExample_g2o                                  | :heavy_check_mark: |
 | Pose2SLAMExample_graph                                | :heavy_check_mark: |
 | Pose2SLAMExample_graphviz                             | :heavy_check_mark: |
