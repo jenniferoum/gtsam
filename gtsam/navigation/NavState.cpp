@@ -451,11 +451,7 @@ Vector9 NavState::coriolis(double dt, const Vector3& omega, bool secondOrder,
   // We would also experience a rotation of (omega*dt) over time - so, counteract by compensating rotation by (-omega * dt)
   // Integrate centrifugal & coriolis accelerations to yield position, velocity perturbations
 
-
-
-
   Vector9 n_xi;
-
   // Coriolis (first order) acceleration corrections
   dR(n_xi) << ((-dt) * omega);
   dP(n_xi) << ((-dt2) * omega_cross_vel); // NOTE(luca): we got rid of the 2 wrt INS paper
@@ -477,7 +473,6 @@ Vector9 NavState::coriolis(double dt, const Vector3& omega, bool secondOrder,
   dV(xi) = nRb.unrotate(dV(n_xi), H ? &D_dV_R : 0);
 
   // Assemble Jacobians
-
   if (H) {
     H->setZero();
     const Matrix3 Omega = skewSymmetric(omega);
