@@ -8,7 +8,7 @@
 #include <gtsam/base/testLie.h>
 #include <CppUnitLite/TestHarness.h>
 
-#include <gtsam_unstable/geometry/ABC.h> // Include your ABC.h file
+#include <gtsam_unstable/geometry/ABCFilter.h>
 #include <gtsam/navigation/EquivariantFilter.h>
 
 using namespace gtsam;
@@ -226,7 +226,7 @@ TEST(ABC, G_GroupOperations) {
 
     // Test g * g.inv() == identity
     GN identity_check = g1 * g1_inv;
-    GN expected_identity = GN::identity(N_TEST);
+    GN expected_identity = GN::identity();
     EXPECT(assert_equal(identity_check.A, expected_identity.A, 1e-9));
     EXPECT(assert_equal(identity_check.a, expected_identity.a, 1e-9));
     EXPECT((ArraysEqual(identity_check.B, expected_identity.B)));
@@ -252,9 +252,9 @@ TEST(ABC, G_GroupOperations) {
 	EXPECT(ArraysEqual(g_retracted.B, (g1 * GN::exp(v_tangent)).B));
 
     // Test traits for G
-    EXPECT(assert_equal(traits<GN>::Identity().A, GN::identity(N_TEST).A, 1e-9));
-	EXPECT(assert_equal(traits<GN>::Identity().a, GN::identity(N_TEST).a, 1e-9));
-	EXPECT(ArraysEqual(traits<GN>::Identity().B, GN::identity(N_TEST).B));
+    EXPECT(assert_equal(traits<GN>::Identity().A, GN::identity().A, 1e-9));
+	EXPECT(assert_equal(traits<GN>::Identity().a, GN::identity().a, 1e-9));
+	EXPECT(ArraysEqual(traits<GN>::Identity().B, GN::identity().B));
     //testLie<GN>(g1, g2, 1e-9);
 }
 
@@ -377,7 +377,7 @@ TEST(ABC, ABCGeometry_lift) {
     u_data.Sigma = I_6x6;
     
     Vector6 u = u_data.toInputVector();
-    typename GN::TangentVector L = xi.lift(u);
+    typename GN::TangentVector L = StateFilterOps<N_TEST>::lift(xi, u);
 
     // Expected values
     Vector3 expected_L_head = u_data.w - xi.b;
@@ -542,7 +542,7 @@ TEST(ABC, EqFilter){
     using M = abc_eqf_lib::State<N_TEST>;
     using G = abc_eqf_lib::Group<N_TEST>;
     using Geometry = ABCGeometry<N_TEST>;
-    using EqFilter = abc_eqf_lib::EqF<G, M, Geometry>;
+    using EqFilter = gtsam::EqF<G, M, Geometry>;
     
     const G g_0;
     const M xi_ref; // Reference state (xi circle) and not inital state?

@@ -8,18 +8,19 @@
  * Estimation with Online Calibration" by Fornasier et al. Authors: Darshan
  * Rajasekaran & Jennifer Oum
  */
-#include <gtsam_unstable/geometry/ABC.h>
+#include <gtsam_unstable/geometry/ABCFilter.h>
 #include <gtsam/navigation/EquivariantFilter.h>
+#include <gtsam/slam/dataset.h>
 
 // Use namespace for convenience
+using namespace gtsam;
 using namespace gtsam::abc_eqf_lib;
+
 constexpr size_t n = 1;  // Number of calibration states
-using M = abc_eqf_lib::State<n>;
-using G = abc_eqf_lib::Group<n>;
+using M = State<n>;
+using G = Group<n>;
 using Geometry = ABCGeometry<n>;
-using EqFilter = gtsam::EqF<G, M, Geometry>; 
-using gtsam::abc_eqf_lib::InputData;
-using gtsam::abc_eqf_lib::Measurement;
+using EqFilter = gtsam::EqF<G, M, Geometry>;
 
 /// Data structure for ground-truth, input and output data
 struct Data {

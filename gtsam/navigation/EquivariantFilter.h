@@ -12,25 +12,19 @@
 #ifndef EQUIVARIANTFILTER_H
 #define EQUIVARIANTFILTER_H
 #pragma once
+
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/Vector.h>
+#include <gtsam/navigation/LieGroupEKF.h>
+
+// TODO: ABC-specific, remove when the filter is made truly generic. 
+// Currently line 341 uses Rot3::Hat() directly
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Unit3.h>
-#include <gtsam/inference/Symbol.h>
-#include <gtsam/navigation/ImuBias.h>
-#include <gtsam/nonlinear/Values.h>
-#include <gtsam/slam/dataset.h>
 
-#include <chrono>
 #include <cmath>
-#include <fstream>
 #include <functional>
-#include <iostream>
-#include <numeric>  // For std::accumulate
-#include <string>
-#include <vector>
-
-#include <gtsam/navigation/LieGroupEKF.h>
+#include <stdexcept>
 
 // All implementations are wrapped in this namespace to avoid conflicts
 namespace gtsam {
