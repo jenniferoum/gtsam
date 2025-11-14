@@ -8,7 +8,7 @@
 #include <gtsam/base/testLie.h>
 #include <CppUnitLite/TestHarness.h>
 
-#include <gtsam_unstable/geometry/ABC.h> // Include your ABC.h file
+#include <gtsam_unstable/geometry/ABC.h>
 #include <gtsam/navigation/EquivariantFilter.h>
 
 using namespace gtsam;
@@ -406,9 +406,8 @@ TEST(ABC, ABCGeometry_stateMatrixA) {
     u_data.w = (Vector(3) << 0.5, 0.6, 0.7).finished();
     u_data.Sigma = I_6x6;
 
-    Matrix A_matrix = ABCGeometryN::stateMatrixA(X_hat, u_data);
-
     Vector6 u = u_data.toInputVector();
+    Matrix A_matrix = ABCGeometryN::stateMatrixA(X_hat, u);
     Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inverse(), u).head<3>());
 
     Matrix expected_A1 = Matrix::Zero(6, 6);
@@ -438,9 +437,8 @@ TEST(ABC, ABCGeometry_stateTransitionMatrix) {
 
     double dt = 0.1;
 
-    Matrix Phi = ABCGeometryN::stateTransitionMatrix(u_data, dt, X_hat);
-
     Vector6 u = u_data.toInputVector();
+    Matrix Phi = ABCGeometryN::stateTransitionMatrix(u, dt, X_hat);
     Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inv(), u).head<3>());
     Matrix Phi1 = Matrix::Zero(6, 6);
     Matrix3 Phi12 = -dt * (I_3x3 + (dt / 2) * W0 + ((dt * dt) / 6) * W0 * W0);
@@ -491,7 +489,7 @@ TEST(ABC, ABCGeometry_processNoise) {
         0, 0, 0, 0, 5, 0,
         0, 0, 0, 0, 0, 6).finished();
 
-    Matrix Q = ABCGeometryN::processNoise(u_data);
+    Matrix Q = ABCGeometryN::processNoise(u_data.Sigma);
 
     Matrix expected_Q_cal_part = repBlock(1e-9 * I_3x3, N_TEST);
     Matrix expected_Q = blockDiag(u_data.Sigma, expected_Q_cal_part);
@@ -541,8 +539,7 @@ TEST(ABC, ABCGeometry_processNoise) {
 TEST(ABC, EqFilter){
     using M = abc_eqf_lib::State<N_TEST>;
     using G = abc_eqf_lib::Group<N_TEST>;
-    using Geometry = ABCGeometry<N_TEST>;
-    using EqFilter = abc_eqf_lib::EqF<G, M, Geometry>;
+    using EqFilter = gtsam::EqF<G, M>;
     
     const G g_0;
     const M xi_ref; // Reference state (xi circle) and not inital state?
@@ -565,13 +562,15 @@ TEST(ABC, EqFilter){
     EXPECT(traits<G>::Equals(g_0, X_HatActual, 1e-9));
 
     EXPECT(traits<G>::Equals(X_HatActual, X_HatExpected, 1e-9));
-    // Next check predict
-    typename Geometry::InputDataType u;
+
+    InputData u;
 	u.w = (Vector3() << 0.01, -0.02, 0.015).finished();
 	u.Sigma = I_6x6;
 	double dt = 0.01;
 
-	filter.predict(u, dt);
+    Vector6 u_vec = u.toInputVector();
+    Matrix Q = ABCGeometryN::processNoise(u.Sigma);
+    filter.predict(u_vec, Q, dt);
 
 	EXPECT(traits<G>::Equals(filter.groupEstimate(), filter.state(), 1e-9));
   }

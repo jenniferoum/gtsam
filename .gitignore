@@ -27,3 +27,4 @@ _build
 GEMINI.md
 doc/#*.lyx#
 /cmake-build-debug/
+.venv/
