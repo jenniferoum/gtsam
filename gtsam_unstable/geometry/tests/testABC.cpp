@@ -96,20 +96,21 @@ TEST(ABC, State) {
 }
 
 /* ************************************************************************* */
-TEST(ABC, G_GroupOperations) {
-  Rot3 A1 = Rot3::Rx(0.1);
-  Matrix3 a1 = Rot3::Hat(Vector3(0.01, 0.02, 0.03));
-  std::array<Rot3, 2> B1;
-  B1[0] = Rot3::Ry(0.05);
-  B1[1] = Rot3::Rz(0.06);
-  G2 g1(A1, a1, B1);
+namespace abc_group_examples {
+Rot3 A1 = Rot3::Rx(0.1);
+Matrix3 a1 = Rot3::Hat(Vector3(0.01, 0.02, 0.03));
+std::array<Rot3, 2> B1{Rot3::Ry(0.05), Rot3::Rz(0.06)};
+G2 g1(A1, a1, B1);
 
-  Rot3 A2 = Rot3::Ry(0.2);
-  Matrix3 a2 = Rot3::Hat(Vector3(0.04, 0.05, 0.06));
-  std::array<Rot3, 2> B2;
-  B2[0] = Rot3::Rz(0.07);
-  B2[1] = Rot3::Rx(0.08);
-  G2 g2(A2, a2, B2);
+Rot3 A2 = Rot3::Ry(0.2);
+Matrix3 a2 = Rot3::Hat(Vector3(0.04, 0.05, 0.06));
+std::array<Rot3, 2> B2{Rot3::Rz(0.07), Rot3::Rx(0.08)};
+G2 g2(A2, a2, B2);
+}  // namespace abc_group_examples
+
+/* ************************************************************************* */
+TEST(ABC, GroupOperations) {
+  using namespace abc_group_examples;
 
   // Test group multiplication
   G2 g1_g2 = g1 * g2;
@@ -160,6 +161,21 @@ TEST(ABC, G_GroupOperations) {
   EXPECT(assert_equal(traits<G2>::Identity().a, G2::Identity().a, 1e-9));
   EXPECT(ArraysEqual(traits<G2>::Identity().B, G2::Identity().B));
   // testLie<G2>(g1, g2, 1e-9);
+}
+
+//******************************************************************************
+TEST(ABC, AdjointMap) {
+  using namespace abc_group_examples;
+
+  // Call the specialized AdjointMap
+  G2::Jacobian specialized_Adj = g1.AdjointMap();
+
+  // Call the generic AdjointMap from the base class
+  G2::Jacobian generic_Adj =
+      static_cast<const MatrixLieGroup<G2, 12, 10>*>(&g1)->AdjointMap();
+
+  // Assert that they are equal
+  EXPECT(assert_equal(specialized_Adj, generic_Adj));
 }
 
 /* ************************************************************************* */
