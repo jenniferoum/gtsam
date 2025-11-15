@@ -7,8 +7,9 @@
  * Attitude Estimation with Online Calibration" by Fornasier et al.
  * Authors: Darshan Rajasekaran & Jennifer Oum
  */
-#ifndef ABC_H
-#define ABC_H
+
+#pragma once
+
 /**
  * @file ABC.h
  * @brief Core components for Attitude-Bias-Calibration systems
@@ -26,56 +27,14 @@
 #include <gtsam/geometry/Unit3.h>
 
 namespace gtsam {
-namespace abc_eqf_lib {
-using namespace std;
-using namespace gtsam;
-
-//========================================================================
-// Utility Functions
-//========================================================================
-
-/**
- * @brief Creates a block diagonal matrix from input matrices
- * @param A Matrix A
- * @param B Matrix B
- * @return A single consolidated matrix with A in the top left and B in the
- * bottom right
- */
-Matrix blockDiag(const Matrix& A, const Matrix& B) {
-  if (A.size() == 0) {
-    return B;
-  } else if (B.size() == 0) {
-    return A;
-  } else {
-    Matrix result(A.rows() + B.rows(), A.cols() + B.cols());
-    result.setZero();
-    result.block(0, 0, A.rows(), A.cols()) = A;
-    result.block(A.rows(), A.cols(), B.rows(), B.cols()) = B;
-    return result;
-  }
-}
-
-/**
- * @brief Creates a block diagonal matrix by repeating a matrix 'n' times
- * @param A A matrix
- * @param n Number of times to be repeated
- * @return Block diag matrix with A repeated 'n' times
- */
-Matrix repBlock(const Matrix& A, int n) {
-  if (n <= 0) return Matrix();
-
-  Matrix result = A;
-  for (int i = 1; i < n; i++) {
-    result = blockDiag(result, A);
-  }
-  return result;
-}
+namespace abc {
 
 //========================================================================
 // Core Data Types
 //========================================================================
 
-/// Input data struct for the Biased Attitude System (stores sensor data and noise)
+/// Input data struct for the Biased Attitude System (stores sensor data and
+/// noise)
 struct InputData {
   Vector3 w;                  /// Angular velocity (3-vector)
   Matrix Sigma;               /// Noise covariance (6x6 matrix)
@@ -164,7 +123,8 @@ class State {
   /**
    * Compute the lifted tangent vector from state and input.
    * This implements the lift operation from the equivariant filter paper.
-   * @param u Mathematical input vector (ω, 0) where first 3 are angular velocity
+   * @param u Mathematical input vector (ω, 0) where first 3 are angular
+   * velocity
    * @return Vector Lifted vector in the Lie algebra used for propagation.
    */
   Vector lift(const Vector6& u) const {
@@ -210,7 +170,7 @@ struct Group {
   static constexpr int numSensors = n;
   /// Initialize the symmetry Group
   Group(const Rot3& A = Rot3::Identity(), const Matrix3& a = Matrix3::Zero(),
-    const std::array<Rot3, n>& B = std::array<Rot3, n>{})
+        const std::array<Rot3, n>& B = std::array<Rot3, n>{})
       : A(A), a(a), B(B) {}
 
   /// Group multiplication
@@ -219,7 +179,8 @@ struct Group {
     for (size_t i = 0; i < n; i++) {
       newB[i] = B[i] * other.B[i];
     }
-    return Group(A * other.A, a + Rot3::Hat(A.matrix() * Rot3::Vee(other.a)), newB);
+    return Group(A * other.A, a + Rot3::Hat(A.matrix() * Rot3::Vee(other.a)),
+                 newB);
   }
 
   /// Group inverse
@@ -235,7 +196,7 @@ struct Group {
   Group inverse() const { return inv(); }
 
   /// Identity element
-  static Group identity(int N) { // todo: N is not used here, possibly remove
+  static Group identity(int N) {  // todo: N is not used here, possibly remove
     std::array<Rot3, n> B;
     B.fill(Rot3::Identity());
     return Group(Rot3::Identity(), Matrix3::Zero(), B);
@@ -258,9 +219,10 @@ struct Group {
 
   /// Retract a tangent vector back to the manifold using Expmap
   Group retract(const TangentVector& v,
-            OptionalJacobian<dimension, dimension> H = {},
-            OptionalJacobian<dimension, dimension> Hv = {}) const {
-    return gtsam::traits<Group>::Compose(*this, gtsam::traits<Group>::Expmap(v));
+                OptionalJacobian<dimension, dimension> H = {},
+                OptionalJacobian<dimension, dimension> Hv = {}) const {
+    return gtsam::traits<Group>::Compose(*this,
+                                         gtsam::traits<Group>::Expmap(v));
   }
 
   // Adjoint matrix of this group element (for SE(3) or similar)
@@ -270,11 +232,11 @@ struct Group {
     return Eigen::Matrix<double, dimension, dimension>::Identity();
   }
 
-  static Eigen::Matrix<double, dimension, 1>
-  Logmap(const Group& g, OptionalJacobian<dimension, dimension> H = {}) {
+  static Eigen::Matrix<double, dimension, 1> Logmap(
+      const Group& g, OptionalJacobian<dimension, dimension> H = {}) {
     // 1) Create the identity state and apply group action to it.
-    //    We assume State<N>::identity() exists and operator*(Group, State) is defined
-    //    as the group action (or provide a groupAction(g, xi) helper).
+    //    We assume State<N>::identity() exists and operator*(Group, State) is
+    //    defined as the group action (or provide a groupAction(g, xi) helper).
     State<n> xi0 = State<n>::identity();
 
     // If you have a group action function (g * state) available:
@@ -283,7 +245,8 @@ struct Group {
     // 2) Compute local coordinates between identity and transformed state:
     Vector logv = xi0.localCoordinates(xi_transformed);
 
-    // 3) If Jacobian requested, compute numeric Jacobian of the map Group -> Vector
+    // 3) If Jacobian requested, compute numeric Jacobian of the map Group ->
+    // Vector
     if (H) {
       // lambda: maps Group -> Vector
       auto mapGtoVec = [&xi0](const Group& gg) {
@@ -298,7 +261,6 @@ struct Group {
 
     return logv;
   }
-  
 };
 
 //========================================================================
@@ -306,9 +268,9 @@ struct Group {
 //========================================================================
 /**
  * Implements group actions on the states
- * @param X A symmetry group element Group consisting of the attitude, bias and the
- * calibration components X.a -> Rotation matrix containing the attitude X.b ->
- * A skew-symmetric matrix representing bias X.B -> A vector of Rotation
+ * @param X A symmetry group element Group consisting of the attitude, bias and
+ * the calibration components X.a -> Rotation matrix containing the attitude X.b
+ * -> A skew-symmetric matrix representing bias X.B -> A vector of Rotation
  * matrices for the calibration components
  * @param xi State object
  * xi.R -> Attitude (Rot3)
@@ -406,9 +368,9 @@ Matrix stateActionDiff(const State<N>& xi) {
 }
 
 template <size_t N>
-struct ABCGeometry {
+struct Geometry {
   using InputType = Vector6;  // Mathematical input (ω, 0)
-  using Measurement = abc_eqf_lib::Measurement;
+  using Measurement = abc::Measurement;
   using GType = Group<N>;
   using MType = State<N>;
   using TangentVector = typename GType::TangentVector;
@@ -427,15 +389,15 @@ struct ABCGeometry {
     return xi.lift(u);
   }
 
-
   /**
    * Computes the discrete time state transition matrix
    * @param u Angular velocity
    * @param dt time step
    * @return State transition matrix in discrete time
    */
-  // TODO: new version of this function reduces precision, fails ABCGeometry_stateTransitionMatrix test case as a result
-  static Matrix stateTransitionMatrix(const Vector6& u, double dt, 
+  // TODO: new version of this function reduces precision, fails
+  // Geometry_stateTransitionMatrix test case as a result
+  static Matrix stateTransitionMatrix(const Vector6& u, double dt,
                                       GType X_hat) {
     Matrix A = stateMatrixA(X_hat, u);
     Matrix I = Matrix::Identity(A.rows(), A.cols());
@@ -444,7 +406,7 @@ struct ABCGeometry {
     Matrix A2 = A * A;
     Matrix A3 = A2 * A;
     return I + dt * A + 0.5 * dt * dt * A2 + (1.0 / 6.0) * dt * dt * dt * A3;
-    //return (A * dt).exp().eval();
+    // return (A * dt).exp().eval();
   }
 
   /**
@@ -454,28 +416,36 @@ struct ABCGeometry {
    * Uses Matrix zero and Identity functions
    */
   static Matrix stateMatrixA(const GType& X_hat, const Vector6& u) {
-    Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inverse(), u).template head<3>());
+    Matrix3 W0 =
+        Rot3::Hat(velocityAction(X_hat.inverse(), u).template head<3>());
 
     Matrix A1 = Matrix::Zero(6, 6);
     A1.block<3, 3>(0, 3) = -I_3x3;
     A1.block<3, 3>(3, 3) = W0;
 
-    Matrix A2 = repBlock(W0, N);
-    return blockDiag(A1, A2);
+    std::vector<Matrix> blocks{A1};
+    blocks.insert(blocks.end(), N, W0);
+    return gtsam::diag(blocks);
   }
+
+  /// Computes the input uncertainty propagation matrix
   static Matrix inputMatrix(GType X_hat) {
-    Matrix B1 = blockDiag(X_hat.A.matrix(), X_hat.A.matrix());
+    Matrix B1 = gtsam::diag({X_hat.A.matrix(), X_hat.A.matrix()});
     Matrix B2(3 * N, 3 * N);
 
     for (size_t i = 0; i < N; ++i) {
       B2.block<3, 3>(3 * i, 3 * i) = X_hat.B[i].matrix();
     }
 
-    return blockDiag(B1, B2);
+    return gtsam::diag({B1, B2});
   }
 
-  static Matrix processNoise(const Matrix &Sigma) {
-    return blockDiag(Sigma, repBlock(1e-9 * I_3x3, N));
+  /// Computes the continuous-time process noise covariance in lifted
+  /// coordinates
+  static Matrix processNoise(const Matrix& Sigma) {
+    std::vector<Matrix> blocks{Sigma};
+    blocks.insert(blocks.end(), N, 1e-9 * I_3x3);
+    return gtsam::diag(blocks);
   }
 
   /**
@@ -484,14 +454,14 @@ struct ABCGeometry {
    * Uses the blockdiag matrix
    */
   static Matrix inputMatrixBt(GType X_hat) {
-    Matrix B1 = blockDiag(X_hat.A.matrix(), X_hat.A.matrix());
+    Matrix B1 = gtsam::diag({X_hat.A.matrix(), X_hat.A.matrix()});
     Matrix B2(3 * N, 3 * N);
 
     for (size_t i = 0; i < N; ++i) {
       B2.block<3, 3>(3 * i, 3 * i) = X_hat.B[i].matrix();
     }
 
-    return blockDiag(B1, B2);
+    return gtsam::diag({B1, B2});
   }
   /**
    * Computes the linearized measurement matrix. The structure depends on
@@ -501,11 +471,11 @@ struct ABCGeometry {
    * @return Measurement matrix
    * Uses the matrix zero, Rot3 hat and the Unitvector functions
    */
-static Matrix measurementMatrixC(const Unit3& d, int idx) {
+  static Matrix measurementMatrixC(const Unit3& d, int idx) {
     Matrix Cc = Matrix::Zero(3, 3 * N);
 
     // If the measurement is related to a sensor that has a calibration state
-    if (idx >= 0) { // Set the correct 3x3 block in Cc
+    if (idx >= 0) {  // Set the correct 3x3 block in Cc
       Cc.block<3, 3>(0, 3 * idx) = Rot3::Hat(d.unitVector());
     }
 
@@ -518,7 +488,7 @@ static Matrix measurementMatrixC(const Unit3& d, int idx) {
     temp.block(0, 6, 3, 3 * N) = Cc;
 
     return wedge_d * temp;
-}
+  }
   /**
    * Computes the measurement uncertainty propagation matrix
    * @param idx Calibration index
@@ -546,59 +516,58 @@ static Matrix measurementMatrixC(const Unit3& d, int idx) {
 /**
  * @brief Discrete-time state transition matrix for the EqF.
  *
- * Thin wrapper around ABCGeometry<N>::stateTransitionMatrix
+ * Thin wrapper around Geometry<N>::stateTransitionMatrix
  */
 template <size_t N>
-Matrix stateTransitionMatrix(const Group<N>& X_hat, const Vector6 &u,
+Matrix stateTransitionMatrix(const Group<N>& X_hat, const Vector6& u,
                              double dt) {
-  return ABCGeometry<N>::stateTransitionMatrix(u, dt, X_hat);
+  return Geometry<N>::stateTransitionMatrix(u, dt, X_hat);
 }
 
 /**
  * @brief Input uncertainty propagation matrix Bt for the EqF.
  *
- * Wraps ABCGeometry<N>::inputMatrixBt
+ * Wraps Geometry<N>::inputMatrixBt
  */
 template <size_t N>
 Matrix inputMatrixBt(const Group<N>& X_hat) {
-  return ABCGeometry<N>::inputMatrixBt(X_hat);
+  return Geometry<N>::inputMatrixBt(X_hat);
 }
 
 /**
  * @brief Continuous-time process noise covariance in lifted coordinates.
  *
- * Wraps ABCGeometry<N>::processNoise
+ * Wraps Geometry<N>::processNoise
  */
 template <size_t N>
 Matrix processNoise(const Group<N>& /*X_hat*/, const InputData& data) {
-  return ABCGeometry<N>::processNoise(data);
+  return Geometry<N>::processNoise(data);
 }
 
 /**
  * @brief Linearized measurement matrix C for a direction measurement.
  *
- * Wraps ABCGeometry<N>::measurementMatrixC
+ * Wraps Geometry<N>::measurementMatrixC
  */
 template <size_t N>
 Matrix measurementMatrixC(const Unit3& d, int idx, const Group<N>& /*X_hat*/) {
-  return ABCGeometry<N>::measurementMatrixC(d, idx);
+  return Geometry<N>::measurementMatrixC(d, idx);
 }
 
 /**
  * @brief Measurement uncertainty propagation matrix Dt.
  *
- * Wraps ABCGeometry<N>::outputMatrixDt
+ * Wraps Geometry<N>::outputMatrixDt
  */
 template <size_t N>
 Matrix outputMatrixDt(const Group<N>& X_hat, int idx) {
-  return ABCGeometry<N>::outputMatrixDt(idx, X_hat);
+  return Geometry<N>::outputMatrixDt(idx, X_hat);
 }
-
-}  // namespace abc_eqf_lib
+}  // namespace abc
 
 template <size_t N>
-struct traits<abc_eqf_lib::Group<N>> : internal::LieGroupTraits<abc_eqf_lib::Group<N>> {
-  using GType = abc_eqf_lib::Group<N>;
+struct traits<abc::Group<N>> : internal::LieGroupTraits<abc::Group<N>> {
+  using GType = abc::Group<N>;
   // dimension should exist on GType; if not, set to compile-time constant
   static constexpr int dimension = GType::dimension;
 
@@ -611,7 +580,8 @@ struct traits<abc_eqf_lib::Group<N>> : internal::LieGroupTraits<abc_eqf_lib::Gro
 
   // Compose with optional Jacobian outputs:
   static GType Compose(const GType& g1, const GType& g2,
-                       OptionalJac Hg = OptionalJac(), OptionalJac Hh = OptionalJac()) {
+                       OptionalJac Hg = OptionalJac(),
+                       OptionalJac Hh = OptionalJac()) {
     // If caller requested Jacobians (Hg/Hh) we should fill them.
     // For now provide zero matrices as placeholders.
     if (Hg) *Hg = MatrixDim::Zero();
@@ -621,7 +591,8 @@ struct traits<abc_eqf_lib::Group<N>> : internal::LieGroupTraits<abc_eqf_lib::Gro
 
   // Between (g1^{-1} * g2) with optional Jacobians
   static GType Between(const GType& g1, const GType& g2,
-                       OptionalJac H1 = OptionalJac(), OptionalJac H2 = OptionalJac()) {
+                       OptionalJac H1 = OptionalJac(),
+                       OptionalJac H2 = OptionalJac()) {
     if (H1) *H1 = MatrixDim::Zero();
     if (H2) *H2 = MatrixDim::Zero();
     return g1.inv() * g2;  // or use g1.inverse() if that's your API
@@ -639,22 +610,26 @@ struct traits<abc_eqf_lib::Group<N>> : internal::LieGroupTraits<abc_eqf_lib::Gro
     return GType::exp(v);
   }
 
-  // Local (Logmap): returns tangent vector (g1^-1 * g2). Optionally fill jacobians.
+  // Local (Logmap): returns tangent vector (g1^-1 * g2). Optionally fill
+  // jacobians.
   static Vector Local(const GType& g1, const GType& g2,
-                      OptionalJac H1 = OptionalJac(), OptionalJac H2 = OptionalJac()) {
-    // If you already have a member or free function that returns local coordinates,
-    // use it, e.g., g1.localCoordinates(g2) or State-based approach.
+                      OptionalJac H1 = OptionalJac(),
+                      OptionalJac H2 = OptionalJac()) {
+    // If you already have a member or free function that returns local
+    // coordinates, use it, e.g., g1.localCoordinates(g2) or State-based
+    // approach.
     if (H1) *H1 = MatrixDim::Zero();
     if (H2) *H2 = MatrixDim::Zero();
     // Implement a sensible default: Logmap(Between(g1,g2))
     GType between = g1.inv() * g2;
     // If GType has a log/ln method use it; else, call static log if available:
-    return GType::Logmap(between); // replace with your actual logmap call
+    return GType::Logmap(between);  // replace with your actual logmap call
   }
 
   // Retract: move point g along tangent v
   static GType Retract(const GType& g, const Vector& v,
-                       OptionalJac H = OptionalJac(), OptionalJac Hv = OptionalJac()) {
+                       OptionalJac H = OptionalJac(),
+                       OptionalJac Hv = OptionalJac()) {
     if (H) *H = MatrixDim::Zero();
     if (Hv) *Hv = MatrixDim::Zero();
     // You can either use traits compose/exp or call a member
@@ -663,23 +638,21 @@ struct traits<abc_eqf_lib::Group<N>> : internal::LieGroupTraits<abc_eqf_lib::Gro
   }
 
   static void Print(const GType& g, const std::string& s = "") {
-        std::cout << s << std::endl;
-        std::cout << "A = " << g.A << std::endl;
-        std::cout << "a = " << g.a << std::endl;
-        for(size_t i = 0; i < GType::N; ++i) {
-            std::cout << "B[" << i << "] = " << g.B[i] << std::endl;
-        }
+    std::cout << s << std::endl;
+    std::cout << "A = " << g.A << std::endl;
+    std::cout << "a = " << g.a << std::endl;
+    for (size_t i = 0; i < GType::N; ++i) {
+      std::cout << "B[" << i << "] = " << g.B[i] << std::endl;
     }
-  
+  }
+
   static bool Equals(const GType& g1, const GType& g2, double tol = 1e-9) {
-        if (!g1.A.equals(g2.A, tol)) return false;
-        if (!gtsam::assert_equal<Matrix3>(g1.a, g2.a, tol)) return false;
-        for(size_t i = 0; i < GType::numSensors; ++i) {
-            if (!g1.B[i].equals(g2.B[i], tol)) return false;
-        }
-        return true;
+    if (!g1.A.equals(g2.A, tol)) return false;
+    if (!gtsam::assert_equal<Matrix3>(g1.a, g2.a, tol)) return false;
+    for (size_t i = 0; i < GType::numSensors; ++i) {
+      if (!g1.B[i].equals(g2.B[i], tol)) return false;
     }
+    return true;
+  }
 };
 }  // namespace gtsam
-
-#endif  // ABC_H

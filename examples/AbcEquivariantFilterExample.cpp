@@ -1,5 +1,5 @@
 /**
- * @file ABC_EQF_Demo.cpp
+ * @file AbcEquivariantFilterExample.cpp
  * @brief Demonstration of the full Attitude-Bias-Calibration Equivariant Filter
  *
  * This demo shows the Equivariant Filter (EqF) for attitude estimation
@@ -8,18 +8,18 @@
  * Estimation with Online Calibration" by Fornasier et al. Authors: Darshan
  * Rajasekaran & Jennifer Oum
  */
-#include <gtsam_unstable/geometry/ABC.h>
 #include <gtsam/navigation/EquivariantFilter.h>
+#include <gtsam_unstable/geometry/ABC.h>
 
 // Use namespace for convenience
-using namespace gtsam::abc_eqf_lib;
+using namespace gtsam;
 constexpr size_t n = 1;  // Number of calibration states
-using M = abc_eqf_lib::State<n>;
-using G = abc_eqf_lib::Group<n>;
+using M = abc::State<n>;
+using G = abc::Group<n>;
 using EqFilter = gtsam::EqF<G, M>;
-using Geometry = ABCGeometry<n>;
-using gtsam::abc_eqf_lib::InputData;
-using gtsam::abc_eqf_lib::Measurement;
+using Geometry = abc::Geometry<n>;
+using gtsam::abc::InputData;
+using gtsam::abc::Measurement;
 
 /// Data structure for ground-truth, input and output data
 struct Data {
@@ -419,7 +419,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Initialize the EqF filter with one calibration state
-    int N = 2; // number of sensors
+    int N = 2;  // number of sensors
 
     // Initial covariance - larger values allow faster convergence
     Matrix initialSigma = Matrix::Identity(6 + 3 * n, 6 + 3 * n);
