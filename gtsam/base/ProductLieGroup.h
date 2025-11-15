@@ -20,6 +20,7 @@
 
 #include <gtsam/base/Lie.h>
 
+#include <array>
 #include <utility>  // pair
 
 namespace gtsam {
@@ -254,9 +255,268 @@ class ProductLieGroup : public std::pair<G, H> {
   /// @}
 };
 
+/**
+ * @brief Template to construct the N-fold power of a Lie group
+ * Represents the group G^N = G x G x ... x G (N times)
+ * Assumes Lie group structure for G and N >= 2
+ */
+template <typename G, int N>
+class PowerLieGroup : public std::array<G, N> {
+  static_assert(N >= 2, "PowerLieGroup requires N >= 2");
+  GTSAM_CONCEPT_ASSERT(IsLieGroup<G>);
+
+ public:
+  /// Base array type
+  typedef std::array<G, N> Base;
+
+ protected:
+  /// Dimension of the base group
+  static constexpr size_t baseDimension = traits<G>::dimension;
+
+ public:
+  /// @name Standard Constructors
+  /// @{
+
+  /// Default constructor yields identity
+  PowerLieGroup() { this->fill(traits<G>::Identity()); }
+
+  /// Construct from array of group elements
+  PowerLieGroup(const Base& elements) : Base(elements) {}
+
+  /// Construct from initializer list
+  PowerLieGroup(const std::initializer_list<G>& elements) {
+    if (elements.size() != N) {
+      throw std::invalid_argument(
+          "PowerLieGroup: initializer list size must equal N");
+    }
+    std::copy(elements.begin(), elements.end(), this->begin());
+  }
+
+  /// @}
+  /// @name Group Operations
+  /// @{
+
+  typedef multiplicative_group_tag group_flavor;
+
+  /// Identity element
+  static PowerLieGroup Identity() { return PowerLieGroup(); }
+
+  /// Group multiplication
+  PowerLieGroup operator*(const PowerLieGroup& other) const {
+    PowerLieGroup result;
+    for (int i = 0; i < N; ++i) {
+      result[i] = traits<G>::Compose((*this)[i], other[i]);
+    }
+    return result;
+  }
+
+  /// Group inverse
+  PowerLieGroup inverse() const {
+    PowerLieGroup result;
+    for (int i = 0; i < N; ++i) {
+      result[i] = traits<G>::Inverse((*this)[i]);
+    }
+    return result;
+  }
+
+  /// Compose with another element (same as operator*)
+  PowerLieGroup compose(const PowerLieGroup& g) const { return (*this) * g; }
+
+  /// Calculate relative transformation
+  PowerLieGroup between(const PowerLieGroup& g) const {
+    return this->inverse() * g;
+  }
+
+  /// @}
+  /// @name Manifold Operations
+  /// @{
+
+  /// Manifold dimension
+  static constexpr size_t dimension = N * baseDimension;
+
+  /// Return manifold dimension
+  static size_t Dim() { return dimension; }
+
+  /// Return manifold dimension
+  size_t dim() const { return dimension; }
+
+  /// Tangent vector type
+  typedef Eigen::Matrix<double, dimension, 1> TangentVector;
+
+  /// Chart Jacobian type
+  typedef OptionalJacobian<dimension, dimension> ChartJacobian;
+
+  /// Retract to manifold
+  PowerLieGroup retract(const TangentVector& v, ChartJacobian H1 = {},
+                        ChartJacobian H2 = {}) const {
+    if (H1 || H2) {
+      throw std::runtime_error(
+          "PowerLieGroup::retract derivatives not implemented yet");
+    }
+    PowerLieGroup result;
+    for (int i = 0; i < N; ++i) {
+      const auto vi = v.template segment<baseDimension>(i * baseDimension);
+      result[i] = traits<G>::Retract((*this)[i], vi);
+    }
+    return result;
+  }
+
+  /// Local coordinates on manifold
+  TangentVector localCoordinates(const PowerLieGroup& g, ChartJacobian H1 = {},
+                                 ChartJacobian H2 = {}) const {
+    if (H1 || H2) {
+      throw std::runtime_error(
+          "PowerLieGroup::localCoordinates derivatives not implemented yet");
+    }
+    TangentVector v;
+    for (int i = 0; i < N; ++i) {
+      const auto vi = traits<G>::Local((*this)[i], g[i]);
+      v.template segment<baseDimension>(i * baseDimension) = vi;
+    }
+    return v;
+  }
+
+  /// @}
+  /// @name Lie Group Operations
+  /// @{
+
+ protected:
+  /// Jacobian types for internal use
+  typedef Eigen::Matrix<double, dimension, dimension> Jacobian;
+  typedef Eigen::Matrix<double, baseDimension, baseDimension> BaseJacobian;
+
+ public:
+  /// Compose with Jacobians
+  PowerLieGroup compose(const PowerLieGroup& other, ChartJacobian H1,
+                        ChartJacobian H2 = {}) const {
+    std::array<BaseJacobian, N> jacobians;
+    PowerLieGroup result;
+    for (int i = 0; i < N; ++i) {
+      result[i] = traits<G>::Compose((*this)[i], other[i],
+                                     H1 ? &jacobians[i] : nullptr);
+    }
+    if (H1) {
+      H1->setZero();
+      for (int i = 0; i < N; ++i) {
+        H1->template block<baseDimension, baseDimension>(
+            i * baseDimension, i * baseDimension) = jacobians[i];
+      }
+    }
+    if (H2) *H2 = Jacobian::Identity();
+    return result;
+  }
+
+  /// Between with Jacobians
+  PowerLieGroup between(const PowerLieGroup& other, ChartJacobian H1,
+                        ChartJacobian H2 = {}) const {
+    std::array<BaseJacobian, N> jacobians;
+    PowerLieGroup result;
+    for (int i = 0; i < N; ++i) {
+      result[i] = traits<G>::Between((*this)[i], other[i],
+                                     H1 ? &jacobians[i] : nullptr);
+    }
+    if (H1) {
+      H1->setZero();
+      for (int i = 0; i < N; ++i) {
+        H1->template block<baseDimension, baseDimension>(
+            i * baseDimension, i * baseDimension) = jacobians[i];
+      }
+    }
+    if (H2) *H2 = Jacobian::Identity();
+    return result;
+  }
+
+  /// Inverse with Jacobian
+  PowerLieGroup inverse(ChartJacobian D) const {
+    std::array<BaseJacobian, N> jacobians;
+    PowerLieGroup result;
+    for (int i = 0; i < N; ++i) {
+      result[i] = traits<G>::Inverse((*this)[i], D ? &jacobians[i] : nullptr);
+    }
+    if (D) {
+      D->setZero();
+      for (int i = 0; i < N; ++i) {
+        D->template block<baseDimension, baseDimension>(
+            i * baseDimension, i * baseDimension) = jacobians[i];
+      }
+    }
+    return result;
+  }
+
+  /// Exponential map
+  static PowerLieGroup Expmap(const TangentVector& v, ChartJacobian Hv = {}) {
+    std::array<BaseJacobian, N> jacobians;
+    PowerLieGroup result;
+    for (int i = 0; i < N; ++i) {
+      const auto vi = v.template segment<baseDimension>(i * baseDimension);
+      result[i] = traits<G>::Expmap(vi, Hv ? &jacobians[i] : nullptr);
+    }
+    if (Hv) {
+      Hv->setZero();
+      for (int i = 0; i < N; ++i) {
+        Hv->template block<baseDimension, baseDimension>(
+            i * baseDimension, i * baseDimension) = jacobians[i];
+      }
+    }
+    return result;
+  }
+
+  /// Logarithmic map
+  static TangentVector Logmap(const PowerLieGroup& p, ChartJacobian Hp = {}) {
+    std::array<BaseJacobian, N> jacobians;
+    TangentVector v;
+    for (int i = 0; i < N; ++i) {
+      const auto vi = traits<G>::Logmap(p[i], Hp ? &jacobians[i] : nullptr);
+      v.template segment<baseDimension>(i * baseDimension) = vi;
+    }
+    if (Hp) {
+      Hp->setZero();
+      for (int i = 0; i < N; ++i) {
+        Hp->template block<baseDimension, baseDimension>(
+            i * baseDimension, i * baseDimension) = jacobians[i];
+      }
+    }
+    return v;
+  }
+
+  /// Local coordinates (same as Logmap)
+  static TangentVector LocalCoordinates(const PowerLieGroup& p,
+                                        ChartJacobian Hp = {}) {
+    return Logmap(p, Hp);
+  }
+
+  /// Right multiplication by exponential map
+  PowerLieGroup expmap(const TangentVector& v) const {
+    return compose(PowerLieGroup::Expmap(v));
+  }
+
+  /// Logarithmic map for relative transformation
+  TangentVector logmap(const PowerLieGroup& g) const {
+    return PowerLieGroup::Logmap(between(g));
+  }
+
+  /// Adjoint map
+  Jacobian AdjointMap() const {
+    Jacobian adj = Jacobian::Zero();
+    for (int i = 0; i < N; ++i) {
+      const auto adjGi = traits<G>::AdjointMap((*this)[i]);
+      adj.template block<baseDimension, baseDimension>(
+          i * baseDimension, i * baseDimension) = adjGi;
+    }
+    return adj;
+  }
+
+  /// @}
+};
+
 /// Traits specialization for ProductLieGroup
 template <typename G, typename H>
 struct traits<ProductLieGroup<G, H>>
     : internal::LieGroupTraits<ProductLieGroup<G, H>> {};
+
+/// Traits specialization for PowerLieGroup
+template <typename G, int N>
+struct traits<PowerLieGroup<G, N>>
+    : internal::LieGroupTraits<PowerLieGroup<G, N>> {};
 
 }  // namespace gtsam
