@@ -27,6 +27,7 @@
 
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/MatrixLieGroup.h>
+#include <gtsam/base/ProductLieGroup.h>
 #include <gtsam/base/Vector.h>
 #include <gtsam/base/numericalDerivative.h>
 #include <gtsam/geometry/Rot3.h>
@@ -46,6 +47,10 @@ inline Vector6 toInputVector(const Vector3& w) {
   return (Vector6() << w, Z_3x1).finished();
 }
 
+/// Bundle of calibration rotations modeled as a Lie group
+template <size_t N>
+using Calibrations = PowerLieGroup<Rot3, N>;
+
 //========================================================================
 // State Manifold
 //========================================================================
@@ -54,21 +59,17 @@ inline Vector6 toInputVector(const Vector3& w) {
 template <size_t N>
 class State {
  public:
-  Rot3 R;                 // Attitude rotation matrix R
-  Vector3 b;              // Gyroscope bias b
-  std::array<Rot3, N> S;  // Sensor calibrations S
+  Rot3 R;             // Attitude rotation matrix R
+  Vector3 b;          // Gyroscope bias b
+  Calibrations<N> S;  // Sensor calibrations S
 
   /// Constructor
   State(const Rot3& R = Rot3(), const Vector3& b = Z_3x1,
-        const std::array<Rot3, N>& S = std::array<Rot3, N>{})
+        const Calibrations<N>& S = Calibrations<N>())
       : R(R), b(b), S(S) {}
 
   /// Identity function
-  static State identity() {
-    std::array<Rot3, N> S_id{};
-    S_id.fill(Rot3());
-    return State(Rot3(), Z_3x1, S_id);
-  }
+  static State identity() { return State(Rot3(), Z_3x1, Calibrations<N>()); }
 
   /**
    * Compute Local coordinates in the state relative to another state.
@@ -84,9 +85,7 @@ class State {
     eps.segment<3>(3) = other.b - b;
 
     // Remaining elements - calibrations
-    for (size_t i = 0; i < N; i++) {
-      eps.segment<3>(6 + 3 * i) = S[i].logmap(other.S[i]);
-    }
+    eps.template segment<3 * N>(6) = S.logmap(other.S);
 
     return eps;
   }
@@ -103,10 +102,9 @@ class State {
     }
     Rot3 newR = R.expmap(v.head<3>());
     Vector3 newB = b + v.segment<3>(3);
-    std::array<Rot3, N> newS;
-    for (size_t i = 0; i < N; i++) {
-      newS[i] = S[i].expmap(v.segment<3>(6 + 3 * i));
-    }
+    typename Calibrations<N>::TangentVector deltaS;
+    deltaS = v.template segment<3 * N>(6);
+    Calibrations<N> newS = S.expmap(deltaS);
     return State(newR, newB, newS);
   }
 
@@ -151,14 +149,14 @@ struct Group : public MatrixLieGroup<Group<n>, 6 + 3 * n, 4 + 3 * n> {
   using LieAlgebra = MatrixType;
   static constexpr int numSensors = n;
 
-  Rot3 A;                 /// First SO(3) element
-  Matrix3 a;              /// so(3) element (skew-symmetric matrix)
-  std::array<Rot3, n> B;  /// List of SO(3) elements for calibration
+  Rot3 A;             /// First SO(3) element
+  Matrix3 a;          /// so(3) element (skew-symmetric matrix)
+  Calibrations<n> B;  /// Calibration group elements
 
   /// Default-initialize to identity
-  Group() : A(), a(Matrix3::Zero()) { B.fill(Rot3()); }
+  Group() : A(), a(Matrix3::Zero()), B() {}
 
-  Group(const Rot3& A_in, const Matrix3& a_in, const std::array<Rot3, n>& B_in)
+  Group(const Rot3& A_in, const Matrix3& a_in, const Calibrations<n>& B_in)
       : A(A_in), a(a_in), B(B_in) {}
 
   static Group Identity() { return Group(); }
@@ -216,10 +214,7 @@ struct Group : public MatrixLieGroup<Group<n>, 6 + 3 * n, 4 + 3 * n> {
 
   /// Group multiplication
   Group operator*(const Group<n>& other) const {
-    std::array<Rot3, n> newB;
-    for (size_t i = 0; i < n; i++) {
-      newB[i] = B[i] * other.B[i];
-    }
+    Calibrations<n> newB = B * other.B;
     return Group(A * other.A, a + Rot3::Hat(A.matrix() * Rot3::Vee(other.a)),
                  newB);
   }
@@ -227,10 +222,7 @@ struct Group : public MatrixLieGroup<Group<n>, 6 + 3 * n, 4 + 3 * n> {
   /// Group inverse
   Group inverse() const {
     Matrix3 inverseA = A.inverse().matrix();
-    std::array<Rot3, n> inverseB;
-    for (size_t i = 0; i < n; i++) {
-      inverseB[i] = B[i].inverse();
-    }
+    Calibrations<n> inverseB = B.inverse();
     return Group(A.inverse(), -Rot3::Hat(inverseA * Rot3::Vee(a)), inverseB);
   }
 
@@ -245,10 +237,9 @@ struct Group : public MatrixLieGroup<Group<n>, 6 + 3 * n, 4 + 3 * n> {
     Vector3 a_vee = Rot3::ExpmapDerivative(-x.template head<3>()) *
                     x.template segment<3>(3);
     Matrix3 a = Rot3::Hat(a_vee);
-    std::array<Rot3, n> B;
-    for (size_t i = 0; i < n; i++) {
-      B[i] = Rot3::Expmap(x.template segment<3>(6 + 3 * i));
-    }
+    typename Calibrations<n>::TangentVector xB;
+    xB = x.template segment<3 * n>(6);
+    Calibrations<n> B = Calibrations<n>::Expmap(xB);
     if (H) *H = Eigen::Matrix<double, dimension, dimension>::Zero();
     return Group(A, a, B);
   }
@@ -326,7 +317,7 @@ struct Group : public MatrixLieGroup<Group<n>, 6 + 3 * n, 4 + 3 * n> {
  */
 template <size_t N>
 State<N> operator*(const Group<N>& X, const State<N>& xi) {
-  std::array<Rot3, N> new_S;
+  Calibrations<N> new_S;
 
   for (size_t i = 0; i < N; i++) {
     new_S[i] = X.A.inverse() * xi.S[i] * X.B[i];
