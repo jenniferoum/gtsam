@@ -120,7 +120,7 @@ TEST(ABC, G_GroupOperations) {
   EXPECT(assert_equal(g1_g2.B[1], B1[1] * B2[1], 1e-9));
 
   // Test inverse
-  G2 g1_inv = g1.inv();
+  G2 g1_inv = g1.inverse();
   EXPECT(assert_equal(g1_inv.A, A1.inverse(), 1e-9));
   Vector3 expected_a_inv_vee = -A1.inverse().matrix() * Rot3::Vee(a1);
   EXPECT(assert_equal(Rot3::Vee(g1_inv.a), expected_a_inv_vee, 1e-9));
@@ -129,20 +129,19 @@ TEST(ABC, G_GroupOperations) {
 
   // Test g * g.inv() == identity
   G2 identity_check = g1 * g1_inv;
-  G2 expected_identity = G2::identity(2);
+  G2 expected_identity = G2::Identity();
   EXPECT(assert_equal(identity_check.A, expected_identity.A, 1e-9));
   EXPECT(assert_equal(identity_check.a, expected_identity.a, 1e-9));
   EXPECT((ArraysEqual(identity_check.B, expected_identity.B)));
 
   // Test Expmap and Logmap
-  int G_DIM = 6 + 3 * 2;
-  Vector v_tangent = Vector::Zero(G_DIM);
+  G2::TangentVector v_tangent = G2::TangentVector::Zero();
   v_tangent.head<3>() << 0.1, 0.2, 0.3;         // For A
   v_tangent.segment<3>(3) << 0.01, 0.02, 0.03;  // For 'a' part
   v_tangent.segment<3>(6) << 0.04, 0.05, 0.06;  // For B[0]
   v_tangent.segment<3>(9) << 0.07, 0.08, 0.09;  // For B[1]
 
-  G2 g_exp = G2::exp(v_tangent);
+  G2 g_exp = G2::Expmap(v_tangent);
   // Logmap is a placeholder, so we can only check its consistency if
   // exp(log(g)) = g Currently Logmap returns zero, so cannot properly test
   // exp(log(g)) == g
@@ -152,14 +151,14 @@ TEST(ABC, G_GroupOperations) {
   // Test retract on G
   G2 g_retracted = g1.retract(v_tangent);
 
-  EXPECT(assert_equal(g_retracted.A, (g1 * G2::exp(v_tangent)).A, 1e-9));
-  EXPECT(assert_equal(g_retracted.a, (g1 * G2::exp(v_tangent)).a, 1e-9));
-  EXPECT(ArraysEqual(g_retracted.B, (g1 * G2::exp(v_tangent)).B));
+  EXPECT(assert_equal(g_retracted.A, (g1 * G2::Expmap(v_tangent)).A, 1e-9));
+  EXPECT(assert_equal(g_retracted.a, (g1 * G2::Expmap(v_tangent)).a, 1e-9));
+  EXPECT(ArraysEqual(g_retracted.B, (g1 * G2::Expmap(v_tangent)).B));
 
   // Test traits for G
-  EXPECT(assert_equal(traits<G2>::Identity().A, G2::identity(2).A, 1e-9));
-  EXPECT(assert_equal(traits<G2>::Identity().a, G2::identity(2).a, 1e-9));
-  EXPECT(ArraysEqual(traits<G2>::Identity().B, G2::identity(2).B));
+  EXPECT(assert_equal(traits<G2>::Identity().A, G2::Identity().A, 1e-9));
+  EXPECT(assert_equal(traits<G2>::Identity().a, G2::Identity().a, 1e-9));
+  EXPECT(ArraysEqual(traits<G2>::Identity().B, G2::Identity().B));
   // testLie<G2>(g1, g2, 1e-9);
 }
 
@@ -327,7 +326,7 @@ TEST(ABC, Geometry_stateTransitionMatrix) {
 
   Vector6 u = abc::toInputVector(omega);
   Matrix Phi = Geometry2::stateTransitionMatrix(u, dt, X_hat);
-  Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inv(), u).head<3>());
+  Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inverse(), u).head<3>());
   Matrix Phi1 = Matrix::Zero(6, 6);
   Matrix3 Phi12 = -dt * (I_3x3 + (dt / 2) * W0 + ((dt * dt) / 6) * W0 * W0);
   Matrix3 Phi22 = I_3x3 + dt * W0 + ((dt * dt) / 2) * W0 * W0;

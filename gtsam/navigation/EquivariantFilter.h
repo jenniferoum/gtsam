@@ -141,7 +141,7 @@ class EqF : public LieGroupEKF<G> {
 
     Matrix Ct = measurementMatrixC(y.d, y.cal_idx, this->X_);
 
-    Vector3 action_result = outputAction(this->X_.inv(), y.y, y.cal_idx);
+    Vector3 action_result = outputAction(this->X_.inverse(), y.y, y.cal_idx);
     Vector3 delta_vec = Rot3::Hat(y.d.unitVector()) * action_result;
     Matrix Dt = outputMatrixDt(this->X_, y.cal_idx);
 

@@ -26,10 +26,17 @@
  */
 
 #include <gtsam/base/Matrix.h>
+#include <gtsam/base/MatrixLieGroup.h>
 #include <gtsam/base/Vector.h>
 #include <gtsam/base/numericalDerivative.h>
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Unit3.h>
+
+#include <array>
+#include <functional>
+#include <iostream>
+#include <stdexcept>
+#include <vector>
 
 namespace gtsam {
 namespace abc {
@@ -133,19 +140,79 @@ class State {
  * Each element of the B list is associated with a calibration state
  */
 template <size_t n>
-struct Group {
+struct Group : public MatrixLieGroup<Group<n>, 6 + 3 * n, 4 + 3 * n> {
+  using Base = MatrixLieGroup<Group<n>, 6 + 3 * n, 4 + 3 * n>;
+  using typename Base::ChartJacobian;
+  using typename Base::TangentVector;
+
+  static constexpr int dimension = Base::dimension;
+  static constexpr int matrixDim = 4 + 3 * n;
+  using MatrixType = Eigen::Matrix<double, matrixDim, matrixDim>;
+  using LieAlgebra = MatrixType;
+  static constexpr int numSensors = n;
+
   Rot3 A;                 /// First SO(3) element
   Matrix3 a;              /// so(3) element (skew-symmetric matrix)
   std::array<Rot3, n> B;  /// List of SO(3) elements for calibration
 
-  static constexpr int dimension = 6 + 3 * n;
-  using TangentVector = Eigen::Matrix<double, dimension, 1>;
-  static constexpr int numSensors = n;
+  /// Default-initialize to identity
+  Group() : A(), a(Matrix3::Zero()) { B.fill(Rot3()); }
 
-  /// Initialize the symmetry Group
-  Group(const Rot3& A = Rot3(), const Matrix3& a = Matrix3::Zero(),
-        const std::array<Rot3, n>& B = std::array<Rot3, n>{})
-      : A(A), a(a), B(B) {}
+  Group(const Rot3& A_in, const Matrix3& a_in, const std::array<Rot3, n>& B_in)
+      : A(A_in), a(a_in), B(B_in) {}
+
+  static Group Identity() { return Group(); }
+
+  /// Matrix representation used by MatrixLieGroup machinery.
+  MatrixType matrix() const {
+    MatrixType result = MatrixType::Zero();
+    result.template block<3, 3>(0, 0) = A.matrix();
+    result.template block<3, 1>(0, 3) = Rot3::Vee(a);
+    result(3, 3) = 1.0;
+    for (size_t i = 0; i < n; ++i) {
+      const int offset = 4 + static_cast<int>(3 * i);
+      result.template block<3, 3>(offset, offset) = B[i].matrix();
+    }
+    return result;
+  }
+
+  /// hat operator for the Lie algebra
+  static LieAlgebra Hat(const TangentVector& xi) {
+    LieAlgebra result = LieAlgebra::Zero();
+    result.template block<3, 3>(0, 0) = Rot3::Hat(xi.template head<3>());
+    result.template block<3, 1>(0, 3) = xi.template segment<3>(3);
+    for (size_t i = 0; i < n; ++i) {
+      const int offset = 4 + static_cast<int>(3 * i);
+      result.template block<3, 3>(offset, offset) =
+          Rot3::Hat(xi.template segment<3>(6 + 3 * i));
+    }
+    return result;
+  }
+
+  /// vee operator for the Lie algebra
+  static TangentVector Vee(const LieAlgebra& X) {
+    TangentVector xi;
+    xi.template head<3>() = Rot3::Vee(X.template block<3, 3>(0, 0));
+    xi.template segment<3>(3) = X.template block<3, 1>(0, 3);
+    for (size_t i = 0; i < n; ++i) {
+      const int offset = 4 + static_cast<int>(3 * i);
+      xi.template segment<3>(6 + 3 * i) =
+          Rot3::Vee(X.template block<3, 3>(offset, offset));
+    }
+    return xi;
+  }
+
+  struct ChartAtOrigin {
+    static Group Retract(const TangentVector& xi,
+                         ChartJacobian Hxi = ChartJacobian()) {
+      return Group::Expmap(xi, Hxi);
+    }
+
+    static TangentVector Local(const Group& g,
+                               ChartJacobian Hg = ChartJacobian()) {
+      return Group::Logmap(g, Hg);
+    }
+  };
 
   /// Group multiplication
   Group operator*(const Group<n>& other) const {
@@ -158,7 +225,7 @@ struct Group {
   }
 
   /// Group inverse
-  Group inv() const {
+  Group inverse() const {
     Matrix3 inverseA = A.inverse().matrix();
     std::array<Rot3, n> inverseB;
     for (size_t i = 0; i < n; i++) {
@@ -167,47 +234,27 @@ struct Group {
     return Group(A.inverse(), -Rot3::Hat(inverseA * Rot3::Vee(a)), inverseB);
   }
 
-  Group inverse() const { return inv(); }
-
-  /// Identity element
-  static Group identity(int N) {  // todo: N is not used here, possibly remove
-    std::array<Rot3, n> B;
-    B.fill(Rot3());
-    return Group(Rot3(), Matrix3::Zero(), B);
-  }
-
   /// Exponential map of the tangent space elements to the group
-  static Group exp(const Vector& x) {
+  static Group Expmap(const TangentVector& x,
+                      OptionalJacobian<dimension, dimension> H =
+                          OptionalJacobian<dimension, dimension>()) {
     if (x.size() != static_cast<Eigen::Index>(6 + 3 * n)) {
       throw std::invalid_argument("Vector size mismatch for group exponential");
     }
-    Rot3 A = Rot3::Expmap(x.head<3>());
-    Vector3 a_vee = Rot3::ExpmapDerivative(-x.head<3>()) * x.segment<3>(3);
+    Rot3 A = Rot3::Expmap(x.template head<3>());
+    Vector3 a_vee = Rot3::ExpmapDerivative(-x.template head<3>()) *
+                    x.template segment<3>(3);
     Matrix3 a = Rot3::Hat(a_vee);
     std::array<Rot3, n> B;
     for (size_t i = 0; i < n; i++) {
-      B[i] = Rot3::Expmap(x.segment<3>(6 + 3 * i));
+      B[i] = Rot3::Expmap(x.template segment<3>(6 + 3 * i));
     }
+    if (H) *H = Eigen::Matrix<double, dimension, dimension>::Zero();
     return Group(A, a, B);
   }
 
-  /// Retract a tangent vector back to the manifold using Expmap
-  Group retract(const TangentVector& v,
-                OptionalJacobian<dimension, dimension> H = {},
-                OptionalJacobian<dimension, dimension> Hv = {}) const {
-    return gtsam::traits<Group>::Compose(*this,
-                                         gtsam::traits<Group>::Expmap(v));
-  }
-
-  // Adjoint matrix of this group element (for SE(3) or similar)
-  Eigen::Matrix<double, dimension, dimension> AdjointMap() const {
-    // TODO: implement properly for your group structure.
-    // Placeholder: identity matrix compiles but is mathematically wrong.
-    return Eigen::Matrix<double, dimension, dimension>::Identity();
-  }
-
-  static Eigen::Matrix<double, dimension, 1> Logmap(
-      const Group& g, OptionalJacobian<dimension, dimension> H = {}) {
+  static TangentVector Logmap(const Group& g,
+                              OptionalJacobian<dimension, dimension> H = {}) {
     // 1) Create the identity state and apply group action to it.
     //    We assume State<N>::identity() exists and operator*(Group, State) is
     //    defined as the group action (or provide a groupAction(g, xi) helper).
@@ -217,23 +264,46 @@ struct Group {
     State<n> xi_transformed = g * xi0;  // or groupAction(g, xi0)
 
     // 2) Compute local coordinates between identity and transformed state:
-    Vector log_v = xi0.localCoordinates(xi_transformed);
+    TangentVector result = xi0.localCoordinates(xi_transformed);
 
     // 3) If Jacobian requested, compute numeric Jacobian of the map Group ->
     // Vector
     if (H) {
       // lambda: maps Group -> Vector
       auto mapGtoVec = [&xi0](const Group& gg) {
-        State<n> x_trans = gg * xi0;           // group action
-        return xi0.localCoordinates(x_trans);  // returns Vector dimension x 1
+        State<n> x_trans = gg * xi0;  // group action
+        return xi0.localCoordinates(x_trans);
       };
 
       // Use gtsam numerical derivative helper (type-deduction)
-      *H = gtsam::numericalDerivative11<Vector, Group>(
-          std::function<Vector(const Group&)>(mapGtoVec), g);
+      *H = gtsam::numericalDerivative11<TangentVector, Group>(
+          std::function<TangentVector(const Group&)>(mapGtoVec), g);
     }
 
-    return log_v;
+    return result;
+  }
+
+  void print(const std::string& s = "") const {
+    std::cout << s << "\nA:\n"
+              << A.matrix() << "\na (vee): " << Rot3::Vee(a).transpose()
+              << std::endl;
+    for (size_t i = 0; i < n; ++i) {
+      std::cout << "B[" << i << "]:\n" << B[i].matrix() << std::endl;
+    }
+  }
+
+  bool equals(const Group& other, double tol = 1e-9) const {
+    if (!A.equals(other.A, tol)) return false;
+    if (!BEquals(other, tol)) return false;
+    return (Rot3::Vee(a) - Rot3::Vee(other.a)).norm() <= tol;
+  }
+
+ private:
+  bool BEquals(const Group& other, double tol) const {
+    for (size_t i = 0; i < n; ++i) {
+      if (!B[i].equals(other.B[i], tol)) return false;
+    }
+    return true;
   }
 };
 
@@ -346,18 +416,22 @@ struct Geometry {
    * @param dt time step
    * @return State transition matrix in discrete time
    */
-  // TODO: new version of this function reduces precision, fails
-  // Geometry_stateTransitionMatrix test case as a result
   static Matrix stateTransitionMatrix(const Vector6& u, double dt,
                                       GType X_hat) {
-    Matrix A = stateMatrixA(X_hat, u);
-    Matrix I = Matrix::Identity(A.rows(), A.cols());
+    Matrix3 W0 =
+        Rot3::Hat(velocityAction(X_hat.inverse(), u).template head<3>());
+    Matrix Phi1 = Matrix::Zero(6, 6);
+    Matrix3 W0_sq = W0 * W0;
+    Matrix3 Phi12 = -dt * (I_3x3 + 0.5 * dt * W0 + (dt * dt / 6.0) * W0_sq);
+    Matrix3 Phi22 = I_3x3 + dt * W0 + 0.5 * dt * dt * W0_sq;
+    Phi1.block<3, 3>(0, 0) = I_3x3;
+    Phi1.block<3, 3>(0, 3) = Phi12;
+    Phi1.block<3, 3>(3, 3) = Phi22;
 
-    // Use truncated exponential for numerical stability if dt is small
-    Matrix A2 = A * A;
-    Matrix A3 = A2 * A;
-    return I + dt * A + 0.5 * dt * dt * A2 + (1.0 / 6.0) * dt * dt * dt * A3;
-    // return (A * dt).exp().eval();
+    std::vector<Matrix> blocks;
+    blocks.push_back(Phi1);
+    blocks.insert(blocks.end(), N, Phi22);
+    return gtsam::diag(blocks);
   }
 
   /**
@@ -504,93 +578,10 @@ Matrix outputMatrixDt(const Group<N>& X_hat, int idx) {
 }  // namespace abc
 
 template <size_t N>
-struct traits<abc::Group<N>> : internal::LieGroupTraits<abc::Group<N>> {
-  using GType = abc::Group<N>;
-  // dimension should exist on GType; if not, set to compile-time constant
-  static constexpr int dimension = GType::dimension;
+struct traits<abc::Group<N>>
+    : internal::MatrixLieGroup<abc::Group<N>, 4 + 3 * N> {};
 
-  // Useful aliases for Jacobian optionals and Matrix
-  using OptionalJac = OptionalJacobian<dimension, dimension>;
-  using MatrixDim = Eigen::Matrix<double, dimension, dimension>;
-
-  // Identity
-  static GType Identity() { return GType::identity(N); }
-
-  // Compose with optional Jacobian outputs:
-  static GType Compose(const GType& g1, const GType& g2,
-                       OptionalJac Hg = OptionalJac(),
-                       OptionalJac Hh = OptionalJac()) {
-    // If caller requested Jacobians (Hg/Hh) we should fill them.
-    // For now provide zero matrices as placeholders.
-    if (Hg) *Hg = MatrixDim::Zero();
-    if (Hh) *Hh = MatrixDim::Zero();
-    return g1 * g2;  // your operator* already implements group multiplication
-  }
-
-  // Between (g1^{-1} * g2) with optional Jacobians
-  static GType Between(const GType& g1, const GType& g2,
-                       OptionalJac H1 = OptionalJac(),
-                       OptionalJac H2 = OptionalJac()) {
-    if (H1) *H1 = MatrixDim::Zero();
-    if (H2) *H2 = MatrixDim::Zero();
-    return g1.inv() * g2;  // or use g1.inverse() if that's your API
-  }
-
-  // Inverse with optional Jacobian
-  static GType Inverse(const GType& g, OptionalJac H = OptionalJac()) {
-    if (H) *H = MatrixDim::Zero();
-    return g.inv();
-  }
-
-  // Expmap (v -> Group) with optional Jacobian dExp/dv
-  static GType Expmap(const Vector& v, OptionalJac H = OptionalJac()) {
-    if (H) *H = MatrixDim::Zero();
-    return GType::exp(v);
-  }
-
-  // Local (Logmap): returns tangent vector (g1^-1 * g2). Optionally fill
-  // jacobians.
-  static Vector Local(const GType& g1, const GType& g2,
-                      OptionalJac H1 = OptionalJac(),
-                      OptionalJac H2 = OptionalJac()) {
-    // If you already have a member or free function that returns local
-    // coordinates, use it, e.g., g1.localCoordinates(g2) or State-based
-    // approach.
-    if (H1) *H1 = MatrixDim::Zero();
-    if (H2) *H2 = MatrixDim::Zero();
-    // Implement a sensible default: Logmap(Between(g1,g2))
-    GType between = g1.inv() * g2;
-    // If GType has a log/ln method use it; else, call static log if available:
-    return GType::Logmap(between);  // replace with your actual logmap call
-  }
-
-  // Retract: move point g along tangent v
-  static GType Retract(const GType& g, const Vector& v,
-                       OptionalJac H = OptionalJac(),
-                       OptionalJac Hv = OptionalJac()) {
-    if (H) *H = MatrixDim::Zero();
-    if (Hv) *Hv = MatrixDim::Zero();
-    // You can either use traits compose/exp or call a member
-    // Use composition: g * Expmap(v)
-    return Compose(g, Expmap(v));  // will call Compose and Expmap above
-  }
-
-  static void Print(const GType& g, const std::string& s = "") {
-    std::cout << s << std::endl;
-    std::cout << "A = " << g.A << std::endl;
-    std::cout << "a = " << g.a << std::endl;
-    for (size_t i = 0; i < GType::N; ++i) {
-      std::cout << "B[" << i << "] = " << g.B[i] << std::endl;
-    }
-  }
-
-  static bool Equals(const GType& g1, const GType& g2, double tol = 1e-9) {
-    if (!g1.A.equals(g2.A, tol)) return false;
-    if (!gtsam::assert_equal<Matrix3>(g1.a, g2.a, tol)) return false;
-    for (size_t i = 0; i < GType::numSensors; ++i) {
-      if (!g1.B[i].equals(g2.B[i], tol)) return false;
-    }
-    return true;
-  }
-};
+template <size_t N>
+struct traits<const abc::Group<N>>
+    : internal::MatrixLieGroup<abc::Group<N>, 4 + 3 * N> {};
 }  // namespace gtsam
