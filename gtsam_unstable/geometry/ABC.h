@@ -5,7 +5,12 @@
  * This file contains fundamental components and utilities for the ABC system
  * based on the paper "Overcoming Bias: Equivariant Filter Design for Biased
  * Attitude Estimation with Online Calibration" by Fornasier et al.
- * Authors: Darshan Rajasekaran & Jennifer Oum
+ *
+ * @author Darshan Rajasekaran
+ * @author Jennifer Oum
+ * @author Rohan Bansal
+ * @author Frank Dellaert
+ * @date 2025
  */
 
 #pragma once
@@ -29,14 +34,14 @@
 namespace gtsam {
 namespace abc {
 
-//========================================================================
-// Core Data Types
-//========================================================================
-
 /// Convert angular velocity vector to mathematical input (ω, 0)
 inline Vector6 toInputVector(const Vector3& w) {
   return (Vector6() << w, Z_3x1).finished();
 }
+
+//========================================================================
+// State Manifold
+//========================================================================
 
 /// State class representing the state of the Biased Attitude System
 template <size_t N>
@@ -57,6 +62,7 @@ class State {
     S_id.fill(Rot3());
     return State(Rot3(), Z_3x1, S_id);
   }
+
   /**
    * Compute Local coordinates in the state relative to another state.
    * @param other The other state
@@ -66,14 +72,13 @@ class State {
     Vector eps(6 + 3 * N);
 
     // First 3 elements - attitude
-    eps.head<3>() = Rot3::Logmap(R.between(other.R));
-    // Next 3 elements - bias
+    eps.head<3>() = R.logmap(other.R);
     // Next 3 elements - bias
     eps.segment<3>(3) = other.b - b;
 
     // Remaining elements - calibrations
     for (size_t i = 0; i < N; i++) {
-      eps.segment<3>(6 + 3 * i) = Rot3::Logmap(S[i].between(other.S[i]));
+      eps.segment<3>(6 + 3 * i) = S[i].logmap(other.S[i]);
     }
 
     return eps;
@@ -89,11 +94,11 @@ class State {
       throw std::invalid_argument(
           "Vector size does not match state dimensions");
     }
-    Rot3 newR = R * Rot3::Expmap(v.head<3>());
+    Rot3 newR = R.expmap(v.head<3>());
     Vector3 newB = b + v.segment<3>(3);
     std::array<Rot3, N> newS;
     for (size_t i = 0; i < N; i++) {
-      newS[i] = S[i] * Rot3::Expmap(v.segment<3>(6 + 3 * i));
+      newS[i] = S[i].expmap(v.segment<3>(6 + 3 * i));
     }
     return State(newR, newB, newS);
   }
@@ -101,20 +106,16 @@ class State {
   /**
    * Compute the lifted tangent vector from state and input.
    * This implements the lift operation from the equivariant filter paper.
-   * @param u Mathematical input vector (ω, 0) where first 3 are angular
-   * velocity
+   * @param u Input vector (ω, 0) where first 3 are angular velocity
    * @return Vector Lifted vector in the Lie algebra used for propagation.
    */
   Vector lift(const Vector6& u) const {
-    Vector L = Vector::Zero(6 + 3 * N);
-
     Vector3 w = u.head<3>();
-
-    L.head<3>() = w - b;
-
-    L.segment<3>(3) = -Rot3::Hat(w) * b;
-
     Vector3 corrected_w = w - b;
+
+    Vector L = Vector::Zero(6 + 3 * N);
+    L.head<3>() = corrected_w;
+    L.segment<3>(3) = -Rot3::Hat(w) * b;
     for (size_t i = 0; i < N; i++) {
       L.segment<3>(6 + 3 * i) = S[i].inverse().matrix() * corrected_w;
     }
@@ -136,9 +137,11 @@ struct Group {
   Rot3 A;                 /// First SO(3) element
   Matrix3 a;              /// so(3) element (skew-symmetric matrix)
   std::array<Rot3, n> B;  /// List of SO(3) elements for calibration
+
   static constexpr int dimension = 6 + 3 * n;
   using TangentVector = Eigen::Matrix<double, dimension, 1>;
   static constexpr int numSensors = n;
+
   /// Initialize the symmetry Group
   Group(const Rot3& A = Rot3(), const Matrix3& a = Matrix3::Zero(),
         const std::array<Rot3, n>& B = std::array<Rot3, n>{})
@@ -156,12 +159,12 @@ struct Group {
 
   /// Group inverse
   Group inv() const {
-    Matrix3 Ainv = A.inverse().matrix();
-    std::array<Rot3, n> Binv;
+    Matrix3 inverseA = A.inverse().matrix();
+    std::array<Rot3, n> inverseB;
     for (size_t i = 0; i < n; i++) {
-      Binv[i] = B[i].inverse();
+      inverseB[i] = B[i].inverse();
     }
-    return Group(A.inverse(), -Rot3::Hat(Ainv * Rot3::Vee(a)), Binv);
+    return Group(A.inverse(), -Rot3::Hat(inverseA * Rot3::Vee(a)), inverseB);
   }
 
   Group inverse() const { return inv(); }
@@ -214,7 +217,7 @@ struct Group {
     State<n> xi_transformed = g * xi0;  // or groupAction(g, xi0)
 
     // 2) Compute local coordinates between identity and transformed state:
-    Vector logv = xi0.localCoordinates(xi_transformed);
+    Vector log_v = xi0.localCoordinates(xi_transformed);
 
     // 3) If Jacobian requested, compute numeric Jacobian of the map Group ->
     // Vector
@@ -230,13 +233,14 @@ struct Group {
           std::function<Vector(const Group&)>(mapGtoVec), g);
     }
 
-    return logv;
+    return log_v;
   }
 };
 
 //========================================================================
 // Helper Functions Implementation
 //========================================================================
+
 /**
  * Implements group actions on the states
  * @param X A symmetry group element Group consisting of the attitude, bias and
@@ -261,6 +265,7 @@ State<N> operator*(const Group<N>& X, const State<N>& xi) {
   return State<N>(xi.R * X.A, X.A.inverse().matrix() * (xi.b - Rot3::Vee(X.a)),
                   new_S);
 }
+
 /**
  * Transforms the mathematical input (ω, 0) between frames
  * @param X A symmetry group element X with the components
@@ -276,13 +281,14 @@ Vector6 velocityAction(const Group<N>& X, const Vector6& u) {
   result.tail<3>() = Z_3x1;  // Virtual input remains zero
   return result;
 }
+
 /**
  * Transforms the Direction measurements based on the calibration type ( Eqn 6)
  * @param X Group element X
  * @param y Direction measurement y
  * @param idx Calibration index
  * @return Transformed direction
- * Uses Rot3 inverse, matric and Unit3 unitvector functions
+ * Uses Rot3 inverse, matrix and Unit3 unitvector functions
  */
 template <size_t N>
 Vector3 outputAction(const Group<N>& X, const Unit3& y, int idx) {
@@ -294,34 +300,6 @@ Vector3 outputAction(const Group<N>& X, const Unit3& y, int idx) {
     }
     return X.B[idx].inverse().matrix() * y.unitVector();
   }
-}
-
-/**
- * @brief Calculates the Jacobian matrix using central difference approximation
- * @param f Vector function f
- * @param x The point at which Jacobian is evaluated
- * @return Matrix containing numerical partial derivatives of f at x
- * Uses Vector's size() and Zero(), Matrix's Zero() and col() methods
- */
-Matrix numericalDifferential(std::function<Vector(const Vector&)> f,
-                             const Vector& x) {
-  double h = 1e-6;
-  Vector fx = f(x);
-  int n = fx.size();
-  int m = x.size();
-  Matrix Df = Matrix::Zero(n, m);
-
-  for (int j = 0; j < m; j++) {
-    Vector ej = Vector::Zero(m);
-    ej(j) = 1.0;
-
-    Vector fplus = f(x + h * ej);
-    Vector fminus = f(x - h * ej);
-
-    Df.col(j) = (fplus - fminus) / (2 * h);
-  }
-
-  return Df;
 }
 
 /**
@@ -338,6 +316,9 @@ Matrix stateActionDiff(const State<N>& xi) {
       gtsam::traits<Group<N>>::Identity());
 }
 
+/**
+ * Geometry class encapsulating the ABC system dynamics and measurement models
+ */
 template <size_t N>
 struct Geometry {
   using InputType = Vector6;  // Mathematical input (ω, 0)
@@ -410,19 +391,14 @@ struct Geometry {
     return gtsam::diag({B1, B2});
   }
 
-  /// Computes the continuous-time process noise covariance in lifted
-  /// coordinates
+  /// The continuous-time process noise covariance in lifted coordinates
   static Matrix processNoise(const Matrix& Sigma) {
     std::vector<Matrix> blocks{Sigma};
     blocks.insert(blocks.end(), N, 1e-9 * I_3x3);
     return gtsam::diag(blocks);
   }
 
-  /**
-   * Computes the input uncertainty propagation matrix
-   * @return
-   * Uses the blockdiag matrix
-   */
+  /// Computes the input uncertainty propagation matrix
   static Matrix inputMatrixBt(GType X_hat) {
     Matrix B1 = gtsam::diag({X_hat.A.matrix(), X_hat.A.matrix()});
     Matrix B2(3 * N, 3 * N);
@@ -433,6 +409,7 @@ struct Geometry {
 
     return gtsam::diag({B1, B2});
   }
+
   /**
    * Computes the linearized measurement matrix. The structure depends on
    * whether the sensor has a calibration state
@@ -459,6 +436,7 @@ struct Geometry {
 
     return wedge_d * temp;
   }
+
   /**
    * Computes the measurement uncertainty propagation matrix
    * @param idx Calibration index

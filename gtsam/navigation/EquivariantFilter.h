@@ -5,19 +5,24 @@
  * This file contains declarations for the Equivariant Filter (EqF) for attitude
  * estimation with both gyroscope bias and sensor extrinsic calibration, based
  * on the paper: "Overcoming Bias: Equivariant Filter Design for Biased Attitude
- * Estimation with Online Calibration" by Fornasier et al. Authors: Darshan
- * Rajasekaran & Jennifer Oum
+ * Estimation with Online Calibration" by Fornasier et al.
+ *
+ * @author Darshan Rajasekaran
+ * @author Jennifer Oum
+ * @author Rohan Bansal
+ * @author Frank Dellaert
+ * @date 2025
  */
 
-#ifndef EQUIVARIANTFILTER_H
-#define EQUIVARIANTFILTER_H
 #pragma once
+
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/Vector.h>
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Unit3.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/navigation/ImuBias.h>
+#include <gtsam/navigation/LieGroupEKF.h>
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/slam/dataset.h>
 
@@ -29,8 +34,6 @@
 #include <numeric>  // For std::accumulate
 #include <string>
 #include <vector>
-
-#include <gtsam/navigation/LieGroupEKF.h>
 
 // All implementations are wrapped in this namespace to avoid conflicts
 namespace gtsam {
@@ -48,8 +51,8 @@ class EqF : public LieGroupEKF<G> {
  private:
   using LGBase = LieGroupEKF<G>;
 
-  M xi_ref;           // Origin (reference) state on the manifold
-  Matrix Dphi0;       // Differential of the state action at origin
+  M xi_ref;               // Origin (reference) state on the manifold
+  Matrix Dphi0;           // Differential of the state action at origin
   Matrix InnovationLift;  // Innovation lift matrix
 
  public:
@@ -82,11 +85,12 @@ class EqF : public LieGroupEKF<G> {
    * @param Q Process noise covariance in lifted coordinates
    * @param dt Time step
    */
-  void predict(const Vector6 &u, const Matrix &Q, double dt);
+  void predict(const Vector6& u, const Matrix& Q, double dt);
 
   /**
    * Update the filter state with a direction measurement.
-   * @tparam MeasurementType Measurement type (must expose y, d, Sigma, cal_idx).
+   * @tparam MeasurementType Measurement type (must expose y, d, Sigma,
+   * cal_idx).
    * @param y Direction measurement
    */
   template <class MeasurementType>
@@ -102,7 +106,6 @@ class EqF : public LieGroupEKF<G> {
  * @param Sigma Initial covariance
  * @param n Number of calibration states
  * @param m Number of sensors
- * Uses SelfAdjointSolver, completeOrthoganalDecomposition().pseudoInverse()
  */
 template <typename G, typename M>
 EqF<G, M>::EqF(const G& X0, const M& x0, const Matrix& Sigma, int m)
@@ -116,29 +119,6 @@ EqF<G, M>::EqF(const G& X0, const M& x0, const Matrix& Sigma, int m)
     throw std::invalid_argument(
         "Number of direction sensors must be at least 2");
   }
-
-  // static_assert(has_lift<Geometry, M>::value,
-  //               "Geometry must implement static lift(const M&, const InputType&)");
-
-  // // static_assert(has_stateTransitionMatrix<Geometry>::value,
-  // //               "Geometry must define static stateTransitionMatrix(InputDataType, "
-  // //               "double, GType)");
-  // static_assert(has_groupAction<Geometry>::value,
-  //               "Geometry must define groupAction(GType, MType)");
-  // // static_assert(
-  // //     has_stateMatrixA<Geometry>::value,
-  // //     "Geometry must define static stateMatrixA(const GType&, const InputDataType&)");
-  // static_assert(has_inputMatrix<Geometry>::value,
-  //               "Geometry must define static inputMatrix(GType)");
-  // static_assert(has_processNoise<Geometry>::value,
-  //               "Geometry must define static processNoise(const InputDataType&)");
-  // static_assert(has_inputMatrixBt<Geometry>::value,
-  //               "Geometry must define static inputMatrixBt(GType)");
-  // static_assert(
-  //     has_measurementMatrixC<Geometry>::value,
-  //     "Geometry must define static measurementMatrixC(const Unit3&, int)");
-  // static_assert(has_outputMatrixDt<Geometry>::value,
-  //               "Geometry must define static outputMatrixDt(int, GType)");
 
   // Compute differential of phi
   Dphi0 = stateActionDiff(xi_ref);
@@ -154,22 +134,21 @@ M EqF<G, M>::stateEstimate() const {
   return this->X_ * xi_ref;
 }
 
-
 template <typename G, typename M>
 G EqF<G, M>::groupEstimate() const {
- return this->X_;
+  return this->X_;
 }
 
 /**
  * Implements the prediction step of the EqF using system dynamics and
- * covariance propagation and advances the filter state by symmtery-preserving
+ * covariance propagation and advances the filter state by symmetry-preserving
  * dynamics.Uses a Lie group integrator scheme for discrete time propagation
  * @param u Angular velocity measurements
  * @param dt time steps
  * Updated internal state and covariance
  */
 template <typename G, typename M>
-void EqF<G, M>::predict(const Vector6 &u, const Matrix &Q, double dt) {
+void EqF<G, M>::predict(const Vector6& u, const Matrix& Q, double dt) {
   // Map current group estimate to physical state on the manifold
   M state_est = stateEstimate();
 
@@ -177,7 +156,7 @@ void EqF<G, M>::predict(const Vector6 &u, const Matrix &Q, double dt) {
   Vector L = state_est.lift(u);
 
   Matrix Phi = stateTransitionMatrix(this->X_, u, dt);
-  Matrix Bt  = inputMatrixBt(this->X_);
+  Matrix Bt = inputMatrixBt(this->X_);
 
   this->X_ = traits<G>::Compose(this->X_, traits<G>::Expmap(L * dt));
   this->P_ = Phi * this->P_ * Phi.transpose() + Bt * Q * Bt.transpose() * dt;
@@ -214,17 +193,16 @@ void EqF<G, M>::update(const MeasurementType& y) {
 
   Matrix S = Ct * this->P_ * Ct.transpose() + Dt * y.Sigma * Dt.transpose();
   Matrix K = this->P_ * Ct.transpose() * S.inverse();
-  
+
   // Use base class to perform update with zero innovation
   Vector3 z_zero = Vector3::Zero();
   Vector3 prediction_zero = Vector3::Zero();
-  auto& baseEKF = static_cast<ManifoldEKF<G>&>(*this); // not sure if this is the right way to do this (although it works). would be better to inherit from ManifoldEKF
-  baseEKF.update(prediction_zero, Ct, z_zero,
-                 Dt * y.Sigma * Dt.transpose());
+  auto& baseEKF = static_cast<ManifoldEKF<G>&>(
+      *this);  // not sure if this is the right way to do this (although it
+               // works). would be better to inherit from ManifoldEKF
+  baseEKF.update(prediction_zero, Ct, z_zero, Dt * y.Sigma * Dt.transpose());
   // Apply EqF state correction with InnovationLift
   Vector Delta = InnovationLift * K * delta_vec;
   this->X_ = traits<G>::Compose(traits<G>::Expmap(Delta), this->X_);
 }
 }  // namespace gtsam
-
-#endif  // EQUIVARIANTFILTER_H

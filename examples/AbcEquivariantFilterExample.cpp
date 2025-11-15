@@ -5,8 +5,13 @@
  * This demo shows the Equivariant Filter (EqF) for attitude estimation
  * with both gyroscope bias and sensor extrinsic calibration, based on the
  * paper: "Overcoming Bias: Equivariant Filter Design for Biased Attitude
- * Estimation with Online Calibration" by Fornasier et al. Authors: Darshan
- * Rajasekaran & Jennifer Oum
+ * Estimation with Online Calibration" by Fornasier et al.
+ *
+ * @author Darshan Rajasekaran
+ * @author Jennifer Oum
+ * @author Rohan Bansal
+ * @author Frank Dellaert
+ * @date 2025
  */
 #include <gtsam/navigation/EquivariantFilter.h>
 #include <gtsam_unstable/geometry/ABC.h>
@@ -202,8 +207,8 @@ std::vector<Data> loadDataFromCSV(const std::string& filename, int startRow,
     measurements.push_back(Measurement{Unit3(y1), Unit3(d1), covY1, -1});
 
     // Create Data object and add to list
-    data_list.push_back(Data{xi, omega, inputCovariance, measurements, 2, t,
-                             dt});
+    data_list.push_back(
+        Data{xi, omega, inputCovariance, measurements, 2, t, dt});
 
     rowCount++;
 

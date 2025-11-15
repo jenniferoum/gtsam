@@ -1,7 +1,12 @@
 /**
  * @file testABC.cpp
  * @brief Test file for ABC (Attitude-Bias-Calibration) system components
- * @author Darshan Rajasekaran & Jennifer Oum
+ *
+ * @author Darshan Rajasekaran
+ * @author Jennifer Oum
+ * @author Rohan Bansal
+ * @author Frank Dellaert
+ * @date 2025
  */
 
 #include <CppUnitLite/TestHarness.h>
@@ -27,37 +32,6 @@ bool ArraysEqual(const std::array<Rot3, 2>& arr1,
   }
   return true;
 }
-
-// Custom stream operator for G to enable EXPECT(_EQUAL
-namespace gtsam {
-namespace abc {
-template <size_t N>
-std::ostream& operator<<(std::ostream& os, const Group<N>& g) {
-  os << "A: " << g.A << "\n";
-  os << "a: " << Rot3::Vee(g.a).transpose() << "\n";
-  os << "B: [";
-  for (size_t i = 0; i < N; ++i) {
-    os << g.B[i];
-    if (i < N - 1) os << ", ";
-  }
-  os << "]";
-  return os;
-}
-
-template <size_t N>
-std::ostream& operator<<(std::ostream& os, const State<N>& s) {
-  os << "R: " << s.R << "\n";
-  os << "b: " << s.b.transpose() << "\n";
-  os << "S: [";
-  for (size_t i = 0; i < N; ++i) {
-    os << s.S[i];
-    if (i < N - 1) os << ", ";
-  }
-  os << "]";
-  return os;
-}
-}  // namespace abc
-}  // namespace gtsam
 
 /* ************************************************************************* */
 TEST(ABC, State) {
@@ -231,42 +205,21 @@ TEST(ABC, GroupActions) {
   // Test outputAction (calibrated sensor)
   Unit3 y_meas = Unit3(1, 0, 0);
   int cal_idx = 0;
-  Vector3 transformed_y_cal = outputAction(X, y_meas, cal_idx);
+  Vector3 transformed_y_calibrated = outputAction(X, y_meas, cal_idx);
   EXPECT(assert_equal<Vector>(
-      transformed_y_cal, X.B[cal_idx].inverse().matrix() * y_meas.unitVector(),
-      1e-9));
+      transformed_y_calibrated,
+      X.B[cal_idx].inverse().matrix() * y_meas.unitVector(), 1e-9));
 
   // Test outputAction (uncalibrated sensor)
-  int uncal_idx = -1;
-  Vector3 transformed_y_uncal = outputAction(X, y_meas, uncal_idx);
-  EXPECT(assert_equal<Vector>(
-      transformed_y_uncal, X.A.inverse().matrix() * y_meas.unitVector(), 1e-9));
+  int uncalibrated_idx = -1;
+  Vector3 transformed_y_uncalibrated =
+      outputAction(X, y_meas, uncalibrated_idx);
+  EXPECT(assert_equal<Vector>(transformed_y_uncalibrated,
+                              X.A.inverse().matrix() * y_meas.unitVector(),
+                              1e-9));
 
   // Test outputAction out of range
   CHECK_EXCEPTION(outputAction(X, y_meas, 2), std::out_of_range);
-}
-
-/* ************************************************************************* */
-TEST(ABC, numericalDifferential) {
-  // Test with a simple linear function
-  std::function<Vector(const Vector&)> f_linear = [](const Vector& x) {
-    return (Vector(2) << 2 * x(0) + 3 * x(1), x(0) - x(1)).finished();
-  };
-  Vector x0_linear = (Vector(2) << 1, 2).finished();
-  Matrix expected_Df_linear = (Matrix(2, 2) << 2, 3, 1, -1).finished();
-  EXPECT(assert_equal(abc::numericalDifferential(f_linear, x0_linear),
-                      expected_Df_linear, 1e-6));
-
-  // Test with a non-linear function
-  std::function<Vector(const Vector&)> f_nonlinear = [](const Vector& x) {
-    return (Vector(2) << x(0) * x(0), sin(x(1))).finished();
-  };
-  Vector x0_nonlinear = (Vector(2) << 2, M_PI_2).finished();
-  Matrix expected_Df_nonlinear =
-      (Matrix(2, 2) << 4, 0, 0, cos(M_PI_2))
-          .finished();  // At x=(2,pi/2), df/dx = [[4, 0], [0, 0]]
-  EXPECT(assert_equal(abc::numericalDifferential(f_nonlinear, x0_nonlinear),
-                      expected_Df_nonlinear, 1e-6));
 }
 
 /* ************************************************************************* */
