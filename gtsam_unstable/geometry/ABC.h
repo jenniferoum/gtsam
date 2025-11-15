@@ -30,6 +30,8 @@
 #include <gtsam/base/ProductLieGroup.h>
 #include <gtsam/base/Vector.h>
 #include <gtsam/base/numericalDerivative.h>
+#include <gtsam/geometry/Point3.h>
+#include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Unit3.h>
 
@@ -134,168 +136,74 @@ class State {
 //========================================================================
 
 /**
- * Symmetry group (SO(3) |x so(3)) x SO(3) x ... x SO(3)
- * Each element of the B list is associated with a calibration state
+ * Symmetry group defined as the product Pose3 x Calibrations<n>
+ * The Pose3 component models the (SO(3) ⋉ R^3) part acting on attitude/bias,
+ * while Calibrations<n> captures the N sensor calibration rotations.
  */
 template <size_t n>
-struct Group : public MatrixLieGroup<Group<n>, 6 + 3 * n, 4 + 3 * n> {
-  using Base = MatrixLieGroup<Group<n>, 6 + 3 * n, 4 + 3 * n>;
+struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
+  using Base = ProductLieGroup<Pose3, Calibrations<n>>;
   using typename Base::ChartJacobian;
+  using typename Base::Jacobian;
   using typename Base::TangentVector;
 
   static constexpr int dimension = Base::dimension;
-  static constexpr int matrixDim = 4 + 3 * n;
-  using MatrixType = Eigen::Matrix<double, matrixDim, matrixDim>;
-  using LieAlgebra = MatrixType;
-  static constexpr int numSensors = n;
+  static constexpr size_t numSensors = n;
 
-  Rot3 A;             /// First SO(3) element
-  Matrix3 a;          /// so(3) element (skew-symmetric matrix)
-  Calibrations<n> B;  /// Calibration group elements
-
-  /// Default-initialize to identity
-  Group() : A(), a(Matrix3::Zero()), B() {}
-
-  Group(const Rot3& A_in, const Matrix3& a_in, const Calibrations<n>& B_in)
-      : A(A_in), a(a_in), B(B_in) {}
+  Group() : Base() {}
+  Group(const Pose3& pose, const Calibrations<n>& calibrations)
+      : Base(pose, calibrations) {}
+  Group(const Base& base) : Base(base) {}
+  Group(const Rot3& A, const Matrix3& a, const Calibrations<n>& B)
+      : Group(Pose3(A, Point3(Rot3::Vee(a))), B) {}
 
   static Group Identity() { return Group(); }
 
-  /// Matrix representation used by MatrixLieGroup machinery.
-  MatrixType matrix() const {
-    MatrixType result = MatrixType::Zero();
-    result.template block<3, 3>(0, 0) = A.matrix();
-    result.template block<3, 1>(0, 3) = Rot3::Vee(a);
-    result(3, 3) = 1.0;
-    for (size_t i = 0; i < n; ++i) {
-      const int offset = 4 + static_cast<int>(3 * i);
-      result.template block<3, 3>(offset, offset) = B[i].matrix();
-    }
-    return result;
+  Group operator*(const Group& other) const {
+    return Group(Base::operator*(other));
   }
 
-  /// hat operator for the Lie algebra
-  static LieAlgebra Hat(const TangentVector& xi) {
-    LieAlgebra result = LieAlgebra::Zero();
-    result.template block<3, 3>(0, 0) = Rot3::Hat(xi.template head<3>());
-    result.template block<3, 1>(0, 3) = xi.template segment<3>(3);
-    for (size_t i = 0; i < n; ++i) {
-      const int offset = 4 + static_cast<int>(3 * i);
-      result.template block<3, 3>(offset, offset) =
-          Rot3::Hat(xi.template segment<3>(6 + 3 * i));
-    }
-    return result;
+  Group compose(const Group& other, ChartJacobian H1 = ChartJacobian(),
+                ChartJacobian H2 = ChartJacobian()) const {
+    return Group(Base::compose(other, H1, H2));
   }
 
-  /// vee operator for the Lie algebra
-  static TangentVector Vee(const LieAlgebra& X) {
-    TangentVector xi;
-    xi.template head<3>() = Rot3::Vee(X.template block<3, 3>(0, 0));
-    xi.template segment<3>(3) = X.template block<3, 1>(0, 3);
-    for (size_t i = 0; i < n; ++i) {
-      const int offset = 4 + static_cast<int>(3 * i);
-      xi.template segment<3>(6 + 3 * i) =
-          Rot3::Vee(X.template block<3, 3>(offset, offset));
-    }
-    return xi;
+  Group between(const Group& other, ChartJacobian H1 = ChartJacobian(),
+                ChartJacobian H2 = ChartJacobian()) const {
+    return Group(Base::between(other, H1, H2));
   }
 
-  struct ChartAtOrigin {
-    static Group Retract(const TangentVector& xi,
-                         ChartJacobian Hxi = ChartJacobian()) {
-      return Group::Expmap(xi, Hxi);
-    }
-
-    static TangentVector Local(const Group& g,
-                               ChartJacobian Hg = ChartJacobian()) {
-      return Group::Logmap(g, Hg);
-    }
-  };
-
-  /// Group multiplication
-  Group operator*(const Group<n>& other) const {
-    Calibrations<n> newB = B * other.B;
-    return Group(A * other.A, a + Rot3::Hat(A.matrix() * Rot3::Vee(other.a)),
-                 newB);
+  Group inverse(ChartJacobian D = ChartJacobian()) const {
+    return Group(Base::inverse(D));
   }
 
-  /// Group inverse
-  Group inverse() const {
-    Matrix3 inverseA = A.inverse().matrix();
-    Calibrations<n> inverseB = B.inverse();
-    return Group(A.inverse(), -Rot3::Hat(inverseA * Rot3::Vee(a)), inverseB);
+  Group retract(const TangentVector& v, ChartJacobian H1 = ChartJacobian(),
+                ChartJacobian H2 = ChartJacobian()) const {
+    return Group(Base::retract(v, H1, H2));
   }
 
-  /// Exponential map of the tangent space elements to the group
-  static Group Expmap(const TangentVector& x,
-                      OptionalJacobian<dimension, dimension> H =
-                          OptionalJacobian<dimension, dimension>()) {
-    if (x.size() != static_cast<Eigen::Index>(6 + 3 * n)) {
-      throw std::invalid_argument("Vector size mismatch for group exponential");
-    }
-    Rot3 A = Rot3::Expmap(x.template head<3>());
-    Vector3 a_vee = Rot3::ExpmapDerivative(-x.template head<3>()) *
-                    x.template segment<3>(3);
-    Matrix3 a = Rot3::Hat(a_vee);
-    typename Calibrations<n>::TangentVector xB;
-    xB = x.template segment<3 * n>(6);
-    Calibrations<n> B = Calibrations<n>::Expmap(xB);
-    if (H) *H = Eigen::Matrix<double, dimension, dimension>::Zero();
-    return Group(A, a, B);
+  Group expmap(const TangentVector& v) const { return Group(Base::expmap(v)); }
+
+  TangentVector logmap(const Group& g) const { return Base::logmap(g); }
+
+  static Group Expmap(const TangentVector& v,
+                      ChartJacobian Hv = ChartJacobian()) {
+    return Group(Base::Expmap(v, Hv));
   }
 
   static TangentVector Logmap(const Group& g,
-                              OptionalJacobian<dimension, dimension> H = {}) {
-    // 1) Create the identity state and apply group action to it.
-    //    We assume State<N>::identity() exists and operator*(Group, State) is
-    //    defined as the group action (or provide a groupAction(g, xi) helper).
-    State<n> xi0 = State<n>::identity();
-
-    // If you have a group action function (g * state) available:
-    State<n> xi_transformed = g * xi0;  // or groupAction(g, xi0)
-
-    // 2) Compute local coordinates between identity and transformed state:
-    TangentVector result = xi0.localCoordinates(xi_transformed);
-
-    // 3) If Jacobian requested, compute numeric Jacobian of the map Group ->
-    // Vector
-    if (H) {
-      // lambda: maps Group -> Vector
-      auto mapGtoVec = [&xi0](const Group& gg) {
-        State<n> x_trans = gg * xi0;  // group action
-        return xi0.localCoordinates(x_trans);
-      };
-
-      // Use gtsam numerical derivative helper (type-deduction)
-      *H = gtsam::numericalDerivative11<TangentVector, Group>(
-          std::function<TangentVector(const Group&)>(mapGtoVec), g);
-    }
-
-    return result;
+                              ChartJacobian Hg = ChartJacobian()) {
+    return Base::Logmap(g, Hg);
   }
 
-  void print(const std::string& s = "") const {
-    std::cout << s << "\nA:\n"
-              << A.matrix() << "\na (vee): " << Rot3::Vee(a).transpose()
-              << std::endl;
-    for (size_t i = 0; i < n; ++i) {
-      std::cout << "B[" << i << "]:\n" << B[i].matrix() << std::endl;
-    }
-  }
+  const Pose3& pose() const { return this->first; }
+  Pose3& pose() { return this->first; }
 
-  bool equals(const Group& other, double tol = 1e-9) const {
-    if (!A.equals(other.A, tol)) return false;
-    if (!BEquals(other, tol)) return false;
-    return (Rot3::Vee(a) - Rot3::Vee(other.a)).norm() <= tol;
-  }
+  const Calibrations<n>& calibrations() const { return this->second; }
+  Calibrations<n>& calibrations() { return this->second; }
 
- private:
-  bool BEquals(const Group& other, double tol) const {
-    for (size_t i = 0; i < n; ++i) {
-      if (!B[i].equals(other.B[i], tol)) return false;
-    }
-    return true;
-  }
+  Rot3 A() const { return this->first.rotation(); }
+  Vector3 a() const { return this->first.translation(); }
 };
 
 //========================================================================
@@ -304,10 +212,8 @@ struct Group : public MatrixLieGroup<Group<n>, 6 + 3 * n, 4 + 3 * n> {
 
 /**
  * Implements group actions on the states
- * @param X A symmetry group element Group consisting of the attitude, bias and
- * the calibration components X.a -> Rotation matrix containing the attitude X.b
- * -> A skew-symmetric matrix representing bias X.B -> A vector of Rotation
- * matrices for the calibration components
+ * @param X A symmetry group element consisting of a Pose3 acting on the
+ * attitude/bias components, and Calibrations<N> acting on the sensor frames.
  * @param xi State object
  * xi.R -> Attitude (Rot3)
  * xi.b -> Gyroscope Bias(Vector 3)
@@ -317,14 +223,16 @@ struct Group : public MatrixLieGroup<Group<n>, 6 + 3 * n, 4 + 3 * n> {
  */
 template <size_t N>
 State<N> operator*(const Group<N>& X, const State<N>& xi) {
+  const Rot3 A = X.A();
+  const Vector3 a = X.a();
+  const Calibrations<N>& X_cal = X.calibrations();
   Calibrations<N> new_S;
 
   for (size_t i = 0; i < N; i++) {
-    new_S[i] = X.A.inverse() * xi.S[i] * X.B[i];
+    new_S[i] = A.inverse() * xi.S[i] * X_cal[i];
   }
 
-  return State<N>(xi.R * X.A, X.A.inverse().matrix() * (xi.b - Rot3::Vee(X.a)),
-                  new_S);
+  return State<N>(xi.R * A, A.inverse().matrix() * (xi.b - a), new_S);
 }
 
 /**
@@ -337,8 +245,10 @@ State<N> operator*(const Group<N>& X, const State<N>& xi) {
  */
 template <size_t N>
 Vector6 velocityAction(const Group<N>& X, const Vector6& u) {
+  const Rot3 A = X.A();
+  const Vector3 a = X.a();
   Vector6 result;
-  result.head<3>() = X.A.inverse().matrix() * (u.head<3>() - Rot3::Vee(X.a));
+  result.head<3>() = A.inverse().matrix() * (u.head<3>() - a);
   result.tail<3>() = Z_3x1;  // Virtual input remains zero
   return result;
 }
@@ -353,13 +263,15 @@ Vector6 velocityAction(const Group<N>& X, const Vector6& u) {
  */
 template <size_t N>
 Vector3 outputAction(const Group<N>& X, const Unit3& y, int idx) {
+  const Rot3 A = X.A();
+  const Calibrations<N>& X_cal = X.calibrations();
   if (idx == -1) {
-    return X.A.inverse().matrix() * y.unitVector();
+    return A.inverse().matrix() * y.unitVector();
   } else {
     if (idx >= static_cast<int>(N)) {
       throw std::out_of_range("Calibration index out of range");
     }
-    return X.B[idx].inverse().matrix() * y.unitVector();
+    return X_cal[idx].inverse().matrix() * y.unitVector();
   }
 }
 
@@ -446,11 +358,12 @@ struct Geometry {
 
   /// Computes the input uncertainty propagation matrix
   static Matrix inputMatrix(GType X_hat) {
-    Matrix B1 = gtsam::diag({X_hat.A.matrix(), X_hat.A.matrix()});
+    const Matrix3 A_matrix = X_hat.A().matrix();
+    Matrix B1 = gtsam::diag({A_matrix, A_matrix});
     Matrix B2(3 * N, 3 * N);
 
     for (size_t i = 0; i < N; ++i) {
-      B2.block<3, 3>(3 * i, 3 * i) = X_hat.B[i].matrix();
+      B2.block<3, 3>(3 * i, 3 * i) = X_hat.calibrations()[i].matrix();
     }
 
     return gtsam::diag({B1, B2});
@@ -465,11 +378,12 @@ struct Geometry {
 
   /// Computes the input uncertainty propagation matrix
   static Matrix inputMatrixBt(GType X_hat) {
-    Matrix B1 = gtsam::diag({X_hat.A.matrix(), X_hat.A.matrix()});
+    const Matrix3 A_matrix = X_hat.A().matrix();
+    Matrix B1 = gtsam::diag({A_matrix, A_matrix});
     Matrix B2(3 * N, 3 * N);
 
     for (size_t i = 0; i < N; ++i) {
-      B2.block<3, 3>(3 * i, 3 * i) = X_hat.B[i].matrix();
+      B2.block<3, 3>(3 * i, 3 * i) = X_hat.calibrations()[i].matrix();
     }
 
     return gtsam::diag({B1, B2});
@@ -513,9 +427,9 @@ struct Geometry {
       if (idx >= static_cast<int>(N)) {
         throw std::out_of_range("Calibration index out of range");
       }
-      return X_hat.B[idx].matrix();
+      return X_hat.calibrations()[idx].matrix();
     } else {
-      return X_hat.A.matrix();
+      return X_hat.A().matrix();
     }
   }
 
@@ -569,10 +483,8 @@ Matrix outputMatrixDt(const Group<N>& X_hat, int idx) {
 }  // namespace abc
 
 template <size_t N>
-struct traits<abc::Group<N>>
-    : internal::MatrixLieGroup<abc::Group<N>, 4 + 3 * N> {};
+struct traits<abc::Group<N>> : internal::LieGroup<abc::Group<N>> {};
 
 template <size_t N>
-struct traits<const abc::Group<N>>
-    : internal::MatrixLieGroup<abc::Group<N>, 4 + 3 * N> {};
+struct traits<const abc::Group<N>> : internal::LieGroup<abc::Group<N>> {};
 }  // namespace gtsam
