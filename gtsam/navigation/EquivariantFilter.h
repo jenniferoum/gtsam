@@ -49,15 +49,14 @@ class EqF : public LieGroupEKF<typename Geometry::GType> {
   using Base = LieGroupEKF<G>;
 
   M xi_ref_;               // Origin (reference) state on the manifold
-  Matrix Dphi0_;           // Differential of the state action at origin
   Matrix InnovationLift_;  // Innovation lift matrix
-
- public:
+  
+  public:
   static constexpr int Dim = Base::Dim;  ///< Compile-time dimension of G.
-
+  
   /// Number of calibration states (sensors), expected to be provided by G
   static constexpr int n_cal = G::numSensors;
-
+  
   /**
    * Initialize EqF
    * @param X0 Initial Lie group state
@@ -66,20 +65,20 @@ class EqF : public LieGroupEKF<typename Geometry::GType> {
    * @param m Number of direction sensors (must be at least 2)
    */
   EqF(const G& X0, const M& x0, const Matrix& Sigma, int m)
-      : Base(X0, Sigma), xi_ref_(x0) {
+  : Base(X0, Sigma), xi_ref_(x0) {
     if (Sigma.rows() != Dim || Sigma.cols() != Dim) {
       throw std::invalid_argument(
-          "Initial covariance dimensions must match the degrees of freedom");
-    }
-
-    if (m <= 1) {
-      throw std::invalid_argument(
+        "Initial covariance dimensions must match the degrees of freedom");
+      }
+      
+      if (m <= 1) {
+        throw std::invalid_argument(
           "Number of direction sensors must be at least 2");
-    }
-
-    // Compute differential of phi
-    Dphi0_ = Geometry::stateActionDiff(xi_ref_);
-    InnovationLift_ = Dphi0_.completeOrthogonalDecomposition().pseudoInverse();
+        }
+        
+    // Compute differential of action phi at origin
+    Matrix Dphi0 = Geometry::stateActionDiff(xi_ref_);
+    InnovationLift_ = Dphi0.completeOrthogonalDecomposition().pseudoInverse();
   }
 
   /**
