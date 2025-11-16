@@ -218,7 +218,7 @@ struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
 };
 
 //========================================================================
-// Group Action on State Manifold
+// Group Actions on State, Input, and Output Manifolds
 //========================================================================
 
 /**
@@ -276,7 +276,7 @@ struct StateAction {
       const Matrix3 S_inv = xi_.S[i].inverse().matrix();
       const size_t row = 6 + 3 * i;
       const size_t col = 6 + 3 * i;
-      H.block<3, 3>(row, 0) = -S_inv; // B[i] is identity for G::Identity
+      H.block<3, 3>(row, 0) = -S_inv;  // B[i] is identity for G::Identity
       H.block<3, 3>(row, col) = I_3x3;
     }
 
@@ -318,6 +318,47 @@ struct InputAction {
 };
 
 /**
+ * Functor encoding the right group action on a direction measurement y.
+ * For a fixed y coming from sensor Index, applying X = (A, a, B) ∈ G yields
+ * φ_y(X) = B[Index]^{-1} y.
+ */
+template <size_t N>
+struct OutputAction {
+  using G = Group<N>;
+  using Output = Vector3;
+
+  OutputAction(const Unit3& y, int index) : y_(y), index_(index) {
+    if (index_ >= static_cast<int>(N)) {
+      throw std::out_of_range("OutputAction index out of range");
+    }
+  }
+
+  Output operator()(const G& X) const {
+    if (index_ == -1) {
+      const Rot3 A = X.A();
+      return A.unrotate(y_.unitVector());
+    } else {
+      const Calibrations<N>& B = X.calibrations();
+      return B[index_].unrotate(y_.unitVector());
+    }
+  }
+
+  Matrix JacobianAtIdentity() const {
+    Matrix H = Matrix::Zero(Output::RowsAtCompileTime, G::dimension);
+    H.block<3, 3>(0, 6 + 3 * index_) = Rot3::Hat(y_.unitVector());
+    return H;
+  }
+
+ private:
+  Unit3 y_;
+  int index_;
+};
+
+//========================================================================
+// Group Actions on State, Input, and Output Manifolds
+//========================================================================
+
+/**
  * Geometry class encapsulating the ABC system dynamics and measurement models
  */
 template <size_t N>
@@ -325,28 +366,7 @@ struct Geometry {
   using M = State<N>;
   using G = Group<N>;
   using InputType = Vector6;  // Mathematical input (ω, 0)
-
-  /**
-   * Transforms the Direction measurements based on the calibration type ( Eqn
-   * 6)
-   * @param X Group element X
-   * @param y Direction measurement y
-   * @param idx Calibration index
-   * @return Transformed direction
-   * Uses Rot3 inverse, matrix and Unit3 unitvector functions
-   */
-  static Vector3 outputAction(const G& X, const Unit3& y, int idx) {
-    const Rot3 A = X.A();
-    const Calibrations<N>& X_cal = X.calibrations();
-    if (idx == -1) {
-      return A.inverse().matrix() * y.unitVector();
-    } else {
-      if (idx >= static_cast<int>(N)) {
-        throw std::out_of_range("Calibration index out of range");
-      }
-      return X_cal[idx].inverse().matrix() * y.unitVector();
-    }
-  }
+  using OutputAction = abc::OutputAction<N>;
 
   /**
    * Compute the lifted tangent vector from state and input.

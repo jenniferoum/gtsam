@@ -128,7 +128,7 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
    */
   template <typename Geometry, typename Measurement>
   void update(const Measurement& y) {
-    if (y.cal_idx > static_cast<int>(n_cal)) {
+    if (y.cal_idx >= static_cast<int>(n_cal)) {
       throw std::invalid_argument("Calibration index out of range");
     }
 
@@ -144,8 +144,11 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
 
     Matrix Ct = Geometry::measurementMatrixC(y.d, y.cal_idx);
 
-    Vector3 action_result =
-        Geometry::outputAction(this->X_.inverse(), y.y, y.cal_idx);
+    // TODO(Frank): Why inverse ????
+    using OutputAction = typename Geometry::OutputAction;
+    OutputAction phi_y(y.y, y.cal_idx);
+    Vector3 action_result = phi_y(this->X_.inverse());
+
     Vector3 delta_vec = Rot3::Hat(y.d.unitVector()) * action_result;
     Matrix Dt = Geometry::outputMatrixDt(y.cal_idx, this->X_);
     // Kalman gain
