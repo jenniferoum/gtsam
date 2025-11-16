@@ -36,6 +36,9 @@ Vector3 t2(0.04, 0.05, 0.06);
 Calibrations B2{Rot3::Rz(0.07), Rot3::Rx(0.08)};
 State xi2(A2, t2, B2);
 Group g2(Pose3(A2, t2), B2);
+
+Vector3 omega(1, 2, 3);
+Vector6 u = abc::toInputVector(omega);
 }  // namespace abc_examples
 
 /* ************************************************************************* */
@@ -164,6 +167,23 @@ TEST(ABC, AdjointMap) {
 }
 
 /* ************************************************************************* */
+TEST(ABC, StateAction) {
+  using namespace abc_examples;
+
+  // Test State Action (G * State)
+  State transformed_xi = abc::StateAction<2>(xi2)(g1);
+  EXPECT(assert_equal(transformed_xi.R, xi2.R * g1.A(), 1e-9));
+  EXPECT(assert_equal<Matrix>(
+      transformed_xi.b, g1.A().inverse().matrix() * (xi2.b - g1.a()), 1e-9));
+  EXPECT(assert_equal(transformed_xi.S[0],
+                      g1.A().inverse() * xi2.S[0] * g1.calibrations()[0],
+                      1e-9));
+  EXPECT(assert_equal(transformed_xi.S[1],
+                      g1.A().inverse() * xi2.S[1] * g1.calibrations()[1],
+                      1e-9));
+}
+
+/* ************************************************************************* */
 // A right action satisfies φ(xi, g1 * g2) = φ(φ(xi, g1), g2), i.e. applying
 // g1 then g2 equals applying their product, with the multiplication happening
 // on the right.
@@ -191,50 +211,78 @@ TEST(ABC, StateActionIsRightAction) {
 
   EXPECT(assert_equal(left_side_2, right_side_2, 1e-9));
 }
+
 /* ************************************************************************* */
-TEST(ABC, GroupActions) {
-  Group X = abc_examples::g1;
-  State xi = abc_examples::xi2;
+TEST(ABC, StateActionJacobianAnalytic) {
+  using namespace abc_examples;
 
-  // Test State Action (G * State)
-  State transformed_xi = abc::StateAction<2>(xi)(X);
-  EXPECT(assert_equal(transformed_xi.R, xi.R * X.A(), 1e-9));
-  EXPECT(assert_equal<Matrix>(transformed_xi.b,
-                              X.A().inverse().matrix() * (xi.b - X.a()), 1e-9));
-  EXPECT(assert_equal(transformed_xi.S[0],
-                      X.A().inverse() * xi.S[0] * X.calibrations()[0], 1e-9));
-  EXPECT(assert_equal(transformed_xi.S[1],
-                      X.A().inverse() * xi.S[1] * X.calibrations()[1], 1e-9));
+  abc::StateAction<2> action_xi1(xi1);
+  Matrix analytic1 = action_xi1.JacobianAtIdentity();
+  Matrix numerical1 = gtsam::numericalDerivative11<State, Group>(
+      [&](const Group& g) { return action_xi1(g); }, Group::Identity());
+  EXPECT(assert_equal(analytic1, numerical1, 1e-9));
 
-  // Test velocityAction
-  Vector3 omega(1, 2, 3);
-  Vector6 u = abc::toInputVector(omega);
-  Vector6 transformed_u = Geometry::velocityAction(X, u);
+  abc::StateAction<2> action_xi2(xi2);
+  Matrix analytic2 = action_xi2.JacobianAtIdentity();
+  Matrix numerical2 = gtsam::numericalDerivative11<State, Group>(
+      [&](const Group& g) { return action_xi2(g); }, Group::Identity());
+  EXPECT(assert_equal(analytic2, numerical2, 1e-9));
+}
+
+/* ************************************************************************* */
+TEST(ABC, InputAction) {
+  using namespace abc_examples;
+
+  abc::InputAction<2> psi_u(u);
+
+  Vector6 transformed_u = psi_u(g1);
   EXPECT(assert_equal<Vector>(transformed_u.head<3>(),
-                              X.A().inverse().matrix() * (omega - X.a()),
-                              1e-9));
+                              g1.A().unrotate(omega - g1.a()), 1e-9));
   EXPECT(assert_equal<Vector>(transformed_u.tail<3>(), Z_3x1,
                               1e-9));  // Virtual input stays zero
 
-  // Test outputAction (calibrated sensor)
-  Unit3 y_meas = Unit3(1, 0, 0);
-  int cal_idx = 0;
-  Vector3 transformed_y_calibrated = Geometry::outputAction(X, y_meas, cal_idx);
-  EXPECT(assert_equal<Vector>(
-      transformed_y_calibrated,
-      X.calibrations()[cal_idx].inverse().matrix() * y_meas.unitVector(),
-      1e-9));
+  EXPECT(assert_equal(transformed_u, abc::InputAction<2>(u)(g1), 1e-9));
+}
 
-  // Test outputAction (uncalibrated sensor)
-  int uncalibrated_idx = -1;
-  Vector3 transformed_y_uncalibrated =
-      Geometry::outputAction(X, y_meas, uncalibrated_idx);
-  EXPECT(assert_equal<Vector>(transformed_y_uncalibrated,
-                              X.A().inverse().matrix() * y_meas.unitVector(),
-                              1e-9));
+/* ************************************************************************* */
+// A right action satisfies φ(xi, g1 * g2) = φ(φ(xi, g1), g2), i.e. applying
+// g1 then g2 equals applying their product, with the multiplication happening
+// on the right.
+TEST(ABC, InputActionIsRightAction) {
+  using namespace abc_examples;
 
-  // Test outputAction out of range
-  CHECK_EXCEPTION(Geometry::outputAction(X, y_meas, 2), std::out_of_range);
+  // Create action functors
+  abc::InputAction<2> psi_u(u);
+
+  // Left side: apply composed group element (g1 * g2) to xi
+  const Vector6 left_side = psi_u(g1 * g2);
+
+  // Right side: apply g1 first, then g2 to the result
+  const Vector6 u_g1 = psi_u(g1);
+  const Vector6 right_side = abc::InputAction<2>(u_g1)(g2);
+  // For a right action, these should be equal
+  EXPECT(assert_equal(left_side, right_side, 1e-9));
+
+  // Additional test with g1 and g2 reversed
+  const Vector6 left_side_2 = psi_u(g2 * g1);
+
+  const Vector6 u_g2 = psi_u(g2);
+  const Vector6 right_side_2 = abc::InputAction<2>(u_g2)(g1);
+
+  EXPECT(assert_equal(left_side_2, right_side_2, 1e-9));
+}
+
+/* ************************************************************************* */
+TEST(ABC, InputActionJacobianAnalytic) {
+  using namespace abc_examples;
+
+  // Create action functors
+  abc::InputAction<2> psi_u(u);
+  Matrix analytic = psi_u.JacobianAtIdentity();
+  Matrix numerical = gtsam::numericalDerivative11<Vector6, Group>(
+      [&](const Group& g) { return psi_u(g); }, Group::Identity());
+
+  EXPECT(assert_equal(analytic, numerical, 1e-9));
 }
 
 /* ************************************************************************* */
@@ -260,15 +308,12 @@ TEST(ABC, Geometry_lift) {
 
 /* ************************************************************************* */
 TEST(ABC, Geometry_stateMatrixA) {
-  // Setup G element for X_hat
-  Group X_hat = abc_examples::g1;
+  using namespace abc_examples;
 
   // Setup input
-  Vector3 omega(0.5, 0.6, 0.7);
-  Vector6 u = abc::toInputVector(omega);
-  Matrix A_matrix = Geometry::stateMatrixA(X_hat, u);
-  Matrix3 W0 =
-      Rot3::Hat(Geometry::velocityAction(X_hat.inverse(), u).head<3>());
+  Matrix A_matrix = Geometry::stateMatrixA(g1, u);
+  abc::InputAction<2> psi_u(u);
+  Matrix3 W0 = Rot3::Hat(psi_u(g1.inverse()).head<3>());
 
   Matrix expected_A1 = Matrix::Zero(6, 6);
   expected_A1.block<3, 3>(0, 3) = -I_3x3;
@@ -290,8 +335,7 @@ TEST(ABC, Geometry_stateTransitionMatrix) {
 
   Vector6 u = abc::toInputVector(omega);
   Matrix Phi = Geometry::stateTransitionMatrix(X_hat, u, dt);
-  Matrix3 W0 =
-      Rot3::Hat(Geometry::velocityAction(X_hat.inverse(), u).head<3>());
+  Matrix3 W0 = Rot3::Hat(abc::InputAction<2>(u)(X_hat.inverse()).head<3>());
   Matrix Phi1 = Matrix::Zero(6, 6);
   Matrix3 Phi12 = -dt * (I_3x3 + (dt / 2) * W0 + ((dt * dt) / 6) * W0 * W0);
   Matrix3 Phi22 = I_3x3 + dt * W0 + ((dt * dt) / 2) * W0 * W0;
@@ -348,6 +392,32 @@ TEST(ABC, Geometry_inputMatrixBt) {
       Geometry::inputMatrix(X_hat);  // Reference from the other function
 
   EXPECT(assert_equal(input_matrix_Bt, input_matrix, 1e-9));
+}
+
+/* ************************************************************************* */
+TEST(ABC, OutputAction) {
+  Group X = abc_examples::g1;
+  State xi = abc_examples::xi2;
+
+  // Test outputAction (calibrated sensor)
+  Unit3 y_meas = Unit3(1, 0, 0);
+  int cal_idx = 0;
+  Vector3 transformed_y_calibrated = Geometry::outputAction(X, y_meas, cal_idx);
+  EXPECT(assert_equal<Vector>(
+      transformed_y_calibrated,
+      X.calibrations()[cal_idx].inverse().matrix() * y_meas.unitVector(),
+      1e-9));
+
+  // Test outputAction (uncalibrated sensor)
+  int uncalibrated_idx = -1;
+  Vector3 transformed_y_uncalibrated =
+      Geometry::outputAction(X, y_meas, uncalibrated_idx);
+  EXPECT(assert_equal<Vector>(transformed_y_uncalibrated,
+                              X.A().inverse().matrix() * y_meas.unitVector(),
+                              1e-9));
+
+  // Test outputAction out of range
+  CHECK_EXCEPTION(Geometry::outputAction(X, y_meas, 2), std::out_of_range);
 }
 
 /* ************************************************************************* */

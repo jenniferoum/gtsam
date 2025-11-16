@@ -262,8 +262,58 @@ struct StateAction {
    * @return A matrix representing the jacobian of the state action
    */
   Matrix JacobianAtIdentity() const {
-    return gtsam::numericalDerivative11<M, G>(
-        [this](const G& g) { return operator()(g); }, G::Identity());
+    Matrix H = Matrix::Zero(M::dimension, G::dimension);
+
+    // Rotation block: δθ maps directly to the state's rotational tangent.
+    H.block<3, 3>(0, 0) = I_3x3;
+
+    // Bias block: δb = -δa + xi_.b × δθ.
+    H.block<3, 3>(3, 0) = Rot3::Hat(xi_.b);
+    H.block<3, 3>(3, 3) = -I_3x3;
+
+    // Calibration blocks: δs_i = δσ_i - S_i^{-1} δθ.
+    for (size_t i = 0; i < N; ++i) {
+      const Matrix3 S_inv = xi_.S[i].inverse().matrix();
+      const size_t row = 6 + 3 * i;
+      const size_t col = 6 + 3 * i;
+      H.block<3, 3>(row, 0) = -S_inv; // B[i] is identity for G::Identity
+      H.block<3, 3>(row, col) = I_3x3;
+    }
+
+    return H;
+  }
+};
+
+/**
+ * Functor encoding the right group action on the mathematical input u.
+ * For a fixed u = (ω, 0), applying X = (A, a, B) ∈ G yields
+ * φ_u(X) = (A^{-1}(ω - a), 0).
+ */
+template <size_t N>
+struct InputAction {
+  using G = Group<N>;
+  using Input = Vector6;
+
+  const Input u_;
+
+  explicit InputAction(const Input& u) : u_(u) {}
+
+  Input operator()(const G& X) const {
+    const Rot3 A = X.A();
+    const Vector3 a = X.a();
+    Input result;
+    result.head<3>() = A.unrotate(u_.head<3>() - a);
+    result.tail<3>() = Z_3x1;
+    return result;
+  }
+
+  Matrix JacobianAtIdentity() const {
+    Matrix H = Matrix::Zero(Input::RowsAtCompileTime, G::dimension);
+    H.block<3, 3>(0, 0) = Rot3::Hat(u_.head<3>());
+    H.block<3, 3>(0, 3) = -I_3x3;
+    // Remaining blocks stay zero: the virtual input is unaffected by
+    // calibrations.
+    return H;
   }
 };
 
@@ -275,23 +325,6 @@ struct Geometry {
   using M = State<N>;
   using G = Group<N>;
   using InputType = Vector6;  // Mathematical input (ω, 0)
-
-  /**
-   * Transforms the mathematical input (ω, 0) between frames
-   * @param X A symmetry group element X with the components
-   * @param u Mathematical input vector (ω, 0)
-   * @return Transformed input vector
-   * Uses Rot3 Inverse, matrix and Vee functions and is critical for maintaining
-   * the input equivariance
-   */
-  static Vector6 velocityAction(const G& X, const Vector6& u) {
-    const Rot3 A = X.A();
-    const Vector3 a = X.a();
-    Vector6 result;
-    result.head<3>() = A.inverse().matrix() * (u.head<3>() - a);
-    result.tail<3>() = Z_3x1;  // Virtual input remains zero
-    return result;
-  }
 
   /**
    * Transforms the Direction measurements based on the calibration type ( Eqn
@@ -345,8 +378,9 @@ struct Geometry {
    * @return State transition matrix in discrete time
    */
   static Matrix stateTransitionMatrix(G X_hat, const Vector6& u, double dt) {
-    Matrix3 W0 =
-        Rot3::Hat(velocityAction(X_hat.inverse(), u).template head<3>());
+    const InputAction<N> psi_u(u);
+    const Vector3 omega_tilde = psi_u(X_hat.inverse()).template head<3>();
+    Matrix3 W0 = Rot3::Hat(omega_tilde);
     Matrix Phi1 = Matrix::Zero(6, 6);
     Matrix3 W0_sq = W0 * W0;
     Matrix3 Phi12 = -dt * (I_3x3 + 0.5 * dt * W0 + (dt * dt / 6.0) * W0_sq);
@@ -365,11 +399,11 @@ struct Geometry {
    * Computes linearized continuous time state matrix
    * @param data Input data
    * @return Linearized state matrix
-   * Uses Matrix zero and Identity functions
    */
   static Matrix stateMatrixA(const G& X_hat, const Vector6& u) {
-    Matrix3 W0 =
-        Rot3::Hat(velocityAction(X_hat.inverse(), u).template head<3>());
+    const InputAction<N> psi_u(u);
+    const Vector3 omega_tilde = psi_u(X_hat.inverse()).template head<3>();
+    Matrix3 W0 = Rot3::Hat(omega_tilde);
 
     Matrix A1 = Matrix::Zero(6, 6);
     A1.block<3, 3>(0, 3) = -I_3x3;
