@@ -64,6 +64,8 @@ struct State {
   Vector3 b;          // Gyroscope bias b
   Calibrations<N> S;  // Sensor calibrations S
 
+  static constexpr int dimension = 6 + 3 * N;
+
   /// Constructor
   State(const Rot3& R = Rot3(), const Vector3& b = Z_3x1,
         const Calibrations<N>& S = Calibrations<N>())
@@ -78,7 +80,7 @@ struct State {
    * @return Local coordinates in the tangent space
    */
   Vector localCoordinates(const State<N>& other) const {
-    Vector eps(6 + 3 * N);
+    Vector eps(dimension);
 
     // First 3 elements - attitude
     eps.head<3>() = R.logmap(other.R);
@@ -97,7 +99,7 @@ struct State {
    * @return New state
    */
   State retract(const Vector& v) const {
-    if (v.size() != static_cast<Eigen::Index>(6 + 3 * N)) {
+    if (v.size() != static_cast<Eigen::Index>(dimension)) {
       throw std::invalid_argument(
           "Vector size does not match state dimensions");
     }
@@ -226,8 +228,8 @@ struct Geometry {
   static Matrix stateActionDiff(const MType& xi) {
     // TODO(Frank): numericalDerivative11 should already output tangent vector
     // type
-    return gtsam::numericalDerivative11<Vector, GType>(
-        [&xi](const GType& g) { return xi.localCoordinates(stateAction(g, xi)); },
+    return gtsam::numericalDerivative11<MType, GType>(
+        [&xi](const GType& g) { return stateAction(g, xi); },
         gtsam::traits<GType>::Identity());
   }
 
@@ -420,8 +422,16 @@ struct Geometry {
 }  // namespace abc
 
 template <size_t N>
+struct traits<abc::State<N>> : public internal::Manifold<abc::State<N>> {};
+
+template <size_t N>
+struct traits<const abc::State<N>> : public internal::Manifold<abc::State<N>> {
+};
+
+template <size_t N>
 struct traits<abc::Group<N>> : internal::LieGroup<abc::Group<N>> {};
 
 template <size_t N>
 struct traits<const abc::Group<N>> : internal::LieGroup<abc::Group<N>> {};
+
 }  // namespace gtsam
