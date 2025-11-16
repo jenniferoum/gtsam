@@ -22,7 +22,7 @@ constexpr size_t n = 1;  // Number of calibration states
 using M = abc::State<n>;
 using G = abc::Group<n>;
 using Geometry = abc::Geometry<n>;
-using EqFilter = gtsam::EqF<M, Geometry>;
+using EqFilter = gtsam::EqF<M, abc::StateAction<n>>;
 
 /// Measurement struct
 struct Measurement {
@@ -265,7 +265,7 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
     const Data& data = data_list[i];
     Matrix Q = Geometry::processNoise(data.inputCovariance);
     // Propagate filter with current input and time step
-    filter.predict(abc::toInputVector(data.omega), Q, data.dt);
+    filter.predict<Geometry>(abc::toInputVector(data.omega), Q, data.dt);
 
     // Process all measurements
     for (const auto& y : data.y) {
@@ -281,7 +281,7 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
       }
 
       try {
-        filter.update(y);
+        filter.update<Geometry>(y);
         validMeasurements++;
       } catch (const std::exception& e) {
         std::cerr << "Error updating at t=" << data.t << ": " << e.what()

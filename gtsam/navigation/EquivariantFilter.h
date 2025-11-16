@@ -42,21 +42,22 @@ using namespace gtsam;
  * @tparam M Manifold type for the physical state.
  * @tparam Geometry Class defining the group symmetry and action.
  */
-template <typename M, typename Geometry>
-class EqF : public LieGroupEKF<typename Geometry::GType> {
+template <typename M, typename StateAction>
+class EqF : public LieGroupEKF<typename StateAction::G> {
  private:
-  using G = typename Geometry::GType;
+  using G = typename StateAction::G;
   using Base = LieGroupEKF<G>;
 
-  M xi_ref_;               // Origin (reference) state on the manifold
-  Matrix InnovationLift_;  // Innovation lift matrix
-  
-  public:
+  M xi_ref_;                // Origin (reference) state on the manifold
+  StateAction act_on_ref_;  // Group action on the reference state
+  Matrix InnovationLift_;   // Innovation lift matrix
+
+ public:
   static constexpr int Dim = Base::Dim;  ///< Compile-time dimension of G.
-  
+
   /// Number of calibration states (sensors), expected to be provided by G
   static constexpr int n_cal = G::numSensors;
-  
+
   /**
    * Initialize EqF
    * @param X0 Initial Lie group state
@@ -65,19 +66,20 @@ class EqF : public LieGroupEKF<typename Geometry::GType> {
    * @param m Number of direction sensors (must be at least 2)
    */
   EqF(const G& X0, const M& x0, const Matrix& Sigma, int m)
-  : Base(X0, Sigma), xi_ref_(x0) {
+      : Base(X0, Sigma), xi_ref_(x0), act_on_ref_(x0) {
     if (Sigma.rows() != Dim || Sigma.cols() != Dim) {
       throw std::invalid_argument(
-        "Initial covariance dimensions must match the degrees of freedom");
-      }
-      
-      if (m <= 1) {
-        throw std::invalid_argument(
+          "Initial covariance dimensions must match the degrees of freedom");
+    }
+
+    if (m <= 1) {
+      throw std::invalid_argument(
           "Number of direction sensors must be at least 2");
-        }
-        
+    }
+
     // Compute differential of action phi at origin
-    Matrix Dphi0 = Geometry::stateActionDiff(xi_ref_);
+
+    Matrix Dphi0 = act_on_ref_.JacobianAtIdentity();
     InnovationLift_ = Dphi0.completeOrthogonalDecomposition().pseudoInverse();
   }
 
@@ -87,11 +89,11 @@ class EqF : public LieGroupEKF<typename Geometry::GType> {
    */
   M stateEstimate() const {
     // Group action X * xi_ref (defined for ABC as Group * State).
-    return Geometry::stateAction(this->X_, xi_ref_);
+    return act_on_ref_(this->X_);
   }
 
   /// Return the current group estimate.
-  G groupEstimate() const { return this->X_; }
+  const G& groupEstimate() const { return this->X_; }
 
   /**
    * Propagate the filter state.
@@ -99,9 +101,11 @@ class EqF : public LieGroupEKF<typename Geometry::GType> {
    * @param Q Process noise covariance in lifted coordinates
    * @param dt Time step
    */
+  template <typename Geometry>
   void predict(const Vector6& u, const Matrix& Q, double dt) {
-    // auto dynamics = [this](const G& X, const Vector6& u, OptionalJacobian<Dim, Dim> Df) {
-    //   M state_est = X * xi_ref_;
+    // auto dynamics = [this](const G& X, const Vector6& u,
+    // OptionalJacobian<Dim, Dim> Df) {
+    //   M state_est = act_on_ref_(X);
     //   return state_est.lift(u);
     // };
 
@@ -120,12 +124,10 @@ class EqF : public LieGroupEKF<typename Geometry::GType> {
 
   /**
    * Update the filter state with a direction measurement.
-   * @tparam MeasurementType Measurement type (must expose y, d, Sigma,
-   * cal_idx).
    * @param y Direction measurement
    */
-  template <class MeasurementType>
-  void update(const MeasurementType& y) {
+  template <typename Geometry, typename Measurement>
+  void update(const Measurement& y) {
     if (y.cal_idx > static_cast<int>(n_cal)) {
       throw std::invalid_argument("Calibration index out of range");
     }
@@ -142,7 +144,8 @@ class EqF : public LieGroupEKF<typename Geometry::GType> {
 
     Matrix Ct = Geometry::measurementMatrixC(y.d, y.cal_idx);
 
-    Vector3 action_result = Geometry::outputAction(this->X_.inverse(), y.y, y.cal_idx);
+    Vector3 action_result =
+        Geometry::outputAction(this->X_.inverse(), y.y, y.cal_idx);
     Vector3 delta_vec = Rot3::Hat(y.d.unitVector()) * action_result;
     Matrix Dt = Geometry::outputMatrixDt(y.cal_idx, this->X_);
     // Kalman gain

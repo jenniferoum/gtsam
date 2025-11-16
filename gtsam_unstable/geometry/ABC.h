@@ -39,6 +39,7 @@
 #include <functional>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace gtsam {
@@ -110,6 +111,23 @@ struct State {
     Calibrations<N> newS = S.expmap(deltaS);
     return State(newR, newB, newS);
   }
+
+  void print(const std::string& s = "") const {
+    if (!s.empty()) std::cout << s << " ";
+    std::cout << "State<" << N << ">" << std::endl;
+    R.print("  R");
+    std::cout << "  b: " << b.transpose() << std::endl;
+    for (size_t i = 0; i < N; ++i) {
+      const std::string label = "  S[" + std::to_string(i) + "]";
+      S[i].print(label);
+    }
+  }
+
+  bool equals(const State<N>& other, double tol = 1e-9) const {
+    if (!R.equals(other.R, tol)) return false;
+    if (!equal_with_abs_tol(b, other.b, tol)) return false;
+    return traits<Calibrations<N>>::Equals(S, other.S, tol);
+  }
 };
 
 //========================================================================
@@ -178,13 +196,75 @@ struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
   }
 
   const Pose3& pose() const { return this->first; }
-  Pose3& pose() { return this->first; }
-
-  const Calibrations<n>& calibrations() const { return this->second; }
-  Calibrations<n>& calibrations() { return this->second; }
-
   Rot3 A() const { return this->first.rotation(); }
   Vector3 a() const { return this->first.translation(); }
+  const Calibrations<n>& calibrations() const { return this->second; }
+
+  void print(const std::string& s = "") const {
+    if (!s.empty()) std::cout << s << " ";
+    std::cout << "Group<" << n << ">" << std::endl;
+    pose().print("  Pose");
+    for (size_t i = 0; i < n; ++i) {
+      const std::string label = "  S[" + std::to_string(i) + "]";
+      calibrations()[i].print(label);
+    }
+  }
+
+  bool equals(const Group& other, double tol = 1e-9) const {
+    if (!pose().equals(other.pose(), tol)) return false;
+    return traits<Calibrations<n>>::Equals(calibrations(), other.calibrations(),
+                                           tol);
+  }
+};
+
+//========================================================================
+// Group Action on State Manifold
+//========================================================================
+
+/**
+ * The symmetry group G is defined as the product Pose3 x Calibrations<n>.
+ * The Pose3 component models the (SO(3) ⋉ R^3) part acting on attitude/bias,
+ * while Calibrations<n> captures the N sensor calibration rotations.
+ *
+ * The group action is defined as a function object below,
+ * applied to a given state x, specified in constructor.
+ */
+template <size_t N>
+struct StateAction {
+  using M = State<N>;
+  using G = Group<N>;
+
+  const M xi_;  // Reference state
+
+  /**
+   * Construct action functor with reference state
+   * @param xi State object
+   */
+  StateAction(const M& xi) : xi_(xi) {}
+
+  /**
+   * Implements group actions on the states
+   * @param g An element of the symmetry group G.
+   * @return Transformed state
+   */
+  M operator()(const G& g) const {
+    const Rot3 new_R = xi_.R * g.A();
+    const Rot3 At = g.A().inverse();
+    const Vector3 new_b = At * (xi_.b - g.a());
+    Calibrations<N> new_S;
+    const Calibrations<N>& B = g.calibrations();
+    for (size_t i = 0; i < N; i++) new_S[i] = At * xi_.S[i] * B[i];
+    return {new_R, new_b, new_S};
+  }
+
+  /**
+   * The Jacobian of the action at the identity of the symmetry group G
+   * @return A matrix representing the jacobian of the state action
+   */
+  Matrix JacobianAtIdentity() const {
+    return gtsam::numericalDerivative11<M, G>(
+        [this](const G& g) { return operator()(g); }, G::Identity());
+  }
 };
 
 /**
@@ -192,46 +272,9 @@ struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
  */
 template <size_t N>
 struct Geometry {
-  using MType = State<N>;
-  using GType = Group<N>;
+  using M = State<N>;
+  using G = Group<N>;
   using InputType = Vector6;  // Mathematical input (ω, 0)
-
-  /**
-   * Implements group actions on the states
-   * @param X A symmetry group element consisting of a Pose3 acting on the
-   * attitude/bias components, and Calibrations<N> acting on the sensor frames.
-   * @param xi State object
-   * xi.R -> Attitude (Rot3)
-   * xi.b -> Gyroscope Bias(Vector 3)
-   * xi.S -> Vector of calibration matrices(Rot3)
-   * @return Transformed state
-   * Uses the Rot3 inverse and Vee functions
-   */
-  static MType stateAction(const GType& X, const MType& xi) {
-    const Rot3 A = X.A();
-    const Vector3 a = X.a();
-    const Calibrations<N>& X_cal = X.calibrations();
-    Calibrations<N> new_S;
-
-    for (size_t i = 0; i < N; i++) {
-      new_S[i] = A.inverse() * xi.S[i] * X_cal[i];
-    }
-
-    return MType(xi.R * A, A.inverse().matrix() * (xi.b - a), new_S);
-  }
-
-  /**
-   * The differential of a state action at the identity of the symmetry group
-   * @param xi State at which to evaluate the differential
-   * @return A matrix representing the jacobian of the state action
-   */
-  static Matrix stateActionDiff(const MType& xi) {
-    // TODO(Frank): numericalDerivative11 should already output tangent vector
-    // type
-    return gtsam::numericalDerivative11<MType, GType>(
-        [&xi](const GType& g) { return stateAction(g, xi); },
-        gtsam::traits<GType>::Identity());
-  }
 
   /**
    * Transforms the mathematical input (ω, 0) between frames
@@ -241,7 +284,7 @@ struct Geometry {
    * Uses Rot3 Inverse, matrix and Vee functions and is critical for maintaining
    * the input equivariance
    */
-  static Vector6 velocityAction(const GType& X, const Vector6& u) {
+  static Vector6 velocityAction(const G& X, const Vector6& u) {
     const Rot3 A = X.A();
     const Vector3 a = X.a();
     Vector6 result;
@@ -259,7 +302,7 @@ struct Geometry {
    * @return Transformed direction
    * Uses Rot3 inverse, matrix and Unit3 unitvector functions
    */
-  static Vector3 outputAction(const GType& X, const Unit3& y, int idx) {
+  static Vector3 outputAction(const G& X, const Unit3& y, int idx) {
     const Rot3 A = X.A();
     const Calibrations<N>& X_cal = X.calibrations();
     if (idx == -1) {
@@ -281,8 +324,7 @@ struct Geometry {
    * @return TangentVector Lifted vector in the Lie algebra used for
    * propagation.
    */
-  static typename GType::TangentVector lift(const MType& xi,
-                                            const InputType& u) {
+  static typename G::TangentVector lift(const M& xi, const InputType& u) {
     Vector3 w = u.head<3>();
     Vector3 corrected_w = w - xi.b;
 
@@ -302,8 +344,7 @@ struct Geometry {
    * @param dt time step
    * @return State transition matrix in discrete time
    */
-  static Matrix stateTransitionMatrix(GType X_hat, const Vector6& u,
-                                      double dt) {
+  static Matrix stateTransitionMatrix(G X_hat, const Vector6& u, double dt) {
     Matrix3 W0 =
         Rot3::Hat(velocityAction(X_hat.inverse(), u).template head<3>());
     Matrix Phi1 = Matrix::Zero(6, 6);
@@ -326,7 +367,7 @@ struct Geometry {
    * @return Linearized state matrix
    * Uses Matrix zero and Identity functions
    */
-  static Matrix stateMatrixA(const GType& X_hat, const Vector6& u) {
+  static Matrix stateMatrixA(const G& X_hat, const Vector6& u) {
     Matrix3 W0 =
         Rot3::Hat(velocityAction(X_hat.inverse(), u).template head<3>());
 
@@ -340,7 +381,7 @@ struct Geometry {
   }
 
   /// Computes the input uncertainty propagation matrix
-  static Matrix inputMatrix(GType X_hat) {
+  static Matrix inputMatrix(G X_hat) {
     const Matrix3 A_matrix = X_hat.A().matrix();
     Matrix B1 = gtsam::diag({A_matrix, A_matrix});
     Matrix B2(3 * N, 3 * N);
@@ -360,7 +401,7 @@ struct Geometry {
   }
 
   /// Computes the input uncertainty propagation matrix
-  static Matrix inputMatrixBt(GType X_hat) {
+  static Matrix inputMatrixBt(G X_hat) {
     const Matrix3 A_matrix = X_hat.A().matrix();
     Matrix B1 = gtsam::diag({A_matrix, A_matrix});
     Matrix B2(3 * N, 3 * N);

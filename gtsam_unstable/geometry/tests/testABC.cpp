@@ -24,18 +24,27 @@ using Geometry = abc::Geometry<2>;
 using Calibrations = abc::Calibrations<2>;
 
 /* ************************************************************************* */
+namespace abc_examples {
+Rot3 A1 = Rot3::Rx(0.1);
+Vector3 t1(0.01, 0.02, 0.03);
+Calibrations B1{Rot3::Ry(0.05), Rot3::Rz(0.06)};
+State xi1(A1, t1, B1);
+Group g1(Pose3(A1, t1), B1);
+
+Rot3 A2 = Rot3::Ry(0.2);
+Vector3 t2(0.04, 0.05, 0.06);
+Calibrations B2{Rot3::Rz(0.07), Rot3::Rx(0.08)};
+State xi2(A2, t2, B2);
+Group g2(Pose3(A2, t2), B2);
+}  // namespace abc_examples
+
+/* ************************************************************************* */
 TEST(ABC, State) {
-  Rot3 R1 = Rot3::Rx(0.1);
-  Vector3 b1(0.01, 0.02, 0.03);
-  Calibrations S1;
-  S1[0] = Rot3::Ry(0.05);
-  S1[1] = Rot3::Rz(0.06);
+  State state1 = abc_examples::xi1;
 
-  State state1(R1, b1, S1);
-
-  EXPECT(assert_equal(state1.R, R1, 1e-9));
-  EXPECT(assert_equal(state1.b, b1, 1e-9));
-  EXPECT(assert_equal(state1.S, S1));
+  EXPECT(assert_equal(abc_examples::A1, state1.R));
+  EXPECT(assert_equal(abc_examples::t1, state1.b));
+  EXPECT(assert_equal(abc_examples::B1, state1.S));
 
   // Test identity
   State identityState = State::identity();
@@ -85,26 +94,13 @@ TEST(ABC, State) {
 }
 
 /* ************************************************************************* */
-namespace abc_group_examples {
-Rot3 A1 = Rot3::Rx(0.1);
-Vector3 t1_vec(0.01, 0.02, 0.03);
-Calibrations B1{Rot3::Ry(0.05), Rot3::Rz(0.06)};
-Group g1(Pose3(A1, Point3(t1_vec)), B1);
-
-Rot3 A2 = Rot3::Ry(0.2);
-Vector3 t2_vec(0.04, 0.05, 0.06);
-Calibrations B2{Rot3::Rz(0.07), Rot3::Rx(0.08)};
-Group g2(Pose3(A2, Point3(t2_vec)), B2);
-}  // namespace abc_group_examples
-
-/* ************************************************************************* */
 TEST(ABC, GroupOperations) {
-  using namespace abc_group_examples;
+  using namespace abc_examples;
 
   // Test group multiplication
   Group g1_g2 = g1 * g2;
   EXPECT(assert_equal(g1_g2.A(), A1 * A2, 1e-9));
-  Vector3 expected_a = t1_vec + A1.matrix() * t2_vec;
+  Vector3 expected_a = t1 + A1.matrix() * t2;
   EXPECT(assert_equal(g1_g2.a(), expected_a, 1e-9));
   EXPECT(assert_equal(g1_g2.calibrations()[0], B1[0] * B2[0], 1e-9));
   EXPECT(assert_equal(g1_g2.calibrations()[1], B1[1] * B2[1], 1e-9));
@@ -112,7 +108,7 @@ TEST(ABC, GroupOperations) {
   // Test inverse
   Group g1_inv = g1.inverse();
   EXPECT(assert_equal(g1_inv.A(), A1.inverse(), 1e-9));
-  Vector3 expected_a_inv = -A1.inverse().matrix() * t1_vec;
+  Vector3 expected_a_inv = -A1.inverse().matrix() * t1;
   EXPECT(assert_equal(g1_inv.a(), expected_a_inv, 1e-9));
   EXPECT(assert_equal(g1_inv.calibrations()[0], B1[0].inverse(), 1e-9));
   EXPECT(assert_equal(g1_inv.calibrations()[1], B1[1].inverse(), 1e-9));
@@ -133,11 +129,7 @@ TEST(ABC, GroupOperations) {
   v_tangent.segment<3>(9) << 0.07, 0.08, 0.09;  // For B[1]
 
   Group g_exp = Group::Expmap(v_tangent);
-  // Logmap is a placeholder, so we can only check its consistency if
-  // exp(log(g)) = g Currently Logmap returns zero, so cannot properly test
-  // exp(log(g)) == g
-  // EXPECT(assert_equal(Group::Logmap(g_exp), v_tangent, 1e-9)); // This will
-  // fail with placeholder
+  EXPECT(assert_equal(Group::Logmap(g_exp), v_tangent, 1e-9));
 
   // Test retract on G
   Group g_retracted = g1.retract(v_tangent);
@@ -158,7 +150,7 @@ TEST(ABC, GroupOperations) {
 
 //******************************************************************************
 TEST(ABC, AdjointMap) {
-  using namespace abc_group_examples;
+  using namespace abc_examples;
 
   Group::Jacobian adjoint = g1.AdjointMap();
   Group::Jacobian expected = Group::Jacobian::Zero();
@@ -172,25 +164,40 @@ TEST(ABC, AdjointMap) {
 }
 
 /* ************************************************************************* */
-TEST(ABC, GroupActions) {
-  // Setup a G element
-  Rot3 gA = Rot3::Rx(0.1);
-  Vector3 gTranslation(0.01, 0.02, 0.03);
-  Calibrations gB;
-  gB[0] = Rot3::Ry(0.05);
-  gB[1] = Rot3::Rz(0.06);
-  Group X(Pose3(gA, Point3(gTranslation)), gB);
+// A right action satisfies φ(xi, g1 * g2) = φ(φ(xi, g1), g2), i.e. applying
+// g1 then g2 equals applying their product, with the multiplication happening
+// on the right.
+TEST(ABC, StateActionIsRightAction) {
+  using namespace abc_examples;
 
-  // Setup a State element
-  Rot3 sR = Rot3::Rz(0.2);
-  Vector3 sb(0.04, 0.05, 0.06);
-  Calibrations sS;
-  sS[0] = Rot3::Rx(0.07);
-  sS[1] = Rot3::Ry(0.08);
-  State xi(sR, sb, sS);
+  // Create action functors
+  abc::StateAction<2> phi_xi1(xi1);
+
+  // Left side: apply composed group element (g1 * g2) to xi
+  const State left_side = phi_xi1(g1 * g2);
+
+  // Right side: apply g1 first, then g2 to the result
+  const State xi1_g1 = phi_xi1(g1);
+  const State right_side = abc::StateAction<2>(xi1_g1)(g2);
+
+  // For a right action, these should be equal
+  EXPECT(assert_equal(left_side, right_side, 1e-9));
+
+  // Additional test with g1 and g2 reversed
+  const State left_side_2 = phi_xi1(g2 * g1);
+
+  const State xi1_g2 = phi_xi1(g2);
+  const State right_side_2 = abc::StateAction<2>(xi1_g2)(g1);
+
+  EXPECT(assert_equal(left_side_2, right_side_2, 1e-9));
+}
+/* ************************************************************************* */
+TEST(ABC, GroupActions) {
+  Group X = abc_examples::g1;
+  State xi = abc_examples::xi2;
 
   // Test State Action (G * State)
-  State transformed_xi = Geometry::stateAction(X, xi);
+  State transformed_xi = abc::StateAction<2>(xi)(X);
   EXPECT(assert_equal(transformed_xi.R, xi.R * X.A(), 1e-9));
   EXPECT(assert_equal<Matrix>(transformed_xi.b,
                               X.A().inverse().matrix() * (xi.b - X.a()), 1e-9));
@@ -232,13 +239,7 @@ TEST(ABC, GroupActions) {
 
 /* ************************************************************************* */
 TEST(ABC, Geometry_lift) {
-  // Setup state
-  Rot3 R = Rot3();
-  Vector3 b(0.1, 0.2, 0.3);
-  Calibrations S_arr;
-  S_arr[0] = Rot3::Rx(0.05);
-  S_arr[1] = Rot3::Ry(0.06);
-  State xi(R, b, S_arr);
+  State xi = abc_examples::xi1;
 
   // Setup input
   Vector3 omega(0.5, 0.6, 0.7);
@@ -248,8 +249,8 @@ TEST(ABC, Geometry_lift) {
   // Expected values
   Vector3 expected_L_head = omega - xi.b;
   Vector3 expected_L_segment3 = -Rot3::Hat(omega) * xi.b;
-  Vector3 expected_L_segment6_0 = S_arr[0].inverse().matrix() * expected_L_head;
-  Vector3 expected_L_segment6_1 = S_arr[1].inverse().matrix() * expected_L_head;
+  Vector3 expected_L_segment6_0 = xi.S[0].inverse().matrix() * expected_L_head;
+  Vector3 expected_L_segment6_1 = xi.S[1].inverse().matrix() * expected_L_head;
 
   EXPECT(assert_equal<Vector>(L.head<3>(), expected_L_head, 1e-9));
   EXPECT(assert_equal<Vector>(L.segment<3>(3), expected_L_segment3, 1e-9));
@@ -260,18 +261,14 @@ TEST(ABC, Geometry_lift) {
 /* ************************************************************************* */
 TEST(ABC, Geometry_stateMatrixA) {
   // Setup G element for X_hat
-  Rot3 A = Rot3::Rx(0.1);
-  Vector3 translation(0.01, 0.02, 0.03);
-  Calibrations B;
-  B[0] = Rot3::Ry(0.05);
-  B[1] = Rot3::Rz(0.06);
-  Group X_hat(Pose3(A, Point3(translation)), B);
+  Group X_hat = abc_examples::g1;
 
   // Setup input
   Vector3 omega(0.5, 0.6, 0.7);
   Vector6 u = abc::toInputVector(omega);
   Matrix A_matrix = Geometry::stateMatrixA(X_hat, u);
-  Matrix3 W0 = Rot3::Hat(Geometry::velocityAction(X_hat.inverse(), u).head<3>());
+  Matrix3 W0 =
+      Rot3::Hat(Geometry::velocityAction(X_hat.inverse(), u).head<3>());
 
   Matrix expected_A1 = Matrix::Zero(6, 6);
   expected_A1.block<3, 3>(0, 3) = -I_3x3;
@@ -285,13 +282,7 @@ TEST(ABC, Geometry_stateMatrixA) {
 
 /* ************************************************************************* */
 TEST(ABC, Geometry_stateTransitionMatrix) {
-  // Setup G element for X_hat
-  Rot3 A = Rot3::Rx(0.1);
-  Vector3 translation(0.01, 0.02, 0.03);
-  Calibrations B;
-  B[0] = Rot3::Ry(0.05);
-  B[1] = Rot3::Rz(0.06);
-  Group X_hat(Pose3(A, Point3(translation)), B);
+  Group X_hat = abc_examples::g1;
 
   // Setup input
   Vector3 omega(0.5, 0.6, 0.7);
@@ -299,7 +290,8 @@ TEST(ABC, Geometry_stateTransitionMatrix) {
 
   Vector6 u = abc::toInputVector(omega);
   Matrix Phi = Geometry::stateTransitionMatrix(X_hat, u, dt);
-  Matrix3 W0 = Rot3::Hat(Geometry::velocityAction(X_hat.inverse(), u).head<3>());
+  Matrix3 W0 =
+      Rot3::Hat(Geometry::velocityAction(X_hat.inverse(), u).head<3>());
   Matrix Phi1 = Matrix::Zero(6, 6);
   Matrix3 Phi12 = -dt * (I_3x3 + (dt / 2) * W0 + ((dt * dt) / 6) * W0 * W0);
   Matrix3 Phi22 = I_3x3 + dt * W0 + ((dt * dt) / 2) * W0 * W0;
@@ -315,13 +307,7 @@ TEST(ABC, Geometry_stateTransitionMatrix) {
 
 /* ************************************************************************* */
 TEST(ABC, Geometry_inputMatrix) {
-  // Setup G element for X_hat
-  Rot3 A = Rot3::Rx(0.1);
-  Vector3 translation(0.01, 0.02, 0.03);
-  Calibrations B;
-  B[0] = Rot3::Ry(0.05);
-  B[1] = Rot3::Rz(0.06);
-  Group X_hat(Pose3(A, Point3(translation)), B);
+  Group X_hat = abc_examples::g1;
 
   Matrix input_matrix = Geometry::inputMatrix(X_hat);
 
@@ -354,13 +340,8 @@ TEST(ABC, Geometry_processNoise) {
 /* ************************************************************************* */
 TEST(ABC, Geometry_inputMatrixBt) {
   // This function is identical to inputMatrix, so we'll test its output matches
-  // inputMatrix. Setup G element for X_hat
-  Rot3 A = Rot3::Rx(0.1);
-  Vector3 translation(0.01, 0.02, 0.03);
-  Calibrations B;
-  B[0] = Rot3::Ry(0.05);
-  B[1] = Rot3::Rz(0.06);
-  Group X_hat(Pose3(A, Point3(translation)), B);
+  // inputMatrix.
+  Group X_hat = abc_examples::g1;
 
   Matrix input_matrix_Bt = Geometry::inputMatrixBt(X_hat);
   Matrix input_matrix =
@@ -392,12 +373,8 @@ TEST(ABC, Geometry_measurementMatrixC) {
 
 /* ************************************************************************* */
 TEST(ABC, EqFilter) {
-  using M = abc::State<2>;
-  using G = abc::Group<2>;
-  using EqFilter = gtsam::EqF<M, Geometry>;
-
-  const G g_0;
-  const M xi_ref;  // Reference state (xi circle) and not inital state?
+  using G = Group;
+  const State xi_ref = abc_examples::xi1;  // Reference state (xi circle)
   const int numSensors = 2;
 
   Matrix initialSigma = Matrix::Identity(G::dimension, G::dimension);
@@ -408,25 +385,34 @@ TEST(ABC, EqFilter) {
   initialSigma.diagonal().tail<3>() =
       Vector3::Constant(0.1);  // Calibration uncertainty
 
-  EqFilter filter(g_0, xi_ref, initialSigma, numSensors);
+  const G g_0;
+  EqF<State, abc::StateAction<2>> filter(g_0, xi_ref, initialSigma, numSensors);
 
-  G X_HatActual = filter.groupEstimate();
+  // Check initial state
+  EXPECT(assert_equal(g_0, filter.state()));
+  EXPECT(assert_equal(g_0, filter.groupEstimate()));
 
-  G X_HatExpected = filter.state();  // from LieGroupEKF
-
-  EXPECT(traits<G>::Equals(g_0, X_HatActual, 1e-9));
-
-  EXPECT(traits<G>::Equals(X_HatActual, X_HatExpected, 1e-9));
-
+  // Perform a prediction step
   Vector3 omega(0.01, -0.02, 0.015);
   Matrix Sigma = I_6x6;
   double dt = 0.01;
 
   Vector6 u_vec = abc::toInputVector(omega);
   Matrix Q = Geometry::processNoise(Sigma);
-  filter.predict(u_vec, Q, dt);
+  filter.predict<Geometry>(u_vec, Q, dt);
 
-  EXPECT(traits<G>::Equals(filter.groupEstimate(), filter.state(), 1e-9));
+  // Regression
+  Group expected({Rot3(1, 0.00015, -0.0004,  //
+                       -0.00015, 1, 3e-08,   //
+                       0.0004, 3e-08, 1),
+                  Point3(9.00091e-06, 1.49932e-06, -3.9982e-06)},
+                 {Rot3(1, 0.000149811, -0.000400001,   //
+                       -0.000149814, 1, -7.46691e-06,  //
+                       0.000399999, 7.52684e-06, 1),
+                  Rot3(1, 0.000150005, -0.000399278,  //
+                       -0.000149995, 1, 2.40155e-05,  //
+                       0.000399282, -2.39557e-05, 1)});
+  EXPECT(assert_equal(expected, filter.groupEstimate(), 1e-4));
 }
 
 /* ************************************************************************* */
