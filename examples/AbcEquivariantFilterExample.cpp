@@ -31,19 +31,19 @@ using OutputAction = abc::OutputAction<n>;
 struct Measurement {
   Unit3 y;           /// Measurement direction in sensor frame
   Unit3 d;           /// Known direction in global frame
-  Matrix3 Sigma;     /// Covariance matrix of the measurement
+  Matrix3 R;         /// Covariance matrix of the measurement
   int cal_idx = -1;  /// Calibration index (-1 for calibrated sensor)
 };
 
 /// Data structure for ground-truth, input and output data
 struct Data {
-  M xi;                        /// Ground-truth state
-  Vector3 omega;               /// Angular velocity measurement
-  Matrix6 inputCovariance;     /// Input noise covariance (6x6 matrix)
-  std::vector<Measurement> y;  /// Output measurements
-  int n_meas;                  /// Number of measurements
-  double t;                    /// Time
-  double dt;                   /// Time step
+  M xi;                     /// Ground-truth state
+  Vector3 omega;            /// Angular velocity measurement
+  Matrix6 inputCovariance;  /// Input noise covariance (6x6 matrix)
+  std::vector<Measurement> measurements;  /// Output measurements
+  int numMeasurements;                    /// Number of measurements
+  double t;                               /// Time
+  double dt;                              /// Time step
 };
 
 //========================================================================
@@ -272,12 +272,12 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
     filter.predict<Lift, InputAction>(u, Q, data.dt);
 
     // Process all measurements
-    for (const auto& y : data.y) {
+    for (const auto& measurement : data.measurements) {
       totalMeasurements++;
 
       // Skip invalid measurements
-      Vector3 y_vec = y.y.unitVector();
-      Vector3 d_vec = y.d.unitVector();
+      Vector3 y_vec = measurement.y.unitVector();
+      Vector3 d_vec = measurement.d.unitVector();
       if (std::isnan(y_vec[0]) || std::isnan(y_vec[1]) ||
           std::isnan(y_vec[2]) || std::isnan(d_vec[0]) ||
           std::isnan(d_vec[1]) || std::isnan(d_vec[2])) {
@@ -285,7 +285,8 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
       }
 
       try {
-        filter.update<OutputAction>(y);
+        OutputAction phi_y(measurement.y, measurement.d, measurement.cal_idx);
+        filter.update(phi_y, measurement.R);
         validMeasurements++;
       } catch (const std::exception& e) {
         std::cerr << "Error updating at t=" << data.t << ": " << e.what()

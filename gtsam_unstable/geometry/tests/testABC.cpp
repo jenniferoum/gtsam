@@ -28,20 +28,25 @@ using Calibrations = abc::Calibrations<2>;
 
 /* ************************************************************************* */
 namespace abc_examples {
-Rot3 A1 = Rot3::Rx(0.1);
-Vector3 t1(0.01, 0.02, 0.03);
-Calibrations B1{Rot3::Ry(0.05), Rot3::Rz(0.06)};
-State xi1(A1, t1, B1);
-Group g1(Pose3(A1, t1), B1);
+const Rot3 A1 = Rot3::Rx(0.1);
+const Vector3 t1(0.01, 0.02, 0.03);
+const Calibrations B1{Rot3::Ry(0.05), Rot3::Rz(0.06)};
+const State xi1(A1, t1, B1);
+const Group g1(Pose3(A1, t1), B1);
 
-Rot3 A2 = Rot3::Ry(0.2);
-Vector3 t2(0.04, 0.05, 0.06);
-Calibrations B2{Rot3::Rz(0.07), Rot3::Rx(0.08)};
-State xi2(A2, t2, B2);
-Group g2(Pose3(A2, t2), B2);
+const Rot3 A2 = Rot3::Ry(0.2);
+const Vector3 t2(0.04, 0.05, 0.06);
+const Calibrations B2{Rot3::Rz(0.07), Rot3::Rx(0.08)};
+const State xi2(A2, t2, B2);
+const Group g2(Pose3(A2, t2), B2);
 
-Vector3 omega(1, 2, 3);
-Vector6 u = abc::toInputVector(omega);
+const Vector3 omega(1, 2, 3);
+const Vector6 u = abc::toInputVector(omega);
+
+const Vector3 omega2(0.01, -0.02, 0.015);
+const Vector6 u2 = abc::toInputVector(omega2);
+
+const Unit3 y(1, 0, 0), d(0, 1, 0);
 }  // namespace abc_examples
 
 /* ************************************************************************* */
@@ -402,23 +407,21 @@ TEST(ABC, InputAction_inputMatrixBt) {
 TEST(ABC, OutputAction) {
   using namespace abc_examples;
 
-  Unit3 y(1, 0, 0);
-
   // Test outputAction (calibrated sensor)
   int cal_idx = 0;
-  OutputAction phi_y(y, cal_idx);
+  OutputAction phi_y(y, d, cal_idx);
   Vector3 transformed_y_calibrated = phi_y(g1);
   EXPECT(assert_equal<Vector>(transformed_y_calibrated,
                               g1.calibrations()[0].unrotate(y.unitVector())));
 
   // Test outputAction (uncalibrated sensor)
   int uncalibrated_idx = -1;
-  OutputAction uncalibrated_phi_y(y, uncalibrated_idx);
+  OutputAction uncalibrated_phi_y(y, d, uncalibrated_idx);
   Vector3 transformed_y_uncalibrated = uncalibrated_phi_y(g1);
   EXPECT(assert_equal<Vector>(transformed_y_uncalibrated,
                               g1.A().unrotate(y.unitVector())));
 
-  CHECK_EXCEPTION(OutputAction(y, 2), std::out_of_range);
+  CHECK_EXCEPTION(OutputAction(y, d, 2), std::out_of_range);
 }
 
 /* ************************************************************************* */
@@ -427,18 +430,17 @@ TEST(ABC, OutputAction) {
 TEST(ABC, OutputActionIsRightAction) {
   using namespace abc_examples;
 
-  Unit3 y_meas(1, 0, 0);
-  OutputAction phi_y(y_meas, 0);
+  OutputAction phi_y(y, d, 0);
 
   const Vector3 left_side = phi_y(g1 * g2);
 
   Unit3 y_g1(phi_y(g1));
-  const Vector3 right_side = OutputAction(y_g1, 0)(g2);
+  const Vector3 right_side = OutputAction(y_g1, d, 0)(g2);
   EXPECT(assert_equal(left_side, right_side));
 
   const Vector3 left_side_2 = phi_y(g2 * g1);
   Unit3 y_g2(phi_y(g2));
-  const Vector3 right_side_2 = OutputAction(y_g2, 0)(g1);
+  const Vector3 right_side_2 = OutputAction(y_g2, d, 0)(g1);
 
   EXPECT(assert_equal(left_side_2, right_side_2));
 }
@@ -447,8 +449,7 @@ TEST(ABC, OutputActionIsRightAction) {
 TEST(ABC, OutputActionJacobianAnalytic) {
   using namespace abc_examples;
 
-  Unit3 y_meas(1, 0, 0);
-  OutputAction phi_y(y_meas, 0);
+  OutputAction phi_y(y, d, 0);
   Matrix analytic = phi_y.jacobianAtIdentity();
   Matrix numerical = gtsam::numericalDerivative11<Vector3, Group>(
       [&](const Group& g) { return phi_y(g); }, Group::Identity());
@@ -458,13 +459,13 @@ TEST(ABC, OutputActionJacobianAnalytic) {
 
 /* ************************************************************************* */
 TEST(ABC, OutputAction_measurementMatrixC) {
-  Unit3 d = Unit3(0, 0, 1);  // Reference direction (e.g., gravity)
+  using namespace abc_examples;
   Matrix3 wedge_d = Rot3::Hat(d.unitVector());
 
   // Test with calibrated sensor (idx = 0)
   int cal_idx = 0;
-  OutputAction phi_y(Unit3(1, 0, 0), cal_idx);
-  Matrix C_cal = phi_y.measurementMatrixC(d);
+  OutputAction phi_y(y, d, cal_idx);
+  Matrix C_cal = phi_y.measurementMatrixC();
 
   Matrix expected_Cc_cal = Matrix::Zero(3, 3 * 2);
   expected_Cc_cal.block<3, 3>(0, 3 * cal_idx) = wedge_d;
@@ -480,8 +481,10 @@ TEST(ABC, OutputAction_measurementMatrixC) {
 
 /* ************************************************************************* */
 TEST(ABC, EqFilter) {
+  using namespace abc_examples;
+
   using G = Group;
-  const State xi_ref = abc_examples::xi1;  // Reference state (xi circle)
+  const State xi_ref = xi1;  // Reference state (xi circle)
   const int numSensors = 2;
 
   Matrix initialSigma = Matrix::Identity(G::dimension, G::dimension);
@@ -500,13 +503,10 @@ TEST(ABC, EqFilter) {
   EXPECT(assert_equal(g_0, filter.groupEstimate()));
 
   // Perform a prediction step
-  Vector3 omega(0.01, -0.02, 0.015);
   Matrix Sigma = I_6x6;
   double dt = 0.01;
-
-  Vector6 u = abc::toInputVector(omega);
   Matrix Q = InputAction::processNoise(Sigma);
-  filter.predict<Lift, InputAction>(u, Q, dt);
+  filter.predict<Lift, InputAction>(u2, Q, dt);
 
   // Regression
   Group expected({Rot3(1, 0.00015, -0.0004,  //
@@ -520,6 +520,57 @@ TEST(ABC, EqFilter) {
                        -0.000149995, 1, 2.40155e-05,  //
                        0.000399282, -2.39557e-05, 1)});
   EXPECT(assert_equal(expected, filter.groupEstimate(), 1e-4));
+  Matrix expected_P_after_predict =
+      (Matrix(12, 12) << 0.110001, -0, 0, -0.0001, 0, -0, 0, 0, 0, 0, 0, 0,  //
+       -0, 0.110001, -0, 0, -0.0001, -0, 0, 0, 0, 0, 0, 0,                   //
+       0, -0, 0.110001, 0, 0, -0.0001, 0, 0, 0, 0, 0, 0,                     //
+       -0.0001, 0, 0, 0.02, 0, -0, 0, 0, 0, 0, 0, 0,                         //
+       -0, -0.0001, 0, 0, 0.02, 0, 0, 0, 0, 0, 0, 0,                         //
+       -0, -0, -0.0001, -0, 0, 0.02, 0, 0, 0, 0, 0, 0,                       //
+       0, 0, 0, 0, 0, 0, 1, 0, -0, 0, 0, 0,                                  //
+       0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,                                   //
+       0, 0, 0, 0, 0, 0, -0, 0, 1, 0, 0, 0,                                  //
+       0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0, -0,                                //
+       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0,                                 //
+       0, 0, 0, 0, 0, 0, 0, 0, 0, -0, 0, 0.1)
+          .finished();
+  EXPECT(assert_equal(expected_P_after_predict, filter.covariance(), 1e-4));
+
+  // Perform an update step
+  const int cal_idx = 0;
+  const Matrix3 R = 0.01 * I_3x3;
+  OutputAction phi_y(y, d, cal_idx);
+  filter.update(phi_y, R);
+
+  // Regression
+  Group expected_after_update({Rot3(0.995195, -0.097908, -0.000400003,  //
+                                    0.097908, 0.995195, 2.98008e-08,    //
+                                    0.000398078, -3.91931e-05, 1),
+                               Point3(0.00201816, -0.000882995, 8.60911e-05)},
+                              {Rot3(0.548024, -0.836459, -0.00263326,  //
+                                    0.83646, 0.548012, 0.00413976,     //
+                                    -0.00201968, -0.0044713, 0.999988),
+                               Rot3(0.995195, -0.097908, -0.000399281,  //
+                                    0.097908, 0.995195, 2.40155e-05,    //
+                                    0.000395012, -6.2993e-05, 1)});
+  EXPECT(assert_equal(expected_after_update, filter.groupEstimate(), 1e-4));
+  Matrix expected_P_after_update =
+      (Matrix(12, 12) <<  //
+           0.0991972,
+       -0, 0, -9.01785e-05, 0, -0, -0.0982151, 0, 0, 0, 0, 0,       //
+       -0, 0.110001, -0, 0, -0.0001, -0, 0, 0, 0, 0, 0, 0,          //
+       0, -0, 0.0991972, 0, 0, -0.0001, 0, 0, -0.0982151, 0, 0, 0,  //
+       -0.0001, 0, 0, 0.02, 0, -0, 0, 0, 0, 0, 0, 0,                //
+       -0, -0.0001, 0, 0, 0.02, 0, 0, 0, 0, 0, 0, 0,                //
+       -0, -0, -0.0001, -0, 0, 0.02, 0, 0, 0, 0, 0, 0,              //
+       -0.0982151, 0, 0, 0, 0, 0, 0.107144, 0, -0, 0, 0, 0,         //
+       0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,                          //
+       0, 0, -0.0982151, 0, 0, 0, -0, 0, 0.107144, 0, 0, 0,         //
+       0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0, -0,                       //
+       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0,                        //
+       0, 0, 0, 0, 0, 0, 0, 0, 0, -0, 0, 0.1)
+          .finished();
+  EXPECT(assert_equal(expected_P_after_update, filter.covariance(), 1e-4));
 }
 
 /* ************************************************************************* */

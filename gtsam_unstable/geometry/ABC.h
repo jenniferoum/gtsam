@@ -409,7 +409,8 @@ struct OutputAction {
   using G = Group<N>;
   using Output = Vector3;
 
-  OutputAction(const Unit3& y, int index) : y_(y), index_(index) {
+  OutputAction(const Unit3& y, const Unit3& d, int index)
+      : y_(y), d_(d), index_(index) {
     if (index_ >= static_cast<int>(N)) {
       throw std::out_of_range("OutputAction index out of range");
     }
@@ -435,20 +436,24 @@ struct OutputAction {
     return H;
   }
 
+  Vector3 innovation(const G& X) const {
+    const Vector3 transformed_y = this->operator()(X);
+    return Rot3::Hat(d_.unitVector()) * transformed_y;
+  }
+
   /**
    * Computes the linearized measurement matrix. The structure depends on
    * whether the sensor has a calibration state
    * @param d reference direction
    * @return Measurement matrix
    */
-  Matrix measurementMatrixC(const Unit3& d) const {
+  Matrix measurementMatrixC() const {
     Matrix Cc = Matrix::Zero(3, 3 * N);
 
+    Matrix3 wedge_d = Rot3::Hat(d_.unitVector());
     if (index_ >= 0) {
-      Cc.block<3, 3>(0, 3 * index_) = Rot3::Hat(d.unitVector());
+      Cc.block<3, 3>(0, 3 * index_) = wedge_d;
     }
-
-    Matrix3 wedge_d = Rot3::Hat(d.unitVector());
 
     Matrix temp(3, 6 + 3 * N);
     temp.block<3, 3>(0, 0) = wedge_d;
@@ -471,8 +476,9 @@ struct OutputAction {
   }
 
  private:
-  Unit3 y_;
-  int index_;
+  Unit3 y_;    // measured direction
+  Unit3 d_;    // reference direction
+  int index_;  // sensor index
 };
 
 }  // namespace abc

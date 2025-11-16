@@ -47,6 +47,7 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
  private:
   using G = typename StateAction::G;
   using Base = LieGroupEKF<G>;
+  using TangentVector = typename traits<G>::TangentVector;
 
   M xi_ref_;                // Origin (reference) state on the manifold
   StateAction act_on_ref_;  // Group action on the reference state
@@ -116,7 +117,7 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
 
     // Compute lifted tangent vector from state and input
     Lift lift_u(u);
-    typename G::TangentVector xi = lift_u(state_est);
+    TangentVector xi = lift_u(state_est);
 
     InputAction psi_u(u);
     Matrix Phi = psi_u.stateTransitionMatrix(this->X_, dt);
@@ -133,44 +134,27 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
    * @tparam Measurement Measurement type carrying y, d, Sigma, and cal_idx.
    * @param y Direction measurement
    */
-  template <typename OutputAction, typename Measurement>
-  void update(const Measurement& y) {
-    if (y.cal_idx >= static_cast<int>(n_cal)) {
-      throw std::invalid_argument("Calibration index out of range");
-    }
-
-    // Get vector representations for checking
-    Vector3 y_vec = y.y.unitVector();
-    Vector3 d_vec = y.d.unitVector();
-
-    // Skip update if any NaN values are present
-    if (std::isnan(y_vec[0]) || std::isnan(y_vec[1]) || std::isnan(y_vec[2]) ||
-        std::isnan(d_vec[0]) || std::isnan(d_vec[1]) || std::isnan(d_vec[2])) {
-      return;  // Skip this measurement
-    }
-
-    OutputAction phi_y(y.y, y.cal_idx);
-    Matrix Ct = phi_y.measurementMatrixC(y.d);
-
-    // TODO(Frank): Why inverse ????
-    Vector3 action_result = phi_y(this->X_.inverse());
-
-    Vector3 delta_vec = Rot3::Hat(y.d.unitVector()) * action_result;
-    Matrix Dt = phi_y.outputMatrixDt(this->X_);
+  template <typename OutputAction>
+  void update(const OutputAction& phi_y, const Matrix& R) {
+    Matrix Ct = phi_y.measurementMatrixC();
 
     // Kalman gain
-    Matrix S = Ct * this->P_ * Ct.transpose() + Dt * y.Sigma * Dt.transpose();
+    Matrix Dt = phi_y.outputMatrixDt(this->X_);
+    Matrix S = Ct * this->P_ * Ct.transpose() + Dt * R * Dt.transpose();
     Matrix K = this->P_ * Ct.transpose() * S.inverse();
 
     // Innovation lift
-    Vector Delta = InnovationLift_ * (K * delta_vec);
+    // TODO(Frank): Why inverse ????
+    Vector3 innovation = phi_y.innovation(this->X_.inverse());
+    TangentVector delta_xi = InnovationLift_ * (K * innovation);
 
-    // Update state estimate (left-multiply by exp(Delta))
-    this->X_ = traits<G>::Compose(traits<G>::Expmap(Delta), this->X_);
+    // Update state estimate (left-multiply by exp(delta_xi))
+    // TODO(Frank): try X_ = traits<M>::Retract(X_, delta_xi);
+    this->X_ = traits<G>::Compose(traits<G>::Expmap(delta_xi), this->X_);
 
     // Update covariance
-    Matrix I = Matrix::Identity(this->P_.rows(), this->P_.cols());
-    this->P_ = (I - K * Ct) * this->P_;
+    Matrix I_n = Matrix::Identity(this->P_.rows(), this->P_.cols());
+    this->P_ = (I_n - K * Ct) * this->P_;
   }
 };
 
