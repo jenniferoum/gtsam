@@ -40,7 +40,7 @@ using namespace gtsam;
  * Equivariant Filter (EqF) for state estimation on Lie groups with states on
  * manifolds.
  * @tparam M Manifold type for the physical state.
- * @tparam Geometry Class defining the group symmetry and action.
+ * @tparam StateAction Functor encoding the right group action on the state.
  */
 template <typename M, typename StateAction>
 class EqF : public LieGroupEKF<typename StateAction::G> {
@@ -128,9 +128,11 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
 
   /**
    * Update the filter state with a direction measurement.
+   * @tparam OutputAction Functor encoding the action on the measurement.
+   * @tparam Measurement Measurement type carrying y, d, Sigma, and cal_idx.
    * @param y Direction measurement
    */
-  template <typename Geometry, typename Measurement>
+  template <typename OutputAction, typename Measurement>
   void update(const Measurement& y) {
     if (y.cal_idx >= static_cast<int>(n_cal)) {
       throw std::invalid_argument("Calibration index out of range");
@@ -146,15 +148,15 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
       return;  // Skip this measurement
     }
 
-    Matrix Ct = Geometry::measurementMatrixC(y.d, y.cal_idx);
+    OutputAction phi_y(y.y, y.cal_idx);
+    Matrix Ct = phi_y.measurementMatrixC(y.d);
 
     // TODO(Frank): Why inverse ????
-    using OutputAction = typename Geometry::OutputAction;
-    OutputAction phi_y(y.y, y.cal_idx);
     Vector3 action_result = phi_y(this->X_.inverse());
 
     Vector3 delta_vec = Rot3::Hat(y.d.unitVector()) * action_result;
-    Matrix Dt = Geometry::outputMatrixDt(y.cal_idx, this->X_);
+    Matrix Dt = phi_y.outputMatrixDt(this->X_);
+
     // Kalman gain
     Matrix S = Ct * this->P_ * Ct.transpose() + Dt * y.Sigma * Dt.transpose();
     Matrix K = this->P_ * Ct.transpose() * S.inverse();

@@ -24,7 +24,6 @@ using StateAction = abc::StateAction<2>;
 using Lift = abc::Lift<2>;
 using InputAction = abc::InputAction<2>;
 using OutputAction = abc::OutputAction<2>;
-using Geometry = abc::Geometry<2>;
 using Calibrations = abc::Calibrations<2>;
 
 /* ************************************************************************* */
@@ -373,12 +372,12 @@ TEST(ABC, InputAction_inputMatrix) {
 }
 
 /* ************************************************************************* */
-TEST(ABC, Geometry_processNoise) {
+TEST(ABC, InputAction_processNoise) {
   Matrix Sigma = (Matrix(6, 6) << 1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 3,
                   0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 6)
                      .finished();
 
-  Matrix Q = Geometry::processNoise(Sigma);
+  Matrix Q = InputAction::processNoise(Sigma);
 
   Matrix expected_Q_cal_part = 1e-9 * I_6x6;
   Matrix expected_Q = gtsam::diag({Sigma, expected_Q_cal_part});
@@ -458,13 +457,14 @@ TEST(ABC, OutputActionJacobianAnalytic) {
 }
 
 /* ************************************************************************* */
-TEST(ABC, Geometry_measurementMatrixC) {
+TEST(ABC, OutputAction_measurementMatrixC) {
   Unit3 d = Unit3(0, 0, 1);  // Reference direction (e.g., gravity)
   Matrix3 wedge_d = Rot3::Hat(d.unitVector());
 
   // Test with calibrated sensor (idx = 0)
   int cal_idx = 0;
-  Matrix C_cal = Geometry::measurementMatrixC(d, cal_idx);
+  OutputAction phi_y(Unit3(1, 0, 0), cal_idx);
+  Matrix C_cal = phi_y.measurementMatrixC(d);
 
   Matrix expected_Cc_cal = Matrix::Zero(3, 3 * 2);
   expected_Cc_cal.block<3, 3>(0, 3 * cal_idx) = wedge_d;
@@ -505,7 +505,7 @@ TEST(ABC, EqFilter) {
   double dt = 0.01;
 
   Vector6 u = abc::toInputVector(omega);
-  Matrix Q = Geometry::processNoise(Sigma);
+  Matrix Q = InputAction::processNoise(Sigma);
   filter.predict<Lift, InputAction>(u, Q, dt);
 
   // Regression

@@ -25,7 +25,7 @@ using StateAction = abc::StateAction<n>;
 using EqFilter = gtsam::EqF<M, StateAction>;
 using Lift = abc::Lift<n>;
 using InputAction = abc::InputAction<n>;
-using Geometry = abc::Geometry<n>;
+using OutputAction = abc::OutputAction<n>;
 
 /// Measurement struct
 struct Measurement {
@@ -266,7 +266,7 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
 
   for (size_t i = 0; i < data_list.size(); i++) {
     const Data& data = data_list[i];
-    Matrix Q = Geometry::processNoise(data.inputCovariance);
+    Matrix Q = InputAction::processNoise(data.inputCovariance);
     // Propagate filter with current input and time step
     Vector6 u = abc::toInputVector(data.omega);
     filter.predict<Lift, InputAction>(u, Q, data.dt);
@@ -285,7 +285,7 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
       }
 
       try {
-        filter.update<Geometry>(y);
+        filter.update<OutputAction>(y);
         validMeasurements++;
       } catch (const std::exception& e) {
         std::cerr << "Error updating at t=" << data.t << ": " << e.what()

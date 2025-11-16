@@ -323,6 +323,12 @@ struct InputAction {
   using G = Group<N>;
   using Input = Vector6;
 
+  static Matrix processNoise(const Matrix& Sigma) {
+    std::vector<Matrix> blocks{Sigma};
+    blocks.insert(blocks.end(), N, 1e-9 * I_3x3);
+    return gtsam::diag(blocks);
+  }
+
   const Input u_;
 
   explicit InputAction(const Input& u) : u_(u) {}
@@ -421,55 +427,29 @@ struct OutputAction {
 
   Matrix jacobianAtIdentity() const {
     Matrix H = Matrix::Zero(Output::RowsAtCompileTime, G::dimension);
-    H.block<3, 3>(0, 6 + 3 * index_) = Rot3::Hat(y_.unitVector());
+    if (index_ == -1) {
+      H.block<3, 3>(0, 0) = Rot3::Hat(y_.unitVector());
+    } else {
+      H.block<3, 3>(0, 6 + 3 * index_) = Rot3::Hat(y_.unitVector());
+    }
     return H;
-  }
-
- private:
-  Unit3 y_;
-  int index_;
-};
-
-//========================================================================
-// Group Actions on State, Input, and Output Manifolds
-//========================================================================
-
-/**
- * Geometry class encapsulating the ABC system dynamics and measurement models
- */
-template <size_t N>
-struct Geometry {
-  using M = State<N>;
-  using G = Group<N>;
-  using OutputAction = abc::OutputAction<N>;
-
-
-  /// The continuous-time process noise covariance in lifted coordinates
-  static Matrix processNoise(const Matrix& Sigma) {
-    std::vector<Matrix> blocks{Sigma};
-    blocks.insert(blocks.end(), N, 1e-9 * I_3x3);
-    return gtsam::diag(blocks);
   }
 
   /**
    * Computes the linearized measurement matrix. The structure depends on
    * whether the sensor has a calibration state
    * @param d reference direction
-   * @param idx Calibration index
    * @return Measurement matrix
-   * Uses the matrix zero, Rot3 hat and the Unitvector functions
    */
-  static Matrix measurementMatrixC(const Unit3& d, int idx) {
+  Matrix measurementMatrixC(const Unit3& d) const {
     Matrix Cc = Matrix::Zero(3, 3 * N);
 
-    // If the measurement is related to a sensor that has a calibration state
-    if (idx >= 0) {  // Set the correct 3x3 block in Cc
-      Cc.block<3, 3>(0, 3 * idx) = Rot3::Hat(d.unitVector());
+    if (index_ >= 0) {
+      Cc.block<3, 3>(0, 3 * index_) = Rot3::Hat(d.unitVector());
     }
 
     Matrix3 wedge_d = Rot3::Hat(d.unitVector());
 
-    // Build the combined matrix
     Matrix temp(3, 6 + 3 * N);
     temp.block<3, 3>(0, 0) = wedge_d;
     temp.block<3, 3>(0, 3) = Matrix3::Zero();
@@ -480,22 +460,19 @@ struct Geometry {
 
   /**
    * Computes the measurement uncertainty propagation matrix
-   * @param idx Calibration index
    * @return Returns B[idx] for calibrated sensors, A for uncalibrated
    */
-  static Matrix outputMatrixDt(int idx, Group<N> X_hat) {
-    // If the measurement is related to a sensor that has a calibration state
-    if (idx >= 0) {
-      if (idx >= static_cast<int>(N)) {
-        throw std::out_of_range("Calibration index out of range");
-      }
-      return X_hat.calibrations()[idx].matrix();
+  Matrix outputMatrixDt(const G& X_hat) const {
+    if (index_ >= 0) {
+      return X_hat.calibrations()[index_].matrix();
     } else {
       return X_hat.A().matrix();
     }
   }
 
-  static constexpr int n_cal = N;
+ private:
+  Unit3 y_;
+  int index_;
 };
 
 }  // namespace abc
