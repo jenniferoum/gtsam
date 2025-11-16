@@ -1,11 +1,6 @@
 /**
- * @file ABC_EQF.h
- * @brief Header file for the Attitude-Bias-Calibration Equivariant Filter
- *
- * This file contains declarations for the Equivariant Filter (EqF) for attitude
- * estimation with both gyroscope bias and sensor extrinsic calibration, based
- * on the paper: "Overcoming Bias: Equivariant Filter Design for Biased Attitude
- * Estimation with Online Calibration" by Fornasier et al.
+ * @file EquivariantFilter.h
+ * @brief Equivariant Filter (EqF) implementation
  *
  * @author Darshan Rajasekaran
  * @author Jennifer Oum
@@ -41,14 +36,16 @@ namespace gtsam {
 using namespace std;
 using namespace gtsam;
 
-//========================================================================
-// Equivariant Filter (EqF)
-//========================================================================
-
-/// Equivariant Filter (EqF) implementation
-template <typename G, typename M>
-class EqF : public LieGroupEKF<G> {
+/**
+ * Equivariant Filter (EqF) for state estimation on Lie groups with states on
+ * manifolds.
+ * @tparam M Manifold type for the physical state.
+ * @tparam Geometry Class defining the group symmetry and action.
+ */
+template <typename M, typename Geometry>
+class EqF : public LieGroupEKF<typename Geometry::GType> {
  private:
+  using G = typename Geometry::GType;
   using Base = LieGroupEKF<G>;
 
   M xi_ref_;               // Origin (reference) state on the manifold
@@ -81,7 +78,7 @@ class EqF : public LieGroupEKF<G> {
     }
 
     // Compute differential of phi
-    Dphi0_ = stateActionDiff(xi_ref_);
+    Dphi0_ = Geometry::stateActionDiff(xi_ref_);
     InnovationLift_ = Dphi0_.completeOrthogonalDecomposition().pseudoInverse();
   }
 
@@ -91,7 +88,7 @@ class EqF : public LieGroupEKF<G> {
    */
   M stateEstimate() const {
     // Group action X * xi_ref (defined for ABC as Group * State).
-    return this->X_ * xi_ref_;
+    return Geometry::stateAction(this->X_, xi_ref_);
   }
 
   /// Return the current group estimate.
@@ -104,16 +101,21 @@ class EqF : public LieGroupEKF<G> {
    * @param dt Time step
    */
   void predict(const Vector6& u, const Matrix& Q, double dt) {
+    // auto dynamics = [this](const G& X, const Vector6& u, OptionalJacobian<Dim, Dim> Df) {
+    //   M state_est = X * xi_ref_;
+    //   return state_est.lift(u);
+    // };
+
     // Map current group estimate to physical state on the manifold
     M state_est = stateEstimate();
 
     // Compute lifted tangent vector from state and input
-    Vector L = state_est.lift(u);
+    Vector xi = Geometry::lift(state_est, u);
 
-    Matrix Phi = stateTransitionMatrix(this->X_, u, dt);
-    Matrix Bt = inputMatrixBt(this->X_);
+    Matrix Phi = Geometry::stateTransitionMatrix(this->X_, u, dt);
+    Matrix Bt = Geometry::inputMatrixBt(this->X_);
 
-    this->X_ = traits<G>::Compose(this->X_, traits<G>::Expmap(L * dt));
+    this->X_ = traits<G>::Compose(this->X_, traits<G>::Expmap(xi * dt));
     this->P_ = Phi * this->P_ * Phi.transpose() + Bt * Q * Bt.transpose() * dt;
   }
 
@@ -139,12 +141,11 @@ class EqF : public LieGroupEKF<G> {
       return;  // Skip this measurement
     }
 
-    Matrix Ct = measurementMatrixC(y.d, y.cal_idx, this->X_);
+    Matrix Ct = Geometry::measurementMatrixC(y.d, y.cal_idx);
 
-    Vector3 action_result = outputAction(this->X_.inverse(), y.y, y.cal_idx);
+    Vector3 action_result = Geometry::outputAction(this->X_.inverse(), y.y, y.cal_idx);
     Vector3 delta_vec = Rot3::Hat(y.d.unitVector()) * action_result;
-    Matrix Dt = outputMatrixDt(this->X_, y.cal_idx);
-
+    Matrix Dt = Geometry::outputMatrixDt(y.cal_idx, this->X_);
     // Kalman gain
     Matrix S = Ct * this->P_ * Ct.transpose() + Dt * y.Sigma * Dt.transpose();
     Matrix K = this->P_ * Ct.transpose() * S.inverse();

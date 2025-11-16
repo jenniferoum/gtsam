@@ -21,8 +21,8 @@ using namespace gtsam;
 constexpr size_t n = 1;  // Number of calibration states
 using M = abc::State<n>;
 using G = abc::Group<n>;
-using EqFilter = gtsam::EqF<G, M>;
 using Geometry = abc::Geometry<n>;
+using EqFilter = gtsam::EqF<M, Geometry>;
 
 /// Measurement struct
 struct Measurement {

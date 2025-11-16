@@ -59,8 +59,7 @@ using Calibrations = PowerLieGroup<Rot3, N>;
 
 /// State class representing the state of the Biased Attitude System
 template <size_t N>
-class State {
- public:
+struct State {
   Rot3 R;             // Attitude rotation matrix R
   Vector3 b;          // Gyroscope bias b
   Calibrations<N> S;  // Sensor calibrations S
@@ -108,26 +107,6 @@ class State {
     deltaS = v.template segment<3 * N>(6);
     Calibrations<N> newS = S.expmap(deltaS);
     return State(newR, newB, newS);
-  }
-
-  /**
-   * Compute the lifted tangent vector from state and input.
-   * This implements the lift operation from the equivariant filter paper.
-   * @param u Input vector (ω, 0) where first 3 are angular velocity
-   * @return Vector Lifted vector in the Lie algebra used for propagation.
-   */
-  Vector lift(const Vector6& u) const {
-    Vector3 w = u.head<3>();
-    Vector3 corrected_w = w - b;
-
-    Vector L = Vector::Zero(6 + 3 * N);
-    L.head<3>() = corrected_w;
-    L.segment<3>(3) = -Rot3::Hat(w) * b;
-    for (size_t i = 0; i < N; i++) {
-      L.segment<3>(6 + 3 * i) = S[i].inverse().matrix() * corrected_w;
-    }
-
-    return L;
   }
 };
 
@@ -206,111 +185,113 @@ struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
   Vector3 a() const { return this->first.translation(); }
 };
 
-//========================================================================
-// Helper Functions Implementation
-//========================================================================
-
-/**
- * Implements group actions on the states
- * @param X A symmetry group element consisting of a Pose3 acting on the
- * attitude/bias components, and Calibrations<N> acting on the sensor frames.
- * @param xi State object
- * xi.R -> Attitude (Rot3)
- * xi.b -> Gyroscope Bias(Vector 3)
- * xi.S -> Vector of calibration matrices(Rot3)
- * @return Transformed state
- * Uses the Rot3 inverse and Vee functions
- */
-template <size_t N>
-State<N> operator*(const Group<N>& X, const State<N>& xi) {
-  const Rot3 A = X.A();
-  const Vector3 a = X.a();
-  const Calibrations<N>& X_cal = X.calibrations();
-  Calibrations<N> new_S;
-
-  for (size_t i = 0; i < N; i++) {
-    new_S[i] = A.inverse() * xi.S[i] * X_cal[i];
-  }
-
-  return State<N>(xi.R * A, A.inverse().matrix() * (xi.b - a), new_S);
-}
-
-/**
- * Transforms the mathematical input (ω, 0) between frames
- * @param X A symmetry group element X with the components
- * @param u Mathematical input vector (ω, 0)
- * @return Transformed input vector
- * Uses Rot3 Inverse, matrix and Vee functions and is critical for maintaining
- * the input equivariance
- */
-template <size_t N>
-Vector6 velocityAction(const Group<N>& X, const Vector6& u) {
-  const Rot3 A = X.A();
-  const Vector3 a = X.a();
-  Vector6 result;
-  result.head<3>() = A.inverse().matrix() * (u.head<3>() - a);
-  result.tail<3>() = Z_3x1;  // Virtual input remains zero
-  return result;
-}
-
-/**
- * Transforms the Direction measurements based on the calibration type ( Eqn 6)
- * @param X Group element X
- * @param y Direction measurement y
- * @param idx Calibration index
- * @return Transformed direction
- * Uses Rot3 inverse, matrix and Unit3 unitvector functions
- */
-template <size_t N>
-Vector3 outputAction(const Group<N>& X, const Unit3& y, int idx) {
-  const Rot3 A = X.A();
-  const Calibrations<N>& X_cal = X.calibrations();
-  if (idx == -1) {
-    return A.inverse().matrix() * y.unitVector();
-  } else {
-    if (idx >= static_cast<int>(N)) {
-      throw std::out_of_range("Calibration index out of range");
-    }
-    return X_cal[idx].inverse().matrix() * y.unitVector();
-  }
-}
-
-/**
- * Computes the differential of a state action at the identity of the symmetry
- * group
- * @param xi State object Xi representing the point at which to evaluate the
- * differential
- * @return A matrix representing the jacobian of the state action
- */
-template <size_t N>
-Matrix stateActionDiff(const State<N>& xi) {
-  return gtsam::numericalDerivative11<Vector, Group<N>>(
-      [&xi](const Group<N>& g) { return xi.localCoordinates(g * xi); },
-      gtsam::traits<Group<N>>::Identity());
-}
-
 /**
  * Geometry class encapsulating the ABC system dynamics and measurement models
  */
 template <size_t N>
 struct Geometry {
-  using InputType = Vector6;  // Mathematical input (ω, 0)
-  using GType = Group<N>;
   using MType = State<N>;
-  using TangentVector = typename GType::TangentVector;
-  static MType identityState() { return MType::identity(); }
-  static MType groupAction(const GType& g, const MType& x) { return g * x; }
+  using GType = Group<N>;
+  using InputType = Vector6;  // Mathematical input (ω, 0)
+
+  /**
+   * Implements group actions on the states
+   * @param X A symmetry group element consisting of a Pose3 acting on the
+   * attitude/bias components, and Calibrations<N> acting on the sensor frames.
+   * @param xi State object
+   * xi.R -> Attitude (Rot3)
+   * xi.b -> Gyroscope Bias(Vector 3)
+   * xi.S -> Vector of calibration matrices(Rot3)
+   * @return Transformed state
+   * Uses the Rot3 inverse and Vee functions
+   */
+  static MType stateAction(const GType& X, const MType& xi) {
+    const Rot3 A = X.A();
+    const Vector3 a = X.a();
+    const Calibrations<N>& X_cal = X.calibrations();
+    Calibrations<N> new_S;
+
+    for (size_t i = 0; i < N; i++) {
+      new_S[i] = A.inverse() * xi.S[i] * X_cal[i];
+    }
+
+    return MType(xi.R * A, A.inverse().matrix() * (xi.b - a), new_S);
+  }
+
+  /**
+   * The differential of a state action at the identity of the symmetry group
+   * @param xi State at which to evaluate the differential
+   * @return A matrix representing the jacobian of the state action
+   */
+  static Matrix stateActionDiff(const MType& xi) {
+    // TODO(Frank): numericalDerivative11 should already output tangent vector
+    // type
+    return gtsam::numericalDerivative11<Vector, GType>(
+        [&xi](const GType& g) { return xi.localCoordinates(stateAction(g, xi)); },
+        gtsam::traits<GType>::Identity());
+  }
+
+  /**
+   * Transforms the mathematical input (ω, 0) between frames
+   * @param X A symmetry group element X with the components
+   * @param u Mathematical input vector (ω, 0)
+   * @return Transformed input vector
+   * Uses Rot3 Inverse, matrix and Vee functions and is critical for maintaining
+   * the input equivariance
+   */
+  static Vector6 velocityAction(const GType& X, const Vector6& u) {
+    const Rot3 A = X.A();
+    const Vector3 a = X.a();
+    Vector6 result;
+    result.head<3>() = A.inverse().matrix() * (u.head<3>() - a);
+    result.tail<3>() = Z_3x1;  // Virtual input remains zero
+    return result;
+  }
+
+  /**
+   * Transforms the Direction measurements based on the calibration type ( Eqn
+   * 6)
+   * @param X Group element X
+   * @param y Direction measurement y
+   * @param idx Calibration index
+   * @return Transformed direction
+   * Uses Rot3 inverse, matrix and Unit3 unitvector functions
+   */
+  static Vector3 outputAction(const GType& X, const Unit3& y, int idx) {
+    const Rot3 A = X.A();
+    const Calibrations<N>& X_cal = X.calibrations();
+    if (idx == -1) {
+      return A.inverse().matrix() * y.unitVector();
+    } else {
+      if (idx >= static_cast<int>(N)) {
+        throw std::out_of_range("Calibration index out of range");
+      }
+      return X_cal[idx].inverse().matrix() * y.unitVector();
+    }
+  }
 
   /**
    * Compute the lifted tangent vector from state and input.
+   * This implements the lift operation from the equivariant filter paper.
    * @param xi Current state on the manifold (including orientation, bias, and
    * sensor rotations).
    * @param u Mathematical input vector (ω, 0)
    * @return TangentVector Lifted vector in the Lie algebra used for
    * propagation.
    */
-  static TangentVector lift(const MType& xi, const InputType& u) {
-    return xi.lift(u);
+  static typename GType::TangentVector lift(const MType& xi,
+                                            const InputType& u) {
+    Vector3 w = u.head<3>();
+    Vector3 corrected_w = w - xi.b;
+
+    Vector L = Vector::Zero(6 + 3 * N);
+    L.head<3>() = corrected_w;
+    L.segment<3>(3) = -Rot3::Hat(w) * xi.b;
+    for (size_t i = 0; i < N; i++) {
+      L.segment<3>(6 + 3 * i) = xi.S[i].unrotate(corrected_w);
+    }
+
+    return L;
   }
 
   /**
@@ -319,8 +300,8 @@ struct Geometry {
    * @param dt time step
    * @return State transition matrix in discrete time
    */
-  static Matrix stateTransitionMatrix(const Vector6& u, double dt,
-                                      GType X_hat) {
+  static Matrix stateTransitionMatrix(GType X_hat, const Vector6& u,
+                                      double dt) {
     Matrix3 W0 =
         Rot3::Hat(velocityAction(X_hat.inverse(), u).template head<3>());
     Matrix Phi1 = Matrix::Zero(6, 6);
@@ -436,50 +417,6 @@ struct Geometry {
   static constexpr int n_cal = N;
 };
 
-//========================================================================
-// Free-function adapters for EqF and generic EKF code
-//========================================================================
-
-/**
- * @brief Discrete-time state transition matrix for the EqF.
- *
- * Thin wrapper around Geometry<N>::stateTransitionMatrix
- */
-template <size_t N>
-Matrix stateTransitionMatrix(const Group<N>& X_hat, const Vector6& u,
-                             double dt) {
-  return Geometry<N>::stateTransitionMatrix(u, dt, X_hat);
-}
-
-/**
- * @brief Input uncertainty propagation matrix Bt for the EqF.
- *
- * Wraps Geometry<N>::inputMatrixBt
- */
-template <size_t N>
-Matrix inputMatrixBt(const Group<N>& X_hat) {
-  return Geometry<N>::inputMatrixBt(X_hat);
-}
-
-/**
- * @brief Linearized measurement matrix C for a direction measurement.
- *
- * Wraps Geometry<N>::measurementMatrixC
- */
-template <size_t N>
-Matrix measurementMatrixC(const Unit3& d, int idx, const Group<N>& /*X_hat*/) {
-  return Geometry<N>::measurementMatrixC(d, idx);
-}
-
-/**
- * @brief Measurement uncertainty propagation matrix Dt.
- *
- * Wraps Geometry<N>::outputMatrixDt
- */
-template <size_t N>
-Matrix outputMatrixDt(const Group<N>& X_hat, int idx) {
-  return Geometry<N>::outputMatrixDt(idx, X_hat);
-}
 }  // namespace abc
 
 template <size_t N>

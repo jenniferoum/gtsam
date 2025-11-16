@@ -190,7 +190,7 @@ TEST(ABC, GroupActions) {
   State xi(sR, sb, sS);
 
   // Test State Action (G * State)
-  State transformed_xi = X * xi;
+  State transformed_xi = Geometry::stateAction(X, xi);
   EXPECT(assert_equal(transformed_xi.R, xi.R * X.A(), 1e-9));
   EXPECT(assert_equal<Matrix>(transformed_xi.b,
                               X.A().inverse().matrix() * (xi.b - X.a()), 1e-9));
@@ -202,7 +202,7 @@ TEST(ABC, GroupActions) {
   // Test velocityAction
   Vector3 omega(1, 2, 3);
   Vector6 u = abc::toInputVector(omega);
-  Vector6 transformed_u = velocityAction(X, u);
+  Vector6 transformed_u = Geometry::velocityAction(X, u);
   EXPECT(assert_equal<Vector>(transformed_u.head<3>(),
                               X.A().inverse().matrix() * (omega - X.a()),
                               1e-9));
@@ -212,7 +212,7 @@ TEST(ABC, GroupActions) {
   // Test outputAction (calibrated sensor)
   Unit3 y_meas = Unit3(1, 0, 0);
   int cal_idx = 0;
-  Vector3 transformed_y_calibrated = outputAction(X, y_meas, cal_idx);
+  Vector3 transformed_y_calibrated = Geometry::outputAction(X, y_meas, cal_idx);
   EXPECT(assert_equal<Vector>(
       transformed_y_calibrated,
       X.calibrations()[cal_idx].inverse().matrix() * y_meas.unitVector(),
@@ -221,49 +221,13 @@ TEST(ABC, GroupActions) {
   // Test outputAction (uncalibrated sensor)
   int uncalibrated_idx = -1;
   Vector3 transformed_y_uncalibrated =
-      outputAction(X, y_meas, uncalibrated_idx);
+      Geometry::outputAction(X, y_meas, uncalibrated_idx);
   EXPECT(assert_equal<Vector>(transformed_y_uncalibrated,
                               X.A().inverse().matrix() * y_meas.unitVector(),
                               1e-9));
 
   // Test outputAction out of range
-  CHECK_EXCEPTION(outputAction(X, y_meas, 2), std::out_of_range);
-}
-
-/* ************************************************************************* */
-TEST(ABC, Geometry_identityState) {
-  State expected_id = State::identity();
-  State actual = Geometry::identityState();
-  EXPECT(assert_equal<Rot3>(actual.R, expected_id.R, 1e-9));
-  EXPECT(assert_equal<Vector>(actual.b, expected_id.b, 1e-9));
-  EXPECT(assert_equal(actual.S, expected_id.S));
-}
-
-/* ************************************************************************* */
-TEST(ABC, Geometry_groupAction) {
-  Rot3 A = Rot3::Rx(0.1);
-  Vector3 translation(0.01, 0.02, 0.03);
-  Calibrations B;
-  B[0] = Rot3::Ry(0.05);
-  B[1] = Rot3::Rz(0.06);
-  Group g(Pose3(A, Point3(translation)), B);
-
-  Rot3 R = Rot3::Rz(0.2);
-  Vector3 b(0.04, 0.05, 0.06);
-  Calibrations S;
-  S[0] = Rot3::Rx(0.07);
-  S[1] = Rot3::Ry(0.08);
-  State x(R, b, S);
-
-  State expected_transformed_x = g * x;
-  State actual_transformed = Geometry::groupAction(g, x);
-
-  // Compare each component
-  EXPECT(
-      assert_equal<Rot3>(actual_transformed.R, expected_transformed_x.R, 1e-9));
-  EXPECT(assert_equal<Vector>(actual_transformed.b, expected_transformed_x.b,
-                              1e-9));
-  EXPECT(assert_equal(actual_transformed.S, expected_transformed_x.S));
+  CHECK_EXCEPTION(Geometry::outputAction(X, y_meas, 2), std::out_of_range);
 }
 
 /* ************************************************************************* */
@@ -279,7 +243,7 @@ TEST(ABC, Geometry_lift) {
   // Setup input
   Vector3 omega(0.5, 0.6, 0.7);
   Vector6 u = abc::toInputVector(omega);
-  typename Group::TangentVector L = xi.lift(u);
+  typename Group::TangentVector L = Geometry::lift(xi, u);
 
   // Expected values
   Vector3 expected_L_head = omega - xi.b;
@@ -307,7 +271,7 @@ TEST(ABC, Geometry_stateMatrixA) {
   Vector3 omega(0.5, 0.6, 0.7);
   Vector6 u = abc::toInputVector(omega);
   Matrix A_matrix = Geometry::stateMatrixA(X_hat, u);
-  Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inverse(), u).head<3>());
+  Matrix3 W0 = Rot3::Hat(Geometry::velocityAction(X_hat.inverse(), u).head<3>());
 
   Matrix expected_A1 = Matrix::Zero(6, 6);
   expected_A1.block<3, 3>(0, 3) = -I_3x3;
@@ -334,8 +298,8 @@ TEST(ABC, Geometry_stateTransitionMatrix) {
   double dt = 0.1;
 
   Vector6 u = abc::toInputVector(omega);
-  Matrix Phi = Geometry::stateTransitionMatrix(u, dt, X_hat);
-  Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inverse(), u).head<3>());
+  Matrix Phi = Geometry::stateTransitionMatrix(X_hat, u, dt);
+  Matrix3 W0 = Rot3::Hat(Geometry::velocityAction(X_hat.inverse(), u).head<3>());
   Matrix Phi1 = Matrix::Zero(6, 6);
   Matrix3 Phi12 = -dt * (I_3x3 + (dt / 2) * W0 + ((dt * dt) / 6) * W0 * W0);
   Matrix3 Phi22 = I_3x3 + dt * W0 + ((dt * dt) / 2) * W0 * W0;
@@ -430,7 +394,7 @@ TEST(ABC, Geometry_measurementMatrixC) {
 TEST(ABC, EqFilter) {
   using M = abc::State<2>;
   using G = abc::Group<2>;
-  using EqFilter = gtsam::EqF<G, M>;
+  using EqFilter = gtsam::EqF<M, Geometry>;
 
   const G g_0;
   const M xi_ref;  // Reference state (xi circle) and not inital state?
