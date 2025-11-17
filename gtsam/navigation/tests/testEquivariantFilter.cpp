@@ -11,6 +11,8 @@
  * notation.
  *
  * The goal is to ensure EquivariantFilter.h is generic and not tied to ABC.h.
+ *
+ * The innovation term follows Mahony's equivariant update on S², where the error is defined via the right action φ_{η̄}(Q) = Qᵀη̄ and innovations are formed from ρ_y(Q̂⁻¹).
  */
 
 #include <CppUnitLite/TestHarness.h>
@@ -37,7 +39,7 @@ using G = Rot3;   // symmetry group: SO(3) attitude Q
 //
 // Here we treat the reference direction R_ref (on S^2) and apply the right
 // action as in Mahony:
-//   φ_Q(R_ref) = Q^T R_ref.
+//   φ_{R_ref}(Q) = Q^T R_ref.
 //---------------------------------------------------------------------------
 
 struct StateAction {
@@ -145,6 +147,7 @@ struct InputAction {
 // same style as in ABC's OutputAction.
 //---------------------------------------------------------------------------
 
+// Implements the right action ρ_y(Q) = Qᵀ y on S² (partially applied to measurement y).
 struct OutputAction {
   using G = attitude_example::G;
   using Output = Vector3;
@@ -164,10 +167,11 @@ struct OutputAction {
   }
 
   /// Innovation: wedge(d) * transformed_y
-  Vector3 innovation(const G& X) const {
-    const Vector3 transformed_y = this->operator()(X);
-    return Rot3::Hat(d_.unitVector()) * transformed_y;
-  }
+    Vector3 innovation(const G& Q_hat) const {
+      // Mahony-style innovation: use the right action evaluated at Q̂⁻¹.
+      const Vector3 transformed_y = this->operator()(Q_hat.inverse());
+      return Rot3::Hat(d_.unitVector()) * transformed_y;
+    }
 
   /// Linearized measurement matrix C.
   ///
@@ -204,7 +208,7 @@ TEST(EquivariantFilter_Attitude, Predict) {
   const M eta_ref;  // default Unit3 (1,0,0) = \bar{η}
   Matrix Sigma0 = 0.01 * I_3x3;
 
-  EqF<M, StateAction> filter(Q0, eta_ref, Sigma0);
+  EquivariantFilter<M, StateAction> filter(Q0, eta_ref, Sigma0);
 
   // Input: body angular velocity
   Lift::Input omega;
@@ -243,7 +247,7 @@ TEST(EquivariantFilter_Attitude, Update) {
   const M eta_ref;
   Matrix Sigma0 = 0.01 * I_3x3;
 
-  EqF<M, StateAction> filter(Q0, eta_ref, Sigma0);
+  EquivariantFilter<M, StateAction> filter(Q0, eta_ref, Sigma0);
 
   // Do a small prediction first to get a non-trivial covariance.
   Lift::Input omega;
@@ -284,8 +288,8 @@ TEST(EquivariantFilter_Attitude, Update) {
   Matrix S = Ct * P_before * Ct.transpose() + Dt * R_meas * Dt.transpose();
   Matrix K = P_before * Ct.transpose() * S.inverse();
 
-  // Innovation evaluated at Q_before^{-1}
-  Vector3 innovation = phi_y.innovation(Q_before.inverse());
+  // Innovation evaluated via ρ_{Q_before⁻¹}(y) inside innovation()
+  Vector3 innovation = phi_y.innovation(Q_before);
   Vector3 delta_xi = InnovationLift * (K * innovation);
 
   const G X_expected = Rot3::Expmap(delta_xi) * Q_before;

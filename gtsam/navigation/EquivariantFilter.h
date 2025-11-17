@@ -39,11 +39,54 @@ using namespace gtsam;
 /**
  * Equivariant Filter (EqF) for state estimation on Lie groups with states on
  * manifolds.
+ *
+ * Mathematically, we estimate a Lie group state X ∈ G and a manifold state ξ ∈
+ * M via a right group action φ_{ξ₀}(X) on a reference state ξ₀. The innovation
+ * implements the equivariant update Δ = (Dφ|_{I,ξ₀})⁺ K ρ_y(X̂⁻¹), where ρ is
+ * the right action on outputs and (·)⁺ is a (pseudo-)inverse of Dφ at the
+ * identity.
+ *
+ * This implementation follows the formulations in:
+ *   - Fornasier et al., "Overcoming Bias: Equivariant Filter Design for Biased
+ *     Attitude Estimation with Online Calibration", 2022, see Eqs. (4), (7),
+ * (23)–(24).
+ *   - Mahony, "Equivariant filter design for attitude estimation", tutorial,
+ * see the simple S² example in Sec. 2–3.
+ *
+ * High-level data flow (curried actions φ_{ξ₀}(X), ψ_u(X), ρ_y(X)):
+ *
+ *   Discrete-time EqF implementation:
+ *   State estimate on G: X̂
+ *   State estimate on M:
+ *
+ *     ξ₀ ──φ_{ξ₀}(X̂)──► ξ̂ = φ_{ξ₀}(X̂)    (state estimate on M)
+ *
+ *   predict:
+ *        u, ξ̂
+ *         │
+ *         │  Λ(ξ̂, u)           (lift on G induced by input)
+ *         ▼
+ *       Ẋ = Λ(ξ̂, u)            (continuous-time view)
+ *
+ *     u ──ψ_u(X̂) ────► system matrices Φ, Bᵀ, Q  ──► predict: X̂₋, P₋
+ *
+ *   update:
+ *     y ──  ρ_y(X̂⁻¹)──► ν_y(X̂)           (equivariant innovation)
+ *                       │
+ *                       ▼
+ *                    Δ = (Dφ|_{I,ξ₀})⁺ K ν_y(X̂)
+ *                       │
+ *                       ▼
+ *                  X̂⁺ = exp(Δ) X̂₋,   P⁺ = (I − K C) P₋.
+ *
+ * Here φ_{ξ₀}(X) acts on the reference state ξ₀, ψ_u(X) acts on the input u,
+ * and ρ_y(X) acts on the measurement y, all as right actions of X ∈ G.
+ *
  * @tparam M Manifold type for the physical state.
  * @tparam StateAction Functor encoding the right group action on the state.
  */
 template <typename M, typename StateAction>
-class EqF : public LieGroupEKF<typename StateAction::G> {
+class EquivariantFilter : public LieGroupEKF<typename StateAction::G> {
  private:
   using G = typename StateAction::G;
   using Base = LieGroupEKF<G>;
@@ -61,9 +104,8 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
    * @param X0 Initial Lie group state
    * @param x0 Reference manifold state (origin of the lifted coordinates)
    * @param Sigma Initial covariance (Dim x Dim)
-   * @param m Number of direction sensors (must be at least 2)
    */
-  EqF(const G& X0, const M& x0, const Matrix& Sigma)
+  EquivariantFilter(const G& X0, const M& x0, const Matrix& Sigma)
       : Base(X0, Sigma), xi_ref_(x0), act_on_ref_(x0) {
     if (Sigma.rows() != Dim || Sigma.cols() != Dim) {
       throw std::invalid_argument(
@@ -122,9 +164,13 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
 
   /**
    * Update the filter state with a direction measurement.
-   * @tparam OutputAction Functor encoding the action on the measurement.
-   * @tparam Measurement Measurement type carrying y, d, Sigma, and cal_idx.
-   * @param y Direction measurement
+   * @tparam OutputAction Functor encoding the right action ρ_y(X) (partially
+   * applied on the measurement y) on the measurement space and its
+   * linearization.
+   * @param phi_y Encodes ρ and the corresponding Jacobians C and D.
+   * @param R Measurement noise covariance.
+   *
+   * The innovation uses ν_y(X̂) := ρ_y(X̂⁻¹).
    */
   template <typename OutputAction>
   void update(const OutputAction& phi_y, const Matrix& R) {
@@ -135,9 +181,8 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
     Matrix S = Ct * this->P_ * Ct.transpose() + Dt * R * Dt.transpose();
     Matrix K = this->P_ * Ct.transpose() * S.inverse();
 
-    // Innovation lift
-    // TODO(Frank): Why inverse ????
-    Vector3 innovation = phi_y.innovation(this->X_.inverse());
+    // Innovation lift: innovation() is defined to internally evaluate ρ at X̂⁻¹.
+    Vector3 innovation = phi_y.innovation(this->X_);
     TangentVector delta_xi = InnovationLift_ * (K * innovation);
 
     // Update state estimate (left-multiply by exp(delta_xi))
