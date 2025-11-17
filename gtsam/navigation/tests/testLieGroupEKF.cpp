@@ -15,6 +15,8 @@
   */
 
 #include <CppUnitLite/TestHarness.h>
+#include <gtsam/base/Matrix.h>
+#include <gtsam/base/OptionalJacobian.h>
 #include <gtsam/base/Testable.h>
 #include <gtsam/base/numericalDerivative.h>
 #include <gtsam/geometry/Rot3.h>
@@ -192,6 +194,43 @@ TEST(LieGroupEKF_DynamicMatrix, PredictAndUpdate) {
 
   EXPECT(assert_equal(pUpdatedExpected, ekf.state(), 1e-9));
   EXPECT(assert_equal(pUpdatedCovarianceExpected, ekf.covariance(), 1e-9));
+}
+
+namespace matrixK1Consistency {
+struct LinearDynamics {
+  Matrix A;
+  Vector xi;
+  LinearDynamics() {
+    A = (Matrix(4, 4) << 0.1, -0.2, 0.0, 0.3,  //
+         0.05, 0.1, -0.15, 0.2,                //
+         -0.25, 0.0, 0.05, -0.1,               //
+         0.0, 0.2, -0.05, 0.15)
+            .finished();
+    xi = (Vector(4) << 0.4, -0.3, 0.2, 0.1).finished();
+  }
+
+  Vector operator()(
+      const Matrix&,
+      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H = {}) const {
+    if (H) *H = A;
+    return xi;
+  }
+};
+}  // namespace matrixK1Consistency
+
+TEST(LieGroupEKF_DynamicMatrix, FirstOrderMatchesExpmK1) {
+  Matrix X0 = Matrix::Zero(2, 2);
+  Matrix P0 = I_4x4 * 0.1;
+  double dt = 0.05;
+  LieGroupEKF<Matrix> ekf(X0, P0);
+
+  matrixK1Consistency::LinearDynamics dynamics;
+  Matrix actualA_storage = Matrix::Zero(4, 4);
+  OptionalJacobian<-1, -1> actualA(actualA_storage);
+  ekf.predictMean<1>(dynamics, dt, actualA);
+
+  Matrix expectedA = expm(dynamics.A * dt, 1);
+  EXPECT(assert_equal(expectedA, actualA_storage));
 }
 
 int main() {
