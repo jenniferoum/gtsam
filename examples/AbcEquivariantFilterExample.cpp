@@ -432,9 +432,6 @@ int main(int argc, char* argv[]) {
       return 1;
     }
 
-    // Initialize the EqF filter with one calibration state
-    int N = 2;  // number of sensors
-
     // Initial covariance - larger values allow faster convergence
     Matrix initialSigma = Matrix::Identity(6 + 3 * n, 6 + 3 * n);
     initialSigma.diagonal().head<3>() =
@@ -448,7 +445,7 @@ int main(int argc, char* argv[]) {
     M initialState = M::identity();
 
     // Create filter
-    EqFilter filter(initialGroup, initialState, initialSigma, N);
+    EqFilter filter(initialGroup, initialState, initialSigma);
 
     // Process data
     processDataWithEqF(filter, data);
