@@ -56,9 +56,6 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
  public:
   static constexpr int Dim = Base::Dim;  ///< Compile-time dimension of G.
 
-  /// Number of calibration states (sensors), expected to be provided by G
-  static constexpr int n_cal = G::numSensors;
-
   /**
    * Initialize EqF
    * @param X0 Initial Lie group state
@@ -66,20 +63,14 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
    * @param Sigma Initial covariance (Dim x Dim)
    * @param m Number of direction sensors (must be at least 2)
    */
-  EqF(const G& X0, const M& x0, const Matrix& Sigma, int m)
+  EqF(const G& X0, const M& x0, const Matrix& Sigma)
       : Base(X0, Sigma), xi_ref_(x0), act_on_ref_(x0) {
     if (Sigma.rows() != Dim || Sigma.cols() != Dim) {
       throw std::invalid_argument(
           "Initial covariance dimensions must match the degrees of freedom");
     }
 
-    if (m <= 1) {
-      throw std::invalid_argument(
-          "Number of direction sensors must be at least 2");
-    }
-
     // Compute differential of action phi at origin
-
     Matrix Dphi0 = act_on_ref_.jacobianAtIdentity();
     InnovationLift_ = Dphi0.completeOrthogonalDecomposition().pseudoInverse();
   }
@@ -105,7 +96,8 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
    * @param dt Time step
    */
   template <typename Lift, typename InputAction>
-  void predict(const Vector6& u, const Matrix& Q, double dt) {
+  void predict(const typename InputAction::Input& u, const Matrix& Q,
+               double dt) {
     // auto dynamics = [this](const G& X, const Vector6& u,
     // OptionalJacobian<Dim, Dim> Df) {
     //   M state_est = act_on_ref_(X);
