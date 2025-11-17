@@ -495,7 +495,8 @@ TEST(ABC, EqFilter) {
       Vector3::Constant(0.1);  // Calibration uncertainty
 
   const G g_0;
-  EqF<State, abc::StateAction<2>> filter(g_0, xi_ref, initialSigma);
+  EquivariantFilter<State, abc::StateAction<2>> filter(g_0, xi_ref,
+                                                       initialSigma);
 
   // Check initial state
   EXPECT(assert_equal(g_0, filter.state()));
