@@ -201,6 +201,22 @@ struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
     return Base::Logmap(g, Hg);
   }
 
+  /**
+   * Matrix representation of the Lie-algebra adjoint operator ad_xi on g.
+   * For this direct product group it is block-diagonal with Pose3 and Rot3
+   * blocks.
+   */
+  static Jacobian adjointMap(const TangentVector& xi) {
+    Jacobian result = Jacobian::Zero();
+    result.template block<6, 6>(0, 0) =
+        Pose3::adjointMap(xi.template head<6>());
+    for (size_t i = 0; i < n; ++i) {
+      result.template block<3, 3>(6 + 3 * i, 6 + 3 * i) =
+          Rot3::adjointMap(xi.template segment<3>(6 + 3 * i));
+    }
+    return result;
+  }
+
   const Pose3& pose() const { return this->first; }
   Rot3 A() const { return this->first.rotation(); }
   Vector3 a() const { return this->first.translation(); }

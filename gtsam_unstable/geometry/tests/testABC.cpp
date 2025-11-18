@@ -13,6 +13,7 @@
 #include <gtsam/base/numericalDerivative.h>
 #include <gtsam/base/testLie.h>
 #include <gtsam/navigation/EquivariantFilter.h>
+#include <gtsam/navigation/LieGroupEKF.h>
 #include <gtsam_unstable/geometry/ABC.h>
 
 using namespace gtsam;
@@ -171,6 +172,20 @@ TEST(ABC, AdjointMap) {
   }
 
   EXPECT(assert_equal(adjoint, expected));
+
+  Group::TangentVector xi = Group::TangentVector::Zero();
+  xi.head<3>() << 0.1, -0.2, 0.3;
+  xi.segment<3>(3) << 0.01, 0.02, 0.03;
+  xi.segment<3>(6) << 0.05, -0.04, 0.02;
+  xi.segment<3>(9) << -0.03, 0.07, -0.01;
+
+  Group::Jacobian ad_xi = Group::adjointMap(xi);
+  Group::Jacobian expected_ad = Group::Jacobian::Zero();
+  expected_ad.block<6, 6>(0, 0) = Pose3::adjointMap(xi.head<6>());
+  expected_ad.block<3, 3>(6, 6) = Rot3::adjointMap(xi.segment<3>(6));
+  expected_ad.block<3, 3>(9, 9) = Rot3::adjointMap(xi.segment<3>(9));
+
+  EXPECT(assert_equal(ad_xi, expected_ad));
 }
 
 /* ************************************************************************* */
@@ -355,6 +370,58 @@ TEST(ABC, InputAction_stateTransitionMatrix) {
   Matrix expected_Phi = gtsam::diag({Phi1, Phi2});
 
   EXPECT(assert_equal(Phi, expected_Phi));
+}
+
+/* ************************************************************************* */
+TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF) {
+  Group X_hat = Group::Identity();
+
+  Vector3 omega(0.5, 0.6, 0.7);
+  Vector6 u = abc::toInputVector(omega);
+  InputAction psi_u(u);
+  double dt = 1e-4;
+
+  Matrix Phi_expected = psi_u.stateTransitionMatrix(X_hat, dt);
+
+  Group::TangentVector xi = Group::TangentVector::Zero();
+  Group::Jacobian Df = psi_u.stateMatrixA(X_hat);
+  Group::Jacobian P0 = Group::Jacobian::Identity();
+  LieGroupEKF<Group> ekf(X_hat, P0);
+
+  Group::Jacobian Dexp = Group::Jacobian::Identity();
+  Group U = Group::Identity();
+
+  Group::Jacobian Phi_liekf = ekf.transitionMatrix<4>(xi, Df, dt, U, Dexp);
+
+  EXPECT(assert_equal(Phi_expected, Phi_liekf, 2e-5));
+}
+
+/* ************************************************************************* */
+TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF_K1) {
+  Group X_hat = Group::Identity();
+
+  Vector3 omega(0.4, -0.3, 0.2);
+  Vector6 u = abc::toInputVector(omega);
+  InputAction psi_u(u);
+  double dt = 0.05;
+
+  Lift lift(u);
+  State xi_state = State::identity();
+  Group::TangentVector xi = lift(xi_state);
+
+  Group::Jacobian Df = psi_u.stateMatrixA(X_hat);
+  Group::Jacobian P0 = Group::Jacobian::Identity();
+  LieGroupEKF<Group> ekf(X_hat, P0);
+
+  Group::Jacobian Dexp;
+  Group U = Group::Expmap(xi * dt, &Dexp);
+
+  Group::Jacobian Phi_liekf = ekf.transitionMatrix<1>(xi, Df, dt, U, Dexp);
+
+  Group U_inv = U.inverse();
+  Group::Jacobian Phi_expected = U_inv.AdjointMap() + Dexp * Df * dt;
+
+  EXPECT(assert_equal(Phi_expected, Phi_liekf, 1e-12));
 }
 
 /* ************************************************************************* */
