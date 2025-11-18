@@ -1,34 +1,49 @@
 /**
- * @file ABC_EQF_Demo.cpp
+ * @file AbcEquivariantFilterExample.cpp
  * @brief Demonstration of the full Attitude-Bias-Calibration Equivariant Filter
  *
  * This demo shows the Equivariant Filter (EqF) for attitude estimation
  * with both gyroscope bias and sensor extrinsic calibration, based on the
  * paper: "Overcoming Bias: Equivariant Filter Design for Biased Attitude
- * Estimation with Online Calibration" by Fornasier et al. Authors: Darshan
- * Rajasekaran & Jennifer Oum
+ * Estimation with Online Calibration" by Fornasier et al.
+ *
+ * @author Darshan Rajasekaran
+ * @author Jennifer Oum
+ * @author Rohan Bansal
+ * @author Frank Dellaert
+ * @date 2025
  */
-#include <gtsam_unstable/geometry/ABC.h>
 #include <gtsam/navigation/EquivariantFilter.h>
+#include <gtsam_unstable/geometry/ABC.h>
 
 // Use namespace for convenience
-using namespace gtsam::abc_eqf_lib;
+using namespace gtsam;
 constexpr size_t n = 1;  // Number of calibration states
-using M = abc_eqf_lib::State<n>;
-using G = abc_eqf_lib::Group<n>;
-using EqFilter = gtsam::EqF<G, M>;
-using Geometry = ABCGeometry<n>;
-using gtsam::abc_eqf_lib::InputData;
-using gtsam::abc_eqf_lib::Measurement;
+using M = abc::State<n>;
+using G = abc::Group<n>;
+using StateAction = abc::StateAction<n>;
+using EqFilter = gtsam::EqF<M, StateAction>;
+using Lift = abc::Lift<n>;
+using InputAction = abc::InputAction<n>;
+using OutputAction = abc::OutputAction<n>;
+
+/// Measurement struct
+struct Measurement {
+  Unit3 y;           /// Measurement direction in sensor frame
+  Unit3 d;           /// Known direction in global frame
+  Matrix3 R;         /// Covariance matrix of the measurement
+  int cal_idx = -1;  /// Calibration index (-1 for calibrated sensor)
+};
 
 /// Data structure for ground-truth, input and output data
 struct Data {
-  M xi;                        /// Ground-truth state
-  InputData u;                 /// Input measurements (with noise covariance)
-  std::vector<Measurement> y;  /// Output measurements
-  int n_meas;                  /// Number of measurements
-  double t;                    /// Time
-  double dt;                   /// Time step
+  M xi;                     /// Ground-truth state
+  Vector3 omega;            /// Angular velocity measurement
+  Matrix6 inputCovariance;  /// Input noise covariance (6x6 matrix)
+  std::vector<Measurement> measurements;  /// Output measurements
+  int numMeasurements;                    /// Number of measurements
+  double t;                               /// Time
+  double dt;                              /// Time step
 };
 
 //========================================================================
@@ -144,22 +159,18 @@ std::vector<Data> loadDataFromCSV(const std::string& filename, int startRow,
     M xi(R, b, S);
 
     // Create input
-    Vector3 w(values[12], values[13], values[14]);
+    Vector3 omega(values[12], values[13], values[14]);
 
     // Create input covariance matrix (6x6)
     // First 3x3 block for angular velocity, second 3x3 block for bias process
     // noise
-    Matrix inputCov = Matrix::Zero(6, 6);
-    inputCov(0, 0) = values[15] * values[15];  // std_w_x^2
-    inputCov(1, 1) = values[16] * values[16];  // std_w_y^2
-    inputCov(2, 2) = values[17] * values[17];  // std_w_z^2
-    inputCov(3, 3) = values[18] * values[18];  // std_b_x^2
-    inputCov(4, 4) = values[19] * values[19];  // std_b_y^2
-    inputCov(5, 5) = values[20] * values[20];  // std_b_z^2
-
-    InputData u;
-    u.w = w;
-    u.Sigma = inputCov;
+    Matrix6 inputCovariance = Matrix6::Zero();
+    inputCovariance(0, 0) = values[15] * values[15];  // std_w_x^2
+    inputCovariance(1, 1) = values[16] * values[16];  // std_w_y^2
+    inputCovariance(2, 2) = values[17] * values[17];  // std_w_z^2
+    inputCovariance(3, 3) = values[18] * values[18];  // std_b_x^2
+    inputCovariance(4, 4) = values[19] * values[19];  // std_b_y^2
+    inputCovariance(5, 5) = values[20] * values[20];  // std_b_z^2
 
     // Create measurements
     std::vector<Measurement> measurements;
@@ -199,7 +210,8 @@ std::vector<Data> loadDataFromCSV(const std::string& filename, int startRow,
     measurements.push_back(Measurement{Unit3(y1), Unit3(d1), covY1, -1});
 
     // Create Data object and add to list
-    data_list.push_back(Data{xi, u, measurements, 2, t, dt});
+    data_list.push_back(
+        Data{xi, omega, inputCovariance, measurements, 2, t, dt});
 
     rowCount++;
 
@@ -254,17 +266,18 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
 
   for (size_t i = 0; i < data_list.size(); i++) {
     const Data& data = data_list[i];
-    Matrix Q = Geometry::processNoise(data.u.Sigma);
+    Matrix Q = InputAction::processNoise(data.inputCovariance);
     // Propagate filter with current input and time step
-    filter.predict(data.u.toInputVector(), Q, data.dt);
+    Vector6 u = abc::toInputVector(data.omega);
+    filter.predict<Lift, InputAction>(u, Q, data.dt);
 
     // Process all measurements
-    for (const auto& y : data.y) {
+    for (const auto& measurement : data.measurements) {
       totalMeasurements++;
 
       // Skip invalid measurements
-      Vector3 y_vec = y.y.unitVector();
-      Vector3 d_vec = y.d.unitVector();
+      Vector3 y_vec = measurement.y.unitVector();
+      Vector3 d_vec = measurement.d.unitVector();
       if (std::isnan(y_vec[0]) || std::isnan(y_vec[1]) ||
           std::isnan(y_vec[2]) || std::isnan(d_vec[0]) ||
           std::isnan(d_vec[1]) || std::isnan(d_vec[2])) {
@@ -272,7 +285,8 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
       }
 
       try {
-        filter.update(y);
+        OutputAction phi_y(measurement.y, measurement.d, measurement.cal_idx);
+        filter.update(phi_y, measurement.R);
         validMeasurements++;
       } catch (const std::exception& e) {
         std::cerr << "Error updating at t=" << data.t << ": " << e.what()
@@ -286,7 +300,7 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
     // Calculate errors
     Vector3 att_error = Rot3::Logmap(data.xi.R.between(estimate.R));
     Vector3 bias_error = estimate.b - data.xi.b;
-    Vector3 cal_error = Vector3::Zero();
+    Vector3 cal_error = Z_3x1;
     if (!data.xi.S.empty() && !estimate.S.empty()) {
       cal_error = Rot3::Logmap(data.xi.S[0].between(estimate.S[0]));
     }
@@ -328,7 +342,7 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
   Vector3 final_att_error =
       Rot3::Logmap(final_data.xi.R.between(final_estimate.R));
   Vector3 final_bias_error = final_estimate.b - final_data.xi.b;
-  Vector3 final_cal_error = Vector3::Zero();
+  Vector3 final_cal_error = Z_3x1;
   if (!final_data.xi.S.empty() && !final_estimate.S.empty()) {
     final_cal_error =
         Rot3::Logmap(final_data.xi.S[0].between(final_estimate.S[0]));
@@ -419,7 +433,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Initialize the EqF filter with one calibration state
-    int N = 2; // number of sensors
+    int N = 2;  // number of sensors
 
     // Initial covariance - larger values allow faster convergence
     Matrix initialSigma = Matrix::Identity(6 + 3 * n, 6 + 3 * n);

@@ -64,6 +64,10 @@ namespace gtsam {
       static_assert(IsLieGroup<G>::value, "Template parameter G must be a GTSAM Lie Group");
     }
 
+    /// Expose base class predict method,
+    /// predict(const M& X_next, const Jacobian& F, const Covariance& Q)
+    using Base::predict;
+
     /**
      * SFINAE check for correctly typed state-dependent dynamics function.
      * Signature: TangentVector f(const G& X, OptionalJacobian<Dim, Dim> Df)
@@ -109,10 +113,9 @@ namespace gtsam {
           // State transition Jacobian for left-invariant EKF:
           *A = traits<G>::Inverse(U).AdjointMap() + Dexp * Df * dt;
         }
-        return this->X_.compose(U);
+        return traits<G>::Compose(this->X_, U);
       }
     }
-
 
     /**
      * Predict step with state-dependent dynamics:
@@ -131,8 +134,8 @@ namespace gtsam {
       if constexpr (Dim == Eigen::Dynamic) {
         A.resize(this->n_, this->n_);
       }
-      this->X_ = predictMean(std::forward<Dynamics>(f), dt, A);
-      this->P_ = A * this->P_ * A.transpose() + Q;
+      G X_next = predictMean(std::forward<Dynamics>(f), dt, A);
+      predict(X_next, A, Q);
     }
 
     /**
