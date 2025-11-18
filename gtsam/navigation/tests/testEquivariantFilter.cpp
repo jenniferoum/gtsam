@@ -12,7 +12,9 @@
  *
  * The goal is to ensure EquivariantFilter.h is generic and not tied to ABC.h.
  *
- * The innovation term follows Mahony's equivariant update on S², where the error is defined via the right action φ_{η̄}(Q) = Qᵀη̄ and innovations are formed from ρ_y(Q̂⁻¹).
+ * The innovation term follows Mahony's equivariant update on S², where the
+ * error is defined via the right action φ_{η̄}(Q) = Qᵀη̄ and innovations are
+ * formed from ρ_y(Q̂⁻¹).
  */
 
 #include <CppUnitLite/TestHarness.h>
@@ -144,7 +146,8 @@ struct InputAction {
 // same style as in ABC's OutputAction.
 //---------------------------------------------------------------------------
 
-// Implements the right action ρ_y(Q) = Qᵀ y on S² (partially applied to measurement y).
+// Implements the right action ρ_y(Q) = Qᵀ y on S² (partially applied to
+// measurement y).
 struct OutputAction {
   using G = attitude_example::G;
   using Output = Vector3;
@@ -164,11 +167,11 @@ struct OutputAction {
   }
 
   /// Innovation: wedge(d) * transformed_y
-    Vector3 innovation(const G& Q_hat) const {
-      // Mahony-style innovation: use the right action evaluated at Q̂⁻¹.
-      const Vector3 transformed_y = this->operator()(Q_hat.inverse());
-      return Rot3::Hat(d_.unitVector()) * transformed_y;
-    }
+  Vector3 innovation(const G& Q_hat) const {
+    // Mahony-style innovation: use the right action evaluated at Q̂⁻¹.
+    const Vector3 transformed_y = this->operator()(Q_hat.inverse());
+    return Rot3::Hat(d_.unitVector()) * transformed_y;
+  }
 
   /// Linearized measurement matrix C.
   ///
@@ -217,13 +220,14 @@ TEST(EquivariantFilter_Attitude, Predict) {
   Matrix Q = InputAction::processNoise(Sigma_u);
 
   // --- Perform prediction through EqF ---
-  filter.predict<Lift, InputAction>(omega, Q, dt);
+  Lift lift_u(omega);
+  InputAction psi_u(omega);
+  filter.predict(lift_u, psi_u, Q, dt);
 
   // --- Expected result ---
   const G X_expected = Rot3::Expmap(omega * dt) * Q0;
 
-  InputAction psi_u(omega);
-  Matrix Phi = psi_u.stateTransitionMatrix(Q0, dt);
+  Matrix Phi = I_3x3;
   Matrix Bt = psi_u.inputMatrixBt(Q0);
   Matrix Q_process = Bt * Q * Bt.transpose() * dt;
   Matrix P_expected = Phi * Sigma0 * Phi.transpose() + Q_process;
@@ -252,7 +256,9 @@ TEST(EquivariantFilter_Attitude, Update) {
   const double dt = 0.01;
   Matrix Sigma_u = 0.1 * I_3x3;
   Matrix Q = InputAction::processNoise(Sigma_u);
-  filter.predict<Lift, InputAction>(omega, Q, dt);
+  Lift lift_u(omega);
+  InputAction psi_u(omega);
+  filter.predict(lift_u, psi_u, Q, dt);
 
   const G Q_before = filter.groupEstimate();
   const Matrix P_before = filter.covariance();

@@ -576,7 +576,9 @@ TEST(ABC, EqFilter) {
   Matrix Sigma = I_6x6;
   double dt = 0.01;
   Matrix Q = InputAction::processNoise(Sigma);
-  filter.predict<Lift, InputAction>(u2, Q, dt);
+  Lift lift_u(u2);
+  InputAction psi_u(u2);
+  filter.predict(lift_u, psi_u, Q, dt);
 
   // Regression
   Group expected({Rot3(1, 0.00015, -0.0004,  //

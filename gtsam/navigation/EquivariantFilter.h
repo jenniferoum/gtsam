@@ -131,18 +131,19 @@ class EquivariantFilter : public LieGroupEKF<typename StateAction::G> {
 
   /**
    * Propagate the filter state.
-   * @tparam Lift Computes the lifted tangent vector.
-   * @tparam InputAction Provides system matrices derived from the input.
-   * @tparam u the input vector.
-   * @param Q Process noise covariance in lifted coordinates
+   * @tparam K Truncation order for expm, forwarded to LieGroupEKF::predict.
+   * @tparam Lift Functor Λ_u(ξ̂) = Λ(ξ̂, u) lifting the manifold dynamics to 𝔤.
+   * @tparam InputAction Functor ψ_u(X) that produces A(X) and Bᵀ(X).
+   * @param lift_u Instance of Λ encoding the lifted dynamics for the current u.
+   * @param psi_u Instance of ψ_u that provides Φ = ψ_u.stateTransitionMatrix(·)
+   *        and Bᵀ = ψ_u.inputMatrixBt(·).
+   * @param Q Process noise covariance in the input space; it is mapped through
+   *        Bᵀ Q B dt to obtain the lifted process noise.
    * @param dt Time step
    */
-  template <typename Lift, typename InputAction>
-  void predict(const typename InputAction::Input& u, const Matrix& Q,
+  template <size_t K = 1, typename Lift, typename InputAction>
+  void predict(const Lift& lift_u, const InputAction& psi_u, const Matrix& Q,
                double dt) {
-    Lift lift_u(u);
-    InputAction psi_u(u);
-
     // dynamics(X, Df) returns the lifted tangent xi and, if requested, the
     // derivative ∂xi/∂(local X). InputAction::stateMatrixA supplies the part
     // coming from the input action, while G::adjointMap(xi) accounts for
@@ -159,7 +160,7 @@ class EquivariantFilter : public LieGroupEKF<typename StateAction::G> {
 
     Matrix Bt = psi_u.inputMatrixBt(this->X_);
     Matrix Q_process = Bt * Q * Bt.transpose() * dt;
-    Base::template predict<3>(dynamics, dt, Q_process);
+    Base::template predict<K>(dynamics, dt, Q_process);
   }
 
   /**

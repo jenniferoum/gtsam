@@ -269,7 +269,10 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
     Matrix Q = InputAction::processNoise(data.inputCovariance);
     // Propagate filter with current input and time step
     Vector6 u = abc::toInputVector(data.omega);
-    filter.predict<Lift, InputAction>(u, Q, data.dt);
+    Lift lift_u(u);
+    InputAction psi_u(u);
+    // Use 3rd order transition matrix for better accuracy
+    filter.predict<3>(lift_u, psi_u, Q, data.dt);
 
     // Process all measurements
     for (const auto& measurement : data.measurements) {
