@@ -384,24 +384,6 @@ struct InputAction {
     return H;
   }
 
-  Matrix stateTransitionMatrix(const G& X_hat, double dt) const {
-    const Vector3 omega_tilde =
-        this->operator()(X_hat.inverse()).template head<3>();
-    Matrix3 W0 = Rot3::Hat(omega_tilde);
-    Matrix Phi1 = Matrix::Zero(6, 6);
-    Matrix3 W0_sq = W0 * W0;
-    Matrix3 Phi12 = -dt * (I_3x3 + 0.5 * dt * W0 + (dt * dt / 6.0) * W0_sq);
-    Matrix3 Phi22 = I_3x3 + dt * W0 + 0.5 * dt * dt * W0_sq;
-    Phi1.block<3, 3>(0, 0) = I_3x3;
-    Phi1.block<3, 3>(0, 3) = Phi12;
-    Phi1.block<3, 3>(3, 3) = Phi22;
-
-    std::vector<Matrix> blocks;
-    blocks.push_back(Phi1);
-    blocks.insert(blocks.end(), N, Phi22);
-    return gtsam::diag(blocks);
-  }
-
   Matrix stateMatrixA(const G& X_hat) const {
     const Vector3 omega_tilde =
         this->operator()(X_hat.inverse()).template head<3>();
@@ -411,12 +393,16 @@ struct InputAction {
     A1.block<3, 3>(0, 3) = -I_3x3;
     A1.block<3, 3>(3, 3) = W0;
 
+    // This Jacobian is ∂(lift)/∂(local X) evaluated before the EqF/LieGroupEKF
+    // adds the adjoint correction. In EqF::predict we add G::adjointMap(xi) so
+    // that the net linearized operator matches (Df - ad_xi) from the Lie group
+    // error dynamics, which is also what stateTransitionMatrix encodes.
     std::vector<Matrix> blocks{A1};
     blocks.insert(blocks.end(), N, W0);
     return gtsam::diag(blocks);
   }
 
-  Matrix inputMatrix(const G& X_hat) const {
+  Matrix inputMatrixBt(const G& X_hat) const {
     const Matrix3 A_matrix = X_hat.A().matrix();
     Matrix B1 = gtsam::diag({A_matrix, A_matrix});
     Matrix B2(3 * N, 3 * N);
@@ -428,8 +414,6 @@ struct InputAction {
 
     return gtsam::diag({B1, B2});
   }
-
-  Matrix inputMatrixBt(const G& X_hat) const { return inputMatrix(X_hat); }
 };
 
 /**

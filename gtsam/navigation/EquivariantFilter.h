@@ -140,26 +140,26 @@ class EquivariantFilter : public LieGroupEKF<typename StateAction::G> {
   template <typename Lift, typename InputAction>
   void predict(const typename InputAction::Input& u, const Matrix& Q,
                double dt) {
-    // auto dynamics = [this](const G& X, const Vector6& u,
-    // OptionalJacobian<Dim, Dim> Df) {
-    //   M state_est = act_on_ref_(X);
-    //   return state_est.lift(u);
-    // };
-
-    // Map current group estimate to physical state on the manifold
-    M state_est = stateEstimate();
-
-    // Compute lifted tangent vector from state and input
     Lift lift_u(u);
-    TangentVector xi = lift_u(state_est);
-
     InputAction psi_u(u);
-    Matrix Phi = psi_u.stateTransitionMatrix(this->X_, dt);
-    Matrix Bt = psi_u.inputMatrixBt(this->X_);
 
-    G X_next = traits<G>::Compose(this->X_, traits<G>::Expmap(xi * dt));
+    // dynamics(X, Df) returns the lifted tangent xi and, if requested, the
+    // derivative ∂xi/∂(local X). InputAction::stateMatrixA supplies the part
+    // coming from the input action, while G::adjointMap(xi) accounts for
+    // variations of the state action. TransitionMatrix will subsequently form
+    // (Df - ad_xi), matching the (Df - ad_xi) term in the Lie-group error
+    // dynamics and keeping consistency with InputAction::stateTransitionMatrix.
+    auto dynamics = [this, lift_u, psi_u](const G& X,
+                                          OptionalJacobian<Dim, Dim> Df) {
+      M state_est = this->act_on_ref_(X);
+      TangentVector xi = lift_u(state_est);
+      if (Df) *Df = psi_u.stateMatrixA(X) + G::adjointMap(xi);
+      return xi;
+    };
+
+    Matrix Bt = psi_u.inputMatrixBt(this->X_);
     Matrix Q_process = Bt * Q * Bt.transpose() * dt;
-    Base::predict(X_next, Phi, Q_process);
+    Base::template predict<3>(dynamics, dt, Q_process);
   }
 
   /**

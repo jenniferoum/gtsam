@@ -119,12 +119,9 @@ struct InputAction {
   /// For this simple SO(3)-only system, we just pass it through.
   static Matrix processNoise(const Matrix& Sigma) { return Sigma; }
 
-  /// Linearized state transition matrix Phi. We take a simple model:
-  ///   X_{k+1} = Exp(omega * dt) * X_k
-  /// whose linearization in tangent coordinates is approximately identity.
-  Matrix stateTransitionMatrix(const G& /*X_hat*/, double /*dt*/) const {
-    return I_3x3;
-  }
+  /// Derivative of the lifted dynamics wrt. local coordinates.
+  /// For this simple test the lift ignores X, so the Jacobian is zero.
+  Matrix stateMatrixA(const G& /*X_hat*/) const { return Matrix::Zero(3, 3); }
 
   /// Input matrix B^T that maps process noise to lifted coordinates.
   /// We use the identity for this example.

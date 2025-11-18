@@ -273,18 +273,28 @@ TEST(ABC, LiftFunctor) {
 }
 
 /* ************************************************************************* */
+namespace abc_input_action_example {
+Group X_hat = abc_examples::g1;
+Vector6 u = abc::toInputVector(abc_examples::omega);
+InputAction psi_u(u);
+StateAction phi_xi1(abc_examples::xi1);
+State state_est = phi_xi1(X_hat);
+Lift lift_u(u);
+Group::TangentVector xi = lift_u(state_est);
+}  // namespace abc_input_action_example
+
+/* ************************************************************************* */
 TEST(ABC, InputAction) {
-  using namespace abc_examples;
+  using namespace abc_input_action_example;
 
-  InputAction psi_u(u);
-
-  Vector6 transformed_u = psi_u(g1);
-  EXPECT(assert_equal<Vector>(transformed_u.head<3>(),
-                              g1.A().unrotate(omega - g1.a())));
+  Vector6 transformed_u = psi_u(X_hat);
+  EXPECT(assert_equal<Vector>(
+      transformed_u.head<3>(),
+      X_hat.A().unrotate(abc_examples::omega - X_hat.a())));
   EXPECT(assert_equal<Vector>(transformed_u.tail<3>(), Z_3x1,
                               1e-9));  // Virtual input stays zero
 
-  EXPECT(assert_equal(transformed_u, InputAction(u)(g1)));
+  EXPECT(assert_equal(transformed_u, InputAction(u)(X_hat)));
 }
 
 /* ************************************************************************* */
@@ -316,11 +326,9 @@ TEST(ABC, InputActionIsRightAction) {
 }
 
 /* ************************************************************************* */
-TEST(ABC, InputActionJacobianAnalytic) {
-  using namespace abc_examples;
+TEST(ABC, InputAction_JacobianAnalytic) {
+  using namespace abc_input_action_example;
 
-  // Create action functors
-  InputAction psi_u(u);
   Matrix analytic = psi_u.jacobianAtIdentity();
   Matrix numerical = gtsam::numericalDerivative11<Vector6, Group>(
       [&](const Group& g) { return psi_u(g); }, Group::Identity());
@@ -330,12 +338,10 @@ TEST(ABC, InputActionJacobianAnalytic) {
 
 /* ************************************************************************* */
 TEST(ABC, InputAction_stateMatrixA) {
-  using namespace abc_examples;
+  using namespace abc_input_action_example;
 
-  // Setup input
-  InputAction psi_u(u);
-  Matrix A_matrix = psi_u.stateMatrixA(g1);
-  Matrix3 W0 = Rot3::Hat(psi_u(g1.inverse()).head<3>());
+  Matrix A_matrix = psi_u.stateMatrixA(X_hat);
+  Matrix3 W0 = Rot3::Hat(psi_u(X_hat.inverse()).head<3>());
 
   Matrix expected_A1 = Matrix::Zero(6, 6);
   expected_A1.block<3, 3>(0, 3) = -I_3x3;
@@ -348,8 +354,31 @@ TEST(ABC, InputAction_stateMatrixA) {
 }
 
 /* ************************************************************************* */
+// State transition matrix for ABC system under InputAction dynamics
+// This is the old code for stateTransitionMatrix, kept so we can keep testing
+// against it, specifically that it matches the LieGroupEKF transition matrix.
+template <size_t N, typename InputAction>
+static Matrix stateTransitionMatrix(const InputAction& psi_u,
+                                    const Group& X_hat, double dt) {
+  const Vector3 omega_tilde = psi_u(X_hat.inverse()).template head<3>();
+  Matrix3 W0 = Rot3::Hat(omega_tilde);
+  Matrix Phi1 = Matrix::Zero(6, 6);
+  Matrix3 W0_sq = W0 * W0;
+  Matrix3 Phi12 = -dt * (I_3x3 + 0.5 * dt * W0 + (dt * dt / 6.0) * W0_sq);
+  Matrix3 Phi22 = I_3x3 + dt * W0 + 0.5 * dt * dt * W0_sq;
+  Phi1.block<3, 3>(0, 0) = I_3x3;
+  Phi1.block<3, 3>(0, 3) = Phi12;
+  Phi1.block<3, 3>(3, 3) = Phi22;
+
+  std::vector<Matrix> blocks;
+  blocks.push_back(Phi1);
+  blocks.insert(blocks.end(), N, Phi22);
+  return gtsam::diag(blocks);
+}
+
+/* ************************************************************************* */
 TEST(ABC, InputAction_stateTransitionMatrix) {
-  Group X_hat = abc_examples::g1;
+  using namespace abc_input_action_example;
 
   // Setup input
   Vector3 omega(0.5, 0.6, 0.7);
@@ -357,7 +386,7 @@ TEST(ABC, InputAction_stateTransitionMatrix) {
 
   Vector6 u = abc::toInputVector(omega);
   InputAction psi_u(u);
-  Matrix Phi = psi_u.stateTransitionMatrix(X_hat, dt);
+  Matrix Phi = stateTransitionMatrix<2>(psi_u, X_hat, dt);
   Matrix3 W0 = Rot3::Hat(psi_u(X_hat.inverse()).head<3>());
   Matrix Phi1 = Matrix::Zero(6, 6);
   Matrix3 Phi12 = -dt * (I_3x3 + (dt / 2) * W0 + ((dt * dt) / 6) * W0 * W0);
@@ -374,42 +403,31 @@ TEST(ABC, InputAction_stateTransitionMatrix) {
 
 /* ************************************************************************* */
 TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF) {
-  Group X_hat = Group::Identity();
+  using namespace abc_input_action_example;
 
-  Vector3 omega(0.5, 0.6, 0.7);
-  Vector6 u = abc::toInputVector(omega);
-  InputAction psi_u(u);
   double dt = 1e-4;
 
-  Matrix Phi_expected = psi_u.stateTransitionMatrix(X_hat, dt);
+  Matrix Phi_expected = stateTransitionMatrix<2>(psi_u, X_hat, dt);
 
-  Group::TangentVector xi = Group::TangentVector::Zero();
-  Group::Jacobian Df = psi_u.stateMatrixA(X_hat);
+  Group::Jacobian Df = psi_u.stateMatrixA(X_hat) + Group::adjointMap(xi);
   Group::Jacobian P0 = Group::Jacobian::Identity();
   LieGroupEKF<Group> ekf(X_hat, P0);
 
-  Group::Jacobian Dexp = Group::Jacobian::Identity();
-  Group U = Group::Identity();
+  Group::Jacobian Dexp;
+  Group U = Group::Expmap(xi * dt, &Dexp);
 
-  Group::Jacobian Phi_liekf = ekf.transitionMatrix<4>(xi, Df, dt, U, Dexp);
+  Group::Jacobian Phi_liekf = ekf.transitionMatrix<2>(xi, Df, dt, U, Dexp);
 
   EXPECT(assert_equal(Phi_expected, Phi_liekf, 2e-5));
 }
 
 /* ************************************************************************* */
 TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF_K1) {
-  Group X_hat = Group::Identity();
+  using namespace abc_input_action_example;
 
-  Vector3 omega(0.4, -0.3, 0.2);
-  Vector6 u = abc::toInputVector(omega);
-  InputAction psi_u(u);
-  double dt = 0.05;
+  double dt = 1e-4;
 
-  Lift lift(u);
-  State xi_state = State::identity();
-  Group::TangentVector xi = lift(xi_state);
-
-  Group::Jacobian Df = psi_u.stateMatrixA(X_hat);
+  Group::Jacobian Df = psi_u.stateMatrixA(X_hat) + Group::adjointMap(xi);
   Group::Jacobian P0 = Group::Jacobian::Identity();
   LieGroupEKF<Group> ekf(X_hat, P0);
 
@@ -418,21 +436,19 @@ TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF_K1) {
 
   Group::Jacobian Phi_liekf = ekf.transitionMatrix<1>(xi, Df, dt, U, Dexp);
 
-  Group U_inv = U.inverse();
-  Group::Jacobian Phi_expected = U_inv.AdjointMap() + Dexp * Df * dt;
+  Group::Jacobian Phi_expected = stateTransitionMatrix<2>(psi_u, X_hat, dt);
 
-  EXPECT(assert_equal(Phi_expected, Phi_liekf, 1e-12));
+  EXPECT(assert_equal(Phi_expected, Phi_liekf, 1e-6));
 }
 
 /* ************************************************************************* */
 TEST(ABC, InputAction_inputMatrix) {
-  Group X_hat = abc_examples::g1;
-  InputAction psi_u(abc_examples::u);
+  using namespace abc_input_action_example;
 
-  Matrix input_matrix = psi_u.inputMatrix(X_hat);
+  Matrix input_matrix = psi_u.inputMatrixBt(X_hat);
 
-  const Matrix3 X_hat_rot = X_hat.A().matrix();
-  Matrix expected_B1 = gtsam::diag({X_hat_rot, X_hat_rot});
+  const Matrix3 A = X_hat.A().matrix();
+  Matrix expected_B1 = gtsam::diag({A, A});
   Matrix expected_B2(3 * 2, 3 * 2);
   expected_B2.setZero();
   for (size_t i = 0; i < 2; ++i) {
@@ -455,19 +471,6 @@ TEST(ABC, InputAction_processNoise) {
   Matrix expected_Q = gtsam::diag({Sigma, expected_Q_cal_part});
 
   EXPECT(assert_equal(Q, expected_Q));
-}
-
-/* ************************************************************************* */
-TEST(ABC, InputAction_inputMatrixBt) {
-  // This function is identical to inputMatrix, so we'll test its output matches
-  // inputMatrix.
-  Group X_hat = abc_examples::g1;
-  InputAction psi_u(abc_examples::u);
-
-  Matrix input_matrix_Bt = psi_u.inputMatrixBt(X_hat);
-  Matrix input_matrix = psi_u.inputMatrix(X_hat);  // Reference from other func
-
-  EXPECT(assert_equal(input_matrix_Bt, input_matrix));
 }
 
 /* ************************************************************************* */
