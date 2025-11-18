@@ -125,7 +125,29 @@ class LieGroupEKF : public ManifoldEKF<G> {
         // First-order Lie group transition matrix
         return traits<G>::Inverse(U).AdjointMap() + Dexp * Df * dt;
       } else {
-        // Higher-order Lie group transition matrix via matrix exponential
+        // Higher-order Lie group transition matrix via matrix exponential.
+        //
+        // GTSAM's LieGroupEKF uses a left-invariant error, i.e. we write the
+        // true state as
+        //
+        //     X_true ≈ X_hat * Exp(η),
+        //
+        // and η lives in the tangent space at the identity. Even if the
+        // *global* perturbation is constant, composing the nominal motion X_hat
+        // with Exp(ξ dt) on the right will "drag" η along the group because G
+        // is non-commutative. The Baker–Campbell–Hausdorff expansion shows that
+        // the linearized error dynamics contain an extra term -ad_ξ η coming
+        // from this non-commutativity, where ad_ξ(·) = [ξ, ·] is the Lie
+        // bracket. With this convention, and a dynamics linearization Df =
+        // ∂ξ/∂(local X), the continuous-time error satisfies approximately
+        //
+        //     dη/dt ≈ (Df - ad_ξ) η,
+        //
+        // and the corresponding discrete-time transition matrix is
+        //
+        //     Φ ≈ expm((Df - ad_ξ) dt).
+        //
+        // This is exactly what we implement below.
         static_assert(
             has_adjoint_map<G>::value,
             "transitionMatrix<K> requires G::adjointMap(xi) when K > 1.");
