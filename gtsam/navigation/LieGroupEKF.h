@@ -103,7 +103,7 @@ class LieGroupEKF : public ManifoldEKF<G> {
   using Base::predict;
 
   /**
-   * Compute the discrete-time transition Jacobian Φ corresponding to a
+   * Compute the discrete-time transition matrix Φ corresponding to a
    * continuous-time linearization (Df) over time dt.
    *
    * @param xi Tangent increment (used only for Lie groups).
@@ -118,22 +118,20 @@ class LieGroupEKF : public ManifoldEKF<G> {
     if constexpr (std::is_same_v<G, Matrix>) {
       (void)xi;
       (void)U;
-      const Matrix I_n = Matrix::Identity(this->n_, this->n_);
-      if constexpr (K == 1) {
-        return I_n + Dexp * Df * dt;
-      } else {
-        return expm(Df * dt, K);
-      }
+      (void)Dexp;
+      return expm(Df * dt, K);
     } else {
       if constexpr (K == 1) {
+        // First-order Lie group transition matrix
         return traits<G>::Inverse(U).AdjointMap() + Dexp * Df * dt;
       } else {
+        // Higher-order Lie group transition matrix via matrix exponential
         static_assert(
             has_adjoint_map<G>::value,
             "transitionMatrix<K> requires G::adjointMap(xi) when K > 1.");
         Jacobian ad_xi = G::adjointMap(xi);
-        const Matrix generator = (Df - ad_xi) * dt;
-        return expm(generator, K);
+        const Matrix A = Df - ad_xi;
+        return expm(A * dt, K);
       }
     }
   }
@@ -160,10 +158,8 @@ class LieGroupEKF : public ManifoldEKF<G> {
 
     if constexpr (std::is_same_v<G, Matrix>) {
       TangentVector xi = f(this->X_, Phi ? &Df : nullptr);
-      const Matrix nextX =
-          traits<Matrix>::Retract(this->X_, xi * dt, Phi ? &Dexp : nullptr);
-      if (Phi) *Phi = transitionMatrix<K>(xi, Df, dt, nextX, Dexp);
-      return nextX;
+      if (Phi) *Phi = expm(Df * dt, K);
+      return traits<G>::Retract(this->X_, xi * dt);
     } else {
       TangentVector xi = f(this->X_, Phi ? &Df : nullptr);
       G U = traits<G>::Expmap(xi * dt, Phi ? &Dexp : nullptr);

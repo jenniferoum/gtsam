@@ -80,6 +80,35 @@ TEST(GroupeEKF, PredictNumericState) {
   EXPECT(assert_equal(expectedH, actualH));
 }
 
+TEST(GroupeEKF, Rot3HigherOrderTransition) {
+  Rot3 R0 = Rot3::RzRyRx(0.2, -0.1, 0.3);
+  Matrix3 P0 = Matrix3::Identity() * 0.2;
+  double dt = 0.1;
+
+  Matrix3 PhiK1, PhiK2, PhiHighOrder;
+
+  {
+    LieGroupEKF<Rot3> ekf(R0, P0);
+    ekf.predictMean<1>(exampleSO3::dynamics, dt, PhiK1);
+  }
+
+  {
+    LieGroupEKF<Rot3> ekf(R0, P0);
+    ekf.predictMean<2>(exampleSO3::dynamics, dt, PhiK2);
+  }
+
+  {
+    LieGroupEKF<Rot3> ekf(R0, P0);
+    ekf.predictMean<6>(exampleSO3::dynamics, dt, PhiHighOrder);
+  }
+
+  double diffK1 = (PhiK1 - PhiHighOrder).norm();
+  double diffK2 = (PhiK2 - PhiHighOrder).norm();
+
+  EXPECT(diffK2 < diffK1);
+  EXPECT((PhiK1 - PhiK2).norm() > 1e-6);
+}
+
 TEST(GroupeEKF, StateAndControl) {
   auto f = [](const Rot3& X, const Vector2& dummy_u,
     OptionalJacobian<3, 3> H = {}) {
