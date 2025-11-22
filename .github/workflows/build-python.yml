@@ -202,8 +202,8 @@ jobs:
           echo "GTSAM_WITH_TBB=ON" >> $GITHUB_ENV
           echo "GTSAM Uses TBB"
 
-      - name: Set Swap Space (Linux and macOS)
-        if: runner.os == 'Linux' || runner.os == 'macOS'
+      - name: Set Swap Space (Linux)
+        if: runner.os == 'Linux'
         uses: pierotofy/set-swap-space@master
         with:
           swap-size-gb: 6
