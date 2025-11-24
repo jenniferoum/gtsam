@@ -18,12 +18,10 @@
  * @author  Fan Jiang
  */
 
+#pragma once
 // \callgraph
 
 #include <gtsam/nonlinear/NonlinearFactor.h>
-
-#pragma once
-
 namespace gtsam {
 
 /* ************************************************************************* */
