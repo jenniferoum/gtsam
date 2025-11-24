@@ -31,7 +31,7 @@ namespace detail {
 /** Convenience base class to add aliases `X1`, `X2`, ..., `X6` -> ValueType<N>.
  * Usage example:
  * ```
- * class MyFactor : public NoiseModelFactorN<Pose3, Point3>,
+ * class MyFactor : public NoiseModelFactorT<Vector, Pose3, Point3>,
  *                  public NoiseModelFactorAliases<Pose3, Point3> {
  *  // class implementation ...
  * };
@@ -94,9 +94,9 @@ struct NoiseModelFactorAliases<T1, T2, T3, T4, T5, T6, TExtra...> {
  * between a Pose3 and Point3 could be implemented like so:
  *
  * ~~~~~~~~~~~~~~~~~~~~{.cpp}
- * class MyFactor : public NoiseModelFactorN<Pose3, Point3> {
+ * class MyFactor : public NoiseModelFactorT<Vector, Pose3, Point3> {
  *  public:
- *   using Base = NoiseModelFactorN<Pose3, Point3>;
+ *   using Base = NoiseModelFactorT<Vector, Pose3, Point3>;
  *
  *   MyFactor(Key pose_key, Key point_key, const SharedNoiseModel& noiseModel)
  *       : Base(noiseModel, pose_key, point_key) {}
@@ -121,7 +121,7 @@ struct NoiseModelFactorAliases<T1, T2, T3, T4, T5, T6, TExtra...> {
  *     return Vector1(error);
  *   }
  * };
- * 
+ *
  * // Unit Test
  * TEST(NonlinearFactor, MyFactor) {
  *   MyFactor f(X(1), X(2), noiseModel::Unit::Create(1));
@@ -138,8 +138,8 @@ struct NoiseModelFactorAliases<T1, T2, T3, T4, T5, T6, TExtra...> {
  * are typically more general than just vectors, e.g., Rot3 or Pose3, which are
  * objects in non-linear manifolds (Lie groups).
  */
-template <class... ValueTypes>
-class NoiseModelFactorN
+template <class OutputVec, class... ValueTypes>
+class NoiseModelFactorT
     : public NoiseModelFactor,
       public detail::NoiseModelFactorAliases<ValueTypes...> {
  public:
@@ -148,9 +148,9 @@ class NoiseModelFactorN
 
   using NoiseModelFactor::unwhitenedError;
 
-protected:
+ protected:
   using Base = NoiseModelFactor;
-  using This = NoiseModelFactorN<ValueTypes...>;
+  using This = NoiseModelFactorT<OutputVec, ValueTypes...>;
 
   /// @name SFINAE aliases
   /// @{
@@ -173,23 +173,26 @@ protected:
    * are all references to a matrix or not. It will be used
    * to choose the right overload of evaluateError.
    */
-  template <typename Ret, typename ...Args>
-  using AreAllMatrixRefs = std::enable_if_t<(... && 
-      std::is_convertible<Args, Matrix&>::value), Ret>;
-  
-  template<typename Arg>
+  template <typename Ret, typename... Args>
+  using AreAllMatrixRefs =
+      std::enable_if_t<(... && std::is_convertible<Args, Matrix&>::value), Ret>;
+
+  template <typename Arg>
   using IsMatrixPointer = std::is_same<typename std::decay_t<Arg>, Matrix*>;
 
-  template<typename Arg>
-  using IsNullpointer = std::is_same<typename std::decay_t<Arg>, std::nullptr_t>;
+  template <typename Arg>
+  using IsNullpointer =
+      std::is_same<typename std::decay_t<Arg>, std::nullptr_t>;
 
   /** A helper alias to check if a list of args
    * are all pointers to a matrix or not. It will be used
    * to choose the right overload of evaluateError.
    */
-  template <typename Ret, typename ...Args>
-    using AreAllMatrixPtrs = std::enable_if_t<(... &&
-            (IsMatrixPointer<Args>::value || IsNullpointer<Args>::value)), Ret>;
+  template <typename Ret, typename... Args>
+  using AreAllMatrixPtrs =
+      std::enable_if_t<(... && (IsMatrixPointer<Args>::value ||
+                                IsNullpointer<Args>::value)),
+                       Ret>;
 
   /// @}
 
@@ -211,12 +214,12 @@ protected:
   template <typename T = void>
   using MatrixTypeT = Matrix;
 
-  public:
+ public:
   /**
    * The type of the I'th template param can be obtained as ValueType<I>.
    * I is 1-indexed for backwards compatibility/consistency!  So for example,
    * ```
-   * using Factor = NoiseModelFactorN<Pose3, Point3>;
+   * using Factor = NoiseModelFactorT<Vector, Pose3, Point3>;
    * Factor::ValueType<1>  // Pose3
    * Factor::ValueType<2>  // Point3
    * // Factor::ValueType<0> // ERROR!  Will not compile.
@@ -236,55 +239,55 @@ protected:
       typename std::tuple_element<I - 1, std::tuple<ValueTypes...>>::type;
 
  public:
-
   /// @name Constructors
   /// @{
 
   /// Default Constructor for I/O
-  NoiseModelFactorN() {}
+  NoiseModelFactorT() {}
 
   /**
    * Constructor.
-   * Example usage: NoiseModelFactorN(noise, key1, key2, ..., keyN)
+   * Example usage: NoiseModelFactorT(noise, key1, key2, ..., keyN)
    * @param noiseModel Shared pointer to noise model.
    * @param keys Keys for the variables in this factor, passed in as separate
    * arguments.
    */
-  NoiseModelFactorN(const SharedNoiseModel& noiseModel,
+  NoiseModelFactorT(const SharedNoiseModel& noiseModel,
                     KeyType<ValueTypes>... keys)
       : Base(noiseModel, std::array<Key, N>{keys...}) {}
 
   /**
    * Constructor.
-   * Example usage: `NoiseModelFactorN(noise, {key1, key2, ..., keyN})`
-   * Example usage: `NoiseModelFactorN(noise, keys)` where keys is a vector<Key>
+   * Example usage: `NoiseModelFactorT(noise, {key1, key2, ..., keyN})`
+   * Example usage: `NoiseModelFactorT(noise, keys)` where keys is a
+   * vector<Key>
    * @param noiseModel Shared pointer to noise model.
    * @param keys A container of keys for the variables in this factor.
    */
   template <typename CONTAINER = std::initializer_list<Key>,
             typename = IsContainerOfKeys<CONTAINER>>
-  NoiseModelFactorN(const SharedNoiseModel& noiseModel, CONTAINER keys)
+  NoiseModelFactorT(const SharedNoiseModel& noiseModel, CONTAINER keys)
       : Base(noiseModel, keys) {
     if (keys.size() != N) {
       throw std::invalid_argument(
-          "NoiseModelFactorN: wrong number of keys given");
+          "NoiseModelFactorT: wrong number of keys given");
     }
   }
 
   /// @}
 
-  ~NoiseModelFactorN() override {}
+  ~NoiseModelFactorT() override {}
 
   /** Returns a key. Usage: `key<I>()` returns the I'th key.
    * I is 1-indexed for backwards compatibility/consistency!  So for example,
    * ```
-   * NoiseModelFactorN<Pose3, Point3> factor(noise, key1, key2);
+   * NoiseModelFactorT<Vector, Pose3, Point3> factor(noise, key1, key2);
    * key<1>()  // = key1
    * key<2>()  // = key2
    * // key<0>()  // ERROR!  Will not compile
    * // key<3>()  // ERROR!  Will not compile
    * ```
-   * 
+   *
    * Note that, if your class is templated AND you are trying to call `key<1>`
    * inside your class, due to dependent types you need the `template` keyword:
    * `this->key1()`.
@@ -314,11 +317,9 @@ protected:
    * @param[out] H A vector of (dynamic) matrices whose size should be equal to
    * n.  The Jacobians w.r.t. each variable will be output in this parameter.
    */
-  Vector unwhitenedError(
-      const Values& x,
-      OptionalMatrixVecType H = nullptr) const override {
-    return unwhitenedError(gtsam::index_sequence_for<ValueTypes...>{}, x,
-                           H);
+  Vector unwhitenedError(const Values& x,
+                         OptionalMatrixVecType H = nullptr) const override {
+    return unwhitenedError(gtsam::index_sequence_for<ValueTypes...>{}, x, H);
   }
 
   /// @}
@@ -347,15 +348,15 @@ protected:
    * as separate arguments.
    * @param[out] H The Jacobian with respect to each variable (optional).
    */
-  virtual Vector evaluateError(const ValueTypes&... x,
-                               OptionalMatrixTypeT<ValueTypes>... H) const = 0;
+  virtual OutputVec evaluateError(
+      const ValueTypes&... x, OptionalMatrixTypeT<ValueTypes>... H) const = 0;
 
   /** If all the optional arguments are matrices then redirect the call to
    * the one which takes pointers.
    * To get access to this version of the function from derived classes
    * one will need to use the "using" keyword and specify that like this:
    * public:
-   *   using NoiseModelFactorN<list the value types here>::evaluateError;
+   *   using NoiseModelFactorT<list the value types here>::evaluateError;
    */
   Vector evaluateError(const ValueTypes&... x,
                        MatrixTypeT<ValueTypes>&... H) const {
@@ -380,9 +381,10 @@ protected:
    * and the jacobians are l-value references to matrices.
    * e.g. `const Vector error = factor.evaluateError(pose, point, Hpose);`
    */
-  template <typename... OptionalJacArgs, typename = IndexIsValid<sizeof...(OptionalJacArgs) + 1>>
-  inline AreAllMatrixRefs<Vector, OptionalJacArgs...> evaluateError(const ValueTypes&... x,
-                                                                  OptionalJacArgs&&... H) const {
+  template <typename... OptionalJacArgs,
+            typename = IndexIsValid<sizeof...(OptionalJacArgs) + 1>>
+  inline AreAllMatrixRefs<Vector, OptionalJacArgs...> evaluateError(
+      const ValueTypes&... x, OptionalJacArgs&&... H) const {
     return evaluateError(x..., (&H)...);
   }
 
@@ -390,14 +392,16 @@ protected:
    * and the jacobians are pointers to matrices.
    * e.g. `const Vector error = factor.evaluateError(pose, point, &Hpose);`
    */
-  template <typename... OptionalJacArgs, typename = IndexIsValid<sizeof...(OptionalJacArgs) + 1>>
-  inline AreAllMatrixPtrs<Vector, OptionalJacArgs...> evaluateError(const ValueTypes&... x,
-                                                                    OptionalJacArgs&&... H) const {
+  template <typename... OptionalJacArgs,
+            typename = IndexIsValid<sizeof...(OptionalJacArgs) + 1>>
+  inline AreAllMatrixPtrs<Vector, OptionalJacArgs...> evaluateError(
+      const ValueTypes&... x, OptionalJacArgs&&... H) const {
     // If they are pointer version, ensure to cast them all to be Matrix* types
-    // This will ensure any arguments inferred as std::nonetype_t are cast to (Matrix*) nullptr
-    // This guides the compiler to the correct overload which is the one that takes pointers
-    return evaluateError(x..., 
-        std::forward<OptionalJacArgs>(H)..., static_cast<OptionalMatrixType>(OptionalNone));
+    // This will ensure any arguments inferred as std::nonetype_t are cast to
+    // (Matrix*) nullptr This guides the compiler to the correct overload which
+    // is the one that takes pointers
+    return evaluateError(x..., std::forward<OptionalJacArgs>(H)...,
+                         static_cast<OptionalMatrixType>(OptionalNone));
   }
 
   /// @}
@@ -406,14 +410,13 @@ protected:
   /** Pack expansion with index_sequence template pattern, used to index into
    * `keys_` and `H`.
    *
-   * Example: For `NoiseModelFactorN<Pose3, Point3>`, the call would look like:
-   *    `const Vector error = unwhitenedError(0, 1, values, H);`
+   * Example: For `NoiseModelFactorT<Vector, Pose3, Point3>`, the call would
+   * look like: `const Vector error = unwhitenedError(0, 1, values, H);`
    */
   template <std::size_t... Indices>
-  inline Vector unwhitenedError(
-      gtsam::index_sequence<Indices...>,  //
-      const Values& x,
-      OptionalMatrixVecType H = nullptr) const {
+  inline Vector unwhitenedError(gtsam::index_sequence<Indices...>,  //
+                                const Values& x,
+                                OptionalMatrixVecType H = nullptr) const {
     if (this->active(x)) {
       if (H) {
         return evaluateError(x.at<ValueTypes>(keys_[Indices])...,
@@ -440,9 +443,7 @@ protected:
   /// @name Shortcut functions `key1()` -> `key<1>()`
   /// @{
 
-  inline Key key1() const {
-    return key<1>();
-  }
+  inline Key key1() const { return key<1>(); }
   template <int I = 2>
   inline Key key2() const {
     static_assert(I <= N, "Index out of bounds");
@@ -471,7 +472,15 @@ protected:
 
   /// @}
 
-};  // \class NoiseModelFactorN
+};  // \class NoiseModelFactorT
+
+/**
+ * @brief Noise model factor with N value types and dynamic-sized error vector
+ *
+ * @tparam ValueTypes
+ */
+template <class... ValueTypes>
+using NoiseModelFactorN = NoiseModelFactorT<Vector, ValueTypes...>;
 
 #define NoiseModelFactor1 NoiseModelFactorN
 #define NoiseModelFactor2 NoiseModelFactorN
