@@ -135,6 +135,9 @@ struct NoiseModelFactorAliases<T1, T2, T3, T4, T5, T6, TExtra...> {
  * These factors are templated on a values structure type. The values structures
  * are typically more general than just vectors, e.g., Rot3 or Pose3, which are
  * objects in non-linear manifolds (Lie groups).
+ *
+ * @tparam OutputVec The type of the error vector, usually Vector.
+ * @tparam ValueTypes The types of the variables connected to this factor, e.g., Pose3, Point3.
  */
 template <class OutputVec, class... ValueTypes>
 class NoiseModelFactorT
