@@ -148,9 +148,9 @@ virtual class HybridConditional : gtsam::HybridFactor {
                     const gtsam::DiscreteKeys& discreteFrontals,
                     const gtsam::KeyVector& continuousParents,
                     const gtsam::DiscreteKeys& discreteParents);
-  HybridConditional(const gtsam::GaussianConditional::shared_ptr& continuousConditional);
-  HybridConditional(const gtsam::DiscreteConditional::shared_ptr& discreteConditional);
-  HybridConditional(const gtsam::HybridGaussianConditional::shared_ptr& hybridGaussianCond);
+  HybridConditional(const gtsam::GaussianConditional* continuousConditional);
+  HybridConditional(const gtsam::DiscreteConditional* discreteConditional);
+  HybridConditional(const gtsam::HybridGaussianConditional* hybridGaussianCond);
 
   void print(string s = "Hybrid Conditional\n",
              const gtsam::KeyFormatter& keyFormatter =
@@ -163,7 +163,7 @@ virtual class HybridConditional : gtsam::HybridFactor {
   double negLogConstant() const;
   double logProbability(const gtsam::HybridValues& values) const;
   double evaluate(const gtsam::HybridValues& values) const;
-  double operator()(const gtsam::HybridValues& values) const;
+//   double operator()(const gtsam::HybridValues& values) const;
 
   bool isDiscrete() const;
   bool isContinuous() const;
@@ -211,9 +211,9 @@ class HybridGaussianConditional : gtsam::HybridGaussianFactor {
       const std::vector<std::pair<gtsam::Vector, double>>& parameters);
 
   // Standard API
-  gtsam::GaussianConditional::shared_ptr choose(
+  gtsam::GaussianConditional* choose(
       const gtsam::DiscreteValues &discreteValues) const;
-//   gtsam::GaussianConditional::shared_ptr operator()(
+//   gtsam::GaussianConditional* operator()(
 //       const gtsam::DiscreteValues &discreteValues) const;
   size_t nrComponents() const;
   gtsam::KeyVector continuousParents() const;
@@ -225,11 +225,7 @@ class HybridGaussianConditional : gtsam::HybridGaussianFactor {
   double evaluate(const gtsam::HybridValues& values) const;
 //   double operator()(const gtsam::HybridValues &values) const;
 
-  HybridGaussianConditional::shared_ptr prune(
-      const gtsam::DiscreteConditional &discreteProbs) const;
-  bool pruned() const;
-
-  HybridGaussianConditional::shared_ptr prune(
+  HybridGaussianConditional* prune(
       const gtsam::DiscreteConditional &discreteProbs) const;
   bool pruned() const;
 
