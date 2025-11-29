@@ -56,7 +56,7 @@ TEST(HybridGaussianFactor, Constructor) {
 }
 
 /* ************************************************************************* */
-namespace fixture {
+namespace test_hgn_constructor {
 DiscreteKey m1(1, 2);
 
 auto A1 = Matrix::Zero(2, 1);
@@ -65,12 +65,12 @@ auto b = Matrix::Zero(2, 1);
 
 auto f10 = std::make_shared<JacobianFactor>(X(1), A1, X(2), A2, b);
 auto f11 = std::make_shared<JacobianFactor>(X(1), A1, X(2), A2, b);
-}  // namespace fixture
+}  // namespace test_hgn_constructor
 
 /* ************************************************************************* */
 // Test simple to complex constructors...
 TEST(HybridGaussianFactor, ConstructorVariants) {
-  using namespace fixture;
+  using namespace test_hgn_constructor;
   HybridGaussianFactor fromFactors(m1, {f10, f11});
 
   std::vector<GaussianFactorValuePair> pairs{{f10, 0.0}, {f11, 0.0}};
@@ -84,7 +84,7 @@ TEST(HybridGaussianFactor, ConstructorVariants) {
 
 /* ************************************************************************* */
 TEST(HybridGaussianFactor, Keys) {
-  using namespace fixture;
+  using namespace test_hgn_constructor;
   HybridGaussianFactor hybridFactorA(m1, {f10, f11});
   // Check the number of keys matches what we expect
   EXPECT_LONGS_EQUAL(3, hybridFactorA.keys().size());
@@ -106,7 +106,7 @@ TEST(HybridGaussianFactor, Keys) {
 
 /* ************************************************************************* */
 TEST(HybridGaussianFactor, Printing) {
-  using namespace fixture;
+  using namespace test_hgn_constructor;
   HybridGaussianFactor hybridFactor(m1, {f10, f11});
 
   std::string expected =
@@ -198,7 +198,7 @@ TEST(HybridGaussianFactor, Error) {
 /* ************************************************************************* */
 // Test the restrict method of HybridGaussianFactor
 TEST(HybridGaussianFactor, Restrict) {
-  using namespace fixture;
+  using namespace test_hgn_constructor;
   HybridGaussianFactor hfg(m1, {f10, f11});
 
   // --- Test Case 1: Restrict by M1=0 ---
@@ -206,12 +206,12 @@ TEST(HybridGaussianFactor, Restrict) {
   assignment1[m1.first] = 0;
 
   auto f = hfg.restrict(assignment1);
-  // auto restricted = std::dynamic_pointer_cast<HybridGaussianFactor>(f);
-  // CHECK(restricted != nullptr);
+  auto restricted = std::dynamic_pointer_cast<HybridGaussianFactor>(f);
+  CHECK(restricted != nullptr);
 
-  // // Check discrete keys now empty
-  // DiscreteKeys expected_dk1;
-  // EXPECT(restricted->discreteKeys().empty());
+  // Check discrete keys now empty
+  DiscreteKeys expected_dk1;
+  EXPECT(restricted->discreteKeys().empty());
 }
 
 
