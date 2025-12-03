@@ -10,12 +10,15 @@ class gtsam::Point2Vector;
 class gtsam::Rot2;
 class gtsam::Pose2;
 class gtsam::Point3;
+class gtsam::StereoCamera;
 class gtsam::SO3;
 class gtsam::SO4;
 class gtsam::SOn;
 class gtsam::Rot3;
 class gtsam::Pose3;
+class gtsam::StereoCamera;
 class gtsam::SmartProjectionParams;
+class gtsam::SmartStereoProjectionFactor;
 virtual class gtsam::noiseModel::Base;
 virtual class gtsam::noiseModel::Gaussian;
 virtual class gtsam::noiseModel::Isotropic;
@@ -734,8 +737,36 @@ typedef gtsam::ProjectionFactorPPPC<gtsam::Pose3, gtsam::Point3, gtsam::Cal3_S2>
 typedef gtsam::ProjectionFactorPPPC<gtsam::Pose3, gtsam::Point3, gtsam::Cal3DS2> ProjectionFactorPPPCCal3DS2;
 typedef gtsam::ProjectionFactorPPPC<gtsam::Pose3, gtsam::Point3, gtsam::Cal3Fisheye> ProjectionFactorPPPCCal3Fisheye;
 
+#include <gtsam_unstable/slam/SmartStereoProjectionFactor.h>
+virtual class SmartStereoProjectionFactor : gtsam::NonlinearFactor {
+  SmartStereoProjectionFactor(const gtsam::noiseModel::Base* sharedNoiseModel,
+      const gtsam::SmartProjectionParams& params,
+      const gtsam::Pose3& body_P_sensor);
+  SmartStereoProjectionFactor(const gtsam::noiseModel::Base* sharedNoiseModel,
+      const gtsam::SmartProjectionParams& params);
+  SmartStereoProjectionFactor(const gtsam::noiseModel::Base* sharedNoiseModel);
+
+  void print(string s) const;
+  bool equals(const gtsam::NonlinearFactor& p, double tol) const;
+  double error(const gtsam::Values& values) const;
+
+  gtsam::TriangulationResult point() const;
+  gtsam::TriangulationResult point(const gtsam::Values& values) const;
+
+  bool isValid() const;
+  bool isDegenerate() const;
+  bool isPointBehindCamera() const;
+  bool isOutlier() const;
+  bool isFarPoint() const;
+
+  gtsam::GaussianFactor linearizeDamped(const gtsam::CameraSet<gtsam::StereoCamera>& cameras,
+      const double lambda) const;
+  gtsam::GaussianFactor linearizeDamped(const gtsam::Values& values,
+      const double lambda) const;
+};
+
 #include <gtsam_unstable/slam/SmartStereoProjectionPoseFactor.h>
-virtual class SmartStereoProjectionPoseFactor : gtsam::NonlinearFactor {
+virtual class SmartStereoProjectionPoseFactor : gtsam::SmartStereoProjectionFactor {
   SmartStereoProjectionPoseFactor(const gtsam::noiseModel::Base* sharedNoiseModel,
       const gtsam::SmartProjectionParams& params,
       const gtsam::Pose3& body_P_sensor);
@@ -756,8 +787,6 @@ virtual class SmartStereoProjectionPoseFactor : gtsam::NonlinearFactor {
   bool equals(const gtsam::NonlinearFactor& p, double tol) const;
   double error(const gtsam::Values& values) const;
   std::vector<std::shared_ptr<gtsam::Cal3_S2Stereo>> calibration() const;
-
-  void serializable() const; // enabling serialization functionality
 };
 
 #include <gtsam_unstable/slam/ProjectionFactorRollingShutter.h>
