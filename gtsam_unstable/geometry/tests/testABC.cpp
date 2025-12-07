@@ -21,10 +21,10 @@ using namespace gtsam;
 // Define N for testing purposes, e.g., 2 calibration states
 using State = abc::State<2>;
 using Group = abc::Group<2>;
-using StateAction = abc::StateAction<2>;
+using Symmetry = abc::Symmetry<2>;
 using Lift = abc::Lift<2>;
-using InputAction = abc::InputAction<2>;
-using OutputAction = abc::OutputAction<2>;
+using InputOrbit = abc::InputOrbit<2>;
+using OutputOrbit = abc::OutputOrbit<2>;
 using Calibrations = abc::Calibrations<2>;
 
 /* ************************************************************************* */
@@ -51,6 +51,7 @@ const Unit3 y(1, 0, 0), d(0, 1, 0);
 }  // namespace abc_examples
 
 /* ************************************************************************* */
+// State manifold construction, retract, and local coordinates.
 TEST(ABC, State) {
   State state1 = abc_examples::xi1;
 
@@ -98,13 +99,10 @@ TEST(ABC, State) {
                       Rot3::Expmap(v_test.segment<3>(6).eval())));
   EXPECT(assert_equal(retracted_from_id.S[1],
                       Rot3::Expmap(v_test.segment<3>(9).eval())));
-
-  // Test retract invalid argument
-  CHECK_EXCEPTION(identityState.retract(Vector::Zero(1)),
-                  std::invalid_argument);
 }
 
 /* ************************************************************************* */
+// Group operations (compose, inverse, retract) behave as expected.
 TEST(ABC, GroupOperations) {
   using namespace abc_examples;
 
@@ -160,6 +158,7 @@ TEST(ABC, GroupOperations) {
 }
 
 //******************************************************************************
+// Adjoint and adjointMap should match block-diagonal expectations.
 TEST(ABC, AdjointMap) {
   using namespace abc_examples;
 
@@ -189,11 +188,13 @@ TEST(ABC, AdjointMap) {
 }
 
 /* ************************************************************************* */
-TEST(ABC, StateAction) {
+// Basic sanity check on state action results.
+TEST(ABC, Symmetry) {
   using namespace abc_examples;
 
-  // Test State Action (G * State)
-  State transformed_xi = StateAction(xi2)(g1);
+  // Basic sanity check on state action
+  Symmetry phi;
+  State transformed_xi = phi(xi2, g1);
   EXPECT(assert_equal(transformed_xi.R, xi2.R * g1.A()));
   EXPECT(assert_equal<Matrix>(transformed_xi.b,
                               g1.A().inverse().matrix() * (xi2.b - g1.a())));
@@ -206,52 +207,41 @@ TEST(ABC, StateAction) {
 }
 
 /* ************************************************************************* */
-// A right action satisfies φ(xi, g1 * g2) = φ(φ(xi, g1), g2), i.e. applying
-// g1 then g2 equals applying their product, with the multiplication happening
-// on the right.
-TEST(ABC, StateActionIsRightAction) {
+// Check analytic Jacobians of the symmetry action against numerical
+// derivatives.
+TEST(ABC, SymmetryJacobians) {
   using namespace abc_examples;
 
-  // Create action functors
-  StateAction phi_xi1(xi1);
+  Symmetry phi;
 
-  // Left side: apply composed group element (g1 * g2) to xi
-  const State left_side = phi_xi1(g1 * g2);
+  Matrix Hxi, Hg;
+  phi(xi1, g2, Hxi, Hg);
 
-  // Right side: apply g1 first, then g2 to the result
-  const State xi1_g1 = phi_xi1(g1);
-  const State right_side = StateAction(xi1_g1)(g2);
+  std::function<State(const State&)> action_wrt_state = [&](const State& xi) {
+    return phi(xi, g2);
+  };
+  std::function<State(const Group&)> action_wrt_group = [&](const Group& g) {
+    return phi(xi1, g);
+  };
 
-  // For a right action, these should be equal
-  EXPECT(assert_equal(left_side, right_side));
+  Matrix Hxi_numeric = numericalDerivative11(action_wrt_state, xi1, 1e-7);
+  Matrix Hg_numeric = numericalDerivative11(action_wrt_group, g2, 1e-7);
 
-  // Additional test with g1 and g2 reversed
-  const State left_side_2 = phi_xi1(g2 * g1);
-
-  const State xi1_g2 = phi_xi1(g2);
-  const State right_side_2 = StateAction(xi1_g2)(g1);
-
-  EXPECT(assert_equal(left_side_2, right_side_2));
+  EXPECT(assert_equal(Hxi_numeric, Hxi, 1e-6));
+  EXPECT(assert_equal(Hg_numeric, Hg, 1e-6));
 }
 
 /* ************************************************************************* */
-TEST(ABC, StateActionJacobianAnalytic) {
+// Verify symmetry defines a right action.
+TEST(ABC, SymmetryIsRightAction) {
   using namespace abc_examples;
 
-  StateAction action_xi1(xi1);
-  Matrix analytic1 = action_xi1.jacobianAtIdentity();
-  Matrix numerical1 = gtsam::numericalDerivative11<State, Group>(
-      [&](const Group& g) { return action_xi1(g); }, Group::Identity());
-  EXPECT(assert_equal(analytic1, numerical1));
-
-  StateAction action_xi2(xi2);
-  Matrix analytic2 = action_xi2.jacobianAtIdentity();
-  Matrix numerical2 = gtsam::numericalDerivative11<State, Group>(
-      [&](const Group& g) { return action_xi2(g); }, Group::Identity());
-  EXPECT(assert_equal(analytic2, numerical2));
+  EXPECT_RIGHT_ACTION(Symmetry(), xi1, g1, g2);
+  EXPECT_RIGHT_ACTION(Symmetry(), xi1, g2, g1);
 }
 
 /* ************************************************************************* */
+// Lift functor should match analytical expression.
 TEST(ABC, LiftFunctor) {
   State xi = abc_examples::xi1;
 
@@ -276,15 +266,16 @@ TEST(ABC, LiftFunctor) {
 namespace abc_input_action_example {
 Group X_hat = abc_examples::g1;
 Vector6 u = abc::toInputVector(abc_examples::omega);
-InputAction psi_u(u);
-StateAction phi_xi1(abc_examples::xi1);
+InputOrbit psi_u(u);
+Symmetry::Orbit phi_xi1(abc_examples::xi1);
 State state_est = phi_xi1(X_hat);
 Lift lift_u(u);
 Group::TangentVector xi = lift_u(state_est);
 }  // namespace abc_input_action_example
 
 /* ************************************************************************* */
-TEST(ABC, InputAction) {
+// Input action should map angular velocity as defined.
+TEST(ABC, InputOrbit) {
   using namespace abc_input_action_example;
 
   Vector6 transformed_u = psi_u(X_hat);
@@ -294,49 +285,104 @@ TEST(ABC, InputAction) {
   EXPECT(assert_equal<Vector>(transformed_u.tail<3>(), Z_3x1,
                               1e-9));  // Virtual input stays zero
 
-  EXPECT(assert_equal(transformed_u, InputAction(u)(X_hat)));
+  EXPECT(assert_equal(transformed_u, InputOrbit(u)(X_hat)));
 }
 
 /* ************************************************************************* */
-// A right action satisfies φ(xi, g1 * g2) = φ(φ(xi, g1), g2), i.e. applying
-// g1 then g2 equals applying their product, with the multiplication happening
-// on the right.
+// Input action must satisfy right-action property.
 TEST(ABC, InputActionIsRightAction) {
   using namespace abc_examples;
 
-  // Create action functors
-  InputAction psi_u(u);
-
-  // Left side: apply composed group element (g1 * g2) to xi
-  const Vector6 left_side = psi_u(g1 * g2);
-
-  // Right side: apply g1 first, then g2 to the result
-  const Vector6 u_g1 = psi_u(g1);
-  const Vector6 right_side = InputAction(u_g1)(g2);
-  // For a right action, these should be equal
-  EXPECT(assert_equal(left_side, right_side));
-
-  // Additional test with g1 and g2 reversed
-  const Vector6 left_side_2 = psi_u(g2 * g1);
-
-  const Vector6 u_g2 = psi_u(g2);
-  const Vector6 right_side_2 = InputAction(u_g2)(g1);
-
-  EXPECT(assert_equal(left_side_2, right_side_2));
+  EXPECT_RIGHT_ACTION(abc::InputAction<2>(), u, g1, g2);
+  EXPECT_RIGHT_ACTION(abc::InputAction<2>(), u, g2, g1);
 }
 
 /* ************************************************************************* */
-TEST(ABC, InputAction_JacobianAnalytic) {
-  using namespace abc_input_action_example;
+// Manifold dynamics ξ̇ = f(ξ, ω) should be equivariant under the state action.
+TEST(ABC, ManifoldDynamicsEquivariance) {
+  using namespace abc_examples;
 
-  Matrix analytic = psi_u.jacobianAtIdentity();
-  Matrix numerical = gtsam::numericalDerivative11<Vector6, Group>(
-      [&](const Group& g) { return psi_u(g); }, Group::Identity());
+  const auto f_u = [&](const State& xi) -> Vector {
+    return abc::dynamics<2>(omega, xi);
+  };
+  using InducedField = Symmetry::InducedVectorField<decltype(f_u)>;
+  const InducedField fInduced(g1, f_u);
 
-  EXPECT(assert_equal(analytic, numerical));
+  Matrix H;
+  const State transported = Symmetry::Orbit{xi1}(g1.inverse());
+  Symmetry::Diffeomorphism{g1}(transported, H);
+  const Vector expected = H * f_u(transported);
+  const Vector induced = fInduced(xi1);
+
+  EXPECT(assert_equal(expected, induced));
+
+  // Verify equivariance property: f(φ(xi, g), psi_u(g)) = φ_*(f(xi, u), g)
+  // Equation (3.5) in Fornasier thesis
+  InputOrbit psi_u(u);
+  const Vector3 omega_transformed = psi_u(g1).head<3>();
+  const auto equivariant =
+      abc::dynamics<2>(omega_transformed,
+                       xi1);  // dynamics given input-transformed omega
+  EXPECT(assert_equal(induced, equivariant));
 }
 
 /* ************************************************************************* */
+// Lift Jacobian w.r.t. state should match numerical derivative.
+TEST(ABC, LiftJacobians) {
+  using namespace abc_examples;
+
+  Lift lift_u(u);
+
+  Matrix H;
+  const Group::TangentVector lifted = lift_u(xi1, H);
+
+  std::function<Group::TangentVector(const State&)> lift_wrt_state =
+      [&](const State& xi) { return lift_u(xi); };
+
+  const Matrix H_numeric = numericalDerivative11(lift_wrt_state, xi1, 1e-7);
+
+  EXPECT(assert_equal(lift_u(xi1), lifted));
+  EXPECT(assert_equal(H_numeric, H, 1e-6));
+}
+
+/* ************************************************************************* */
+// Lift should yield original dynamics on the manifold.
+TEST(ABC, LiftShadowManifoldDynamics) {
+  using namespace abc_examples;
+
+  Symmetry::Orbit phi_xi(xi1);
+  Matrix H;
+  phi_xi(Group::Identity(), H);  // derivative w.r.t. group at identity
+
+  const Group::TangentVector lifted = Lift(u)(xi1);
+  const Vector shadow = H * lifted;
+
+  const Vector manifold = abc::dynamics<2>(omega, xi1);
+  EXPECT(assert_equal(shadow, manifold));
+}
+
+/* ************************************************************************* */
+// Lift should be equivariant under the state and input actions.
+TEST(ABC, LiftEquivariance) {
+  using namespace abc_examples;
+
+  // Check Ad_{X^{-1}} Λ(ξ, u) = Λ(φ_X(ξ), ψ_X(u)).
+  Lift lift_omega(u);
+  InputOrbit psi_u(u);
+
+  const Group X = g1;
+
+  const Group::TangentVector lifted = lift_omega(xi1);
+  const Group::TangentVector lifted_ad = X.inverse().AdjointMap() * lifted;
+
+  const Group::TangentVector lifted_equivariant =
+      Lift(psi_u(X))(Symmetry::Orbit{xi1}(X));
+
+  EXPECT(assert_equal(lifted_ad, lifted_equivariant));
+}
+
+/* ************************************************************************* */
+// Validate legacy state-transition matrix computation.
 TEST(ABC, InputAction_stateMatrixA) {
   using namespace abc_input_action_example;
 
@@ -350,16 +396,110 @@ TEST(ABC, InputAction_stateMatrixA) {
   Matrix expected_A2 = gtsam::diag({W0, W0});
   Matrix expected_A_matrix = gtsam::diag({expected_A1, expected_A2});
 
-  EXPECT(assert_equal(A_matrix, expected_A_matrix));
+  EXPECT(assert_equal(expected_A_matrix, A_matrix));
 }
 
 /* ************************************************************************* */
-// State transition matrix for ABC system under InputAction dynamics
+// Compare EqF-computed A/C with legacy helpers.
+// These tests succeed when xi_ref is State::identity().
+TEST(ABC, ComputeErrorDynamicsMatrixMatchesLegacy) {
+  using namespace abc_examples;
+
+  const State xi_ref = State::identity();
+  Matrix initialSigma = Matrix::Identity(12, 12);
+  const auto& X_hat = g2;
+  EquivariantFilter<State, abc::Symmetry<2>> filter(xi_ref, initialSigma,
+                                                    X_hat);
+
+  auto phi_ref = Symmetry::Orbit{xi_ref};
+  const State xi_hat = phi_ref(X_hat);
+
+  // A_provided should now be the Manifold-space matrix
+  // stateMatrixA returns the correct Manifold-space matrix (DimM x DimM)
+  InputOrbit psi_u(u);
+  Matrix expected_A = psi_u.stateMatrixA(X_hat);
+
+  // A_computed is now computed on Manifold (D_act * D_lift)
+  Matrix A_computed =
+      filter.computeErrorDynamicsMatrix<Lift, InputOrbit>(psi_u);
+
+  EXPECT(assert_equal(expected_A, A_computed, 1e-9));
+
+  // Calculate A as in VanGoor23thesis, Formula 5.23
+  // The chart for xi_ref==identity is just identity matrices
+  auto u0 = psi_u(X_hat.inverse());  // origin velocity
+
+  Matrix D_act;
+  phi_ref(Group::Identity(), &D_act);
+
+  Matrix D_lift;
+  Lift lift_u0(u0);
+  lift_u0(xi_ref, &D_lift);
+
+  Matrix A_decomposed = D_act * D_lift;
+  EXPECT(assert_equal(expected_A, A_decomposed, 1e-9));
+}
+
+/* ************************************************************************* */
+// dynamics Derivative in filter should match numerical derivative.
+TEST(ABC, ComputeErrorDynamicsMatrix) {
+  using namespace abc_examples;
+
+  // Reference error state and current group estimate
+  const State xi_ref = State::identity();
+  const Group& X_hat = g2;
+
+  // Origin velocity u0 in the body/origin frame
+  InputOrbit psi_u(u);
+  const Vector6 u0 = psi_u(X_hat.inverse());
+  Lift lift_u0(u0);
+
+  // Ensure the reference is an equilibrium for the error dynamics by
+  // subtracting a constant lift term.
+  const Group::TangentVector lxi_ref = lift_u0(xi_ref);
+
+  const double dt = 1e-4;
+
+  // One-step flow map for the error state e under explicit Euler integration:
+  //   e(dt) ≈ e ⊕ (F(e) * dt),
+  // where F(e) = Dφ_e ( Λ(e, u0) - Λ(xi_ref, u0) ).
+  std::function<State(const State&)> Phi_dt = [&](const State& e0) {
+    // Dφ_e evaluated at the identity of the group
+    Symmetry::Orbit phi_e(e0);
+    Matrix Dphi_e;
+    phi_e(Group::Identity(), Dphi_e);
+
+    // Lifted dynamics at e and at the reference
+    const Group::TangentVector le = lift_u0(e0);
+    const Vector fe = Dphi_e * (le - lxi_ref);
+
+    // Explicit Euler step on the manifold
+    return e0.retract(fe * dt);
+  };
+
+  // Numerically approximate the Jacobian of the flow at the reference error
+  // state and recover A from DΦ_dt ≈ I + dt * A.
+  const Matrix Phi_numeric = numericalDerivative11(Phi_dt, xi_ref, 1e-7);
+  const Matrix I = Matrix::Identity(Phi_numeric.rows(), Phi_numeric.cols());
+  const Matrix A_numeric = (Phi_numeric - I) / dt;
+
+  // Analytic error-dynamics matrix from the EquivariantFilter implementation
+  Matrix initialSigma = Matrix::Identity(12, 12);
+  EquivariantFilter<State, abc::Symmetry<2>> filter(xi_ref, initialSigma,
+                                                    X_hat);
+  Matrix A_computed =
+      filter.computeErrorDynamicsMatrix<Lift, InputOrbit>(psi_u);
+
+  EXPECT(assert_equal(A_numeric, A_computed, 1e-7));
+}
+
+/* ************************************************************************* */
+// State transition matrix for ABC system under InputOrbit dynamics
 // This is the old code for stateTransitionMatrix, kept so we can keep testing
 // against it, specifically that it matches the LieGroupEKF transition matrix.
-template <size_t N, typename InputAction>
-static Matrix stateTransitionMatrix(const InputAction& psi_u,
-                                    const Group& X_hat, double dt) {
+template <size_t N, typename InputOrbit>
+static Matrix stateTransitionMatrix(const InputOrbit& psi_u, const Group& X_hat,
+                                    double dt) {
   const Vector3 omega_tilde = psi_u(X_hat.inverse()).template head<3>();
   Matrix3 W0 = Rot3::Hat(omega_tilde);
   Matrix Phi1 = Matrix::Zero(6, 6);
@@ -377,6 +517,7 @@ static Matrix stateTransitionMatrix(const InputAction& psi_u,
 }
 
 /* ************************************************************************* */
+// Closed-form transition should match expected Phi.
 TEST(ABC, InputAction_stateTransitionMatrix) {
   using namespace abc_input_action_example;
 
@@ -385,7 +526,7 @@ TEST(ABC, InputAction_stateTransitionMatrix) {
   double dt = 0.1;
 
   Vector6 u = abc::toInputVector(omega);
-  InputAction psi_u(u);
+  InputOrbit psi_u(u);
   Matrix Phi = stateTransitionMatrix<2>(psi_u, X_hat, dt);
   Matrix3 W0 = Rot3::Hat(psi_u(X_hat.inverse()).head<3>());
   Matrix Phi1 = Matrix::Zero(6, 6);
@@ -398,10 +539,11 @@ TEST(ABC, InputAction_stateTransitionMatrix) {
   Matrix Phi2 = gtsam::diag({Phi22, Phi22});
   Matrix expected_Phi = gtsam::diag({Phi1, Phi2});
 
-  EXPECT(assert_equal(Phi, expected_Phi));
+  EXPECT(assert_equal(expected_Phi, Phi));
 }
 
 /* ************************************************************************* */
+// Transition should match LieGroupEKF reference (K=2).
 TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF) {
   using namespace abc_input_action_example;
 
@@ -422,6 +564,7 @@ TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF) {
 }
 
 /* ************************************************************************* */
+// Transition should match LieGroupEKF reference (K=1).
 TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF_K1) {
   using namespace abc_input_action_example;
 
@@ -442,10 +585,11 @@ TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF_K1) {
 }
 
 /* ************************************************************************* */
+// Input matrix Bt should match block-diagonal structure.
 TEST(ABC, InputAction_inputMatrix) {
   using namespace abc_input_action_example;
 
-  Matrix input_matrix = psi_u.inputMatrixBt(X_hat);
+  Matrix input_matrix = psi_u.inputMatrixB(X_hat);
 
   const Matrix3 A = X_hat.A().matrix();
   Matrix expected_B1 = gtsam::diag({A, A});
@@ -460,81 +604,60 @@ TEST(ABC, InputAction_inputMatrix) {
 }
 
 /* ************************************************************************* */
+// Process noise embedding should match expected block diagonal.
 TEST(ABC, InputAction_processNoise) {
-  Matrix Sigma = (Matrix(6, 6) << 1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 3,
-                  0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 6)
-                     .finished();
+  Matrix Sigma6 =
+      (Matrix(6, 6) << 1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0,
+       0, 0, 4, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 6)
+          .finished();
 
-  Matrix Q = InputAction::processNoise(Sigma);
+  Matrix Q = InputOrbit::processNoise(Sigma6);
 
-  Matrix expected_Q_cal_part = 1e-9 * I_6x6;
-  Matrix expected_Q = gtsam::diag({Sigma, expected_Q_cal_part});
+  Matrix expected_Q = gtsam::diag({Sigma6, 1e-9 * I_3x3, 1e-9 * I_3x3});  // N=2
 
   EXPECT(assert_equal(Q, expected_Q));
 }
 
 /* ************************************************************************* */
-TEST(ABC, OutputAction) {
+// Output action should handle calibrated/uncalibrated indices.
+TEST(ABC, OutputOrbit) {
   using namespace abc_examples;
 
   // Test outputAction (calibrated sensor)
   int cal_idx = 0;
-  OutputAction phi_y(y, d, cal_idx);
+  OutputOrbit phi_y(y, d, cal_idx);
   Vector3 transformed_y_calibrated = phi_y(g1);
   EXPECT(assert_equal<Vector>(transformed_y_calibrated,
                               g1.calibrations()[0].unrotate(y.unitVector())));
 
   // Test outputAction (uncalibrated sensor)
   int uncalibrated_idx = -1;
-  OutputAction uncalibrated_phi_y(y, d, uncalibrated_idx);
+  OutputOrbit uncalibrated_phi_y(y, d, uncalibrated_idx);
   Vector3 transformed_y_uncalibrated = uncalibrated_phi_y(g1);
   EXPECT(assert_equal<Vector>(transformed_y_uncalibrated,
                               g1.A().unrotate(y.unitVector())));
 
-  CHECK_EXCEPTION(OutputAction(y, d, 2), std::out_of_range);
+  CHECK_EXCEPTION(OutputOrbit(y, d, 2), std::out_of_range);
 }
 
 /* ************************************************************************* */
-// A right action satisfies φ(y, g1 * g2) = φ(φ(y, g1), g2), mirroring the
-// behavior tested for state and input actions.
+// Output action must satisfy right-action property.
 TEST(ABC, OutputActionIsRightAction) {
   using namespace abc_examples;
 
-  OutputAction phi_y(y, d, 0);
-
-  const Vector3 left_side = phi_y(g1 * g2);
-
-  Unit3 y_g1(phi_y(g1));
-  const Vector3 right_side = OutputAction(y_g1, d, 0)(g2);
-  EXPECT(assert_equal(left_side, right_side));
-
-  const Vector3 left_side_2 = phi_y(g2 * g1);
-  Unit3 y_g2(phi_y(g2));
-  const Vector3 right_side_2 = OutputAction(y_g2, d, 0)(g1);
-
-  EXPECT(assert_equal(left_side_2, right_side_2));
+  EXPECT_RIGHT_ACTION(abc::OutputAction<2>(0), y.unitVector(), g1, g2);
+  EXPECT_RIGHT_ACTION(abc::OutputAction<2>(0), y.unitVector(), g2, g1);
 }
 
 /* ************************************************************************* */
-TEST(ABC, OutputActionJacobianAnalytic) {
-  using namespace abc_examples;
-
-  OutputAction phi_y(y, d, 0);
-  Matrix analytic = phi_y.jacobianAtIdentity();
-  Matrix numerical = gtsam::numericalDerivative11<Vector3, Group>(
-      [&](const Group& g) { return phi_y(g); }, Group::Identity());
-
-  EXPECT(assert_equal(analytic, numerical));
-}
-
-/* ************************************************************************* */
+// Measurement matrix C should match legacy computation.
 TEST(ABC, OutputAction_measurementMatrixC) {
   using namespace abc_examples;
   Matrix3 wedge_d = Rot3::Hat(d.unitVector());
 
   // Test with calibrated sensor (idx = 0)
   int cal_idx = 0;
-  OutputAction phi_y(y, d, cal_idx);
+  OutputOrbit phi_y(y, d, cal_idx);
   Matrix C_cal = phi_y.measurementMatrixC();
 
   Matrix expected_Cc_cal = Matrix::Zero(3, 3 * 2);
@@ -549,7 +672,25 @@ TEST(ABC, OutputAction_measurementMatrixC) {
   EXPECT(assert_equal(C_cal, expected_C_cal));
 }
 
+//==============================================================================
+// Compare EqF-computed A/C with legacy helpers.
+TEST(ABC, ComputeMeasurementMatrix) {
+  using namespace abc_examples;
+
+  const Group g_0;
+  const State xi_ref = xi1;
+  Matrix initialSigma = Matrix::Identity(12, 12);
+  EquivariantFilter<State, abc::Symmetry<2>> filter(xi_ref, initialSigma);
+
+  // Check C matrix
+  OutputOrbit phi_y(y, d, 0, xi_ref);
+  Matrix C_computed = filter.computeMeasurementMatrix(phi_y, xi_ref);
+  Matrix C_legacy = phi_y.measurementMatrixC();
+  EXPECT(assert_equal(C_legacy, C_computed, 1e-9));
+}
+
 /* ************************************************************************* */
+// Equivariant filter regression for predict/update.
 TEST(ABC, EqFilter) {
   using namespace abc_examples;
 
@@ -565,19 +706,18 @@ TEST(ABC, EqFilter) {
       Vector3::Constant(0.1);  // Calibration uncertainty
 
   const G g_0;
-  EquivariantFilter<State, abc::StateAction<2>> filter(g_0, xi_ref,
-                                                       initialSigma);
+  EquivariantFilter<State, Symmetry> filter(xi_ref, initialSigma);
 
   // Check initial state
-  EXPECT(assert_equal(g_0, filter.state()));
+  // Check initial state
   EXPECT(assert_equal(g_0, filter.groupEstimate()));
 
   // Perform a prediction step
   Matrix Sigma = I_6x6;
   double dt = 0.01;
-  Matrix Q = InputAction::processNoise(Sigma);
+  Matrix Q = InputOrbit::processNoise(Sigma);
   Lift lift_u(u2);
-  InputAction psi_u(u2);
+  InputOrbit psi_u(u2);
   filter.predict(lift_u, psi_u, Q, dt);
 
   // Regression
@@ -591,7 +731,9 @@ TEST(ABC, EqFilter) {
                   Rot3(1, 0.000150005, -0.000399278,  //
                        -0.000149995, 1, 2.40155e-05,  //
                        0.000399282, -2.39557e-05, 1)});
+  // filter.groupEstimate().print("Actual Group Predict: ");
   EXPECT(assert_equal(expected, filter.groupEstimate(), 1e-4));
+
   Matrix expected_P_after_predict =
       (Matrix(12, 12) << 0.110001, -0, 0, -0.0001, 0, -0, 0, 0, 0, 0, 0, 0,  //
        -0, 0.110001, -0, 0, -0.0001, -0, 0, 0, 0, 0, 0, 0,                   //
@@ -611,7 +753,7 @@ TEST(ABC, EqFilter) {
   // Perform an update step
   const int cal_idx = 0;
   const Matrix3 R = 0.01 * I_3x3;
-  OutputAction phi_y(y, d, cal_idx);
+  OutputOrbit phi_y(y, d, cal_idx, xi_ref);
   filter.update(phi_y, R);
 
   // Regression

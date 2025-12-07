@@ -31,6 +31,7 @@
  * Authors: Darshan Rajasekaran & Jennifer Oum
  */
 
+#include <gtsam/base/GroupAction.h>
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/MatrixLieGroup.h>
 #include <gtsam/base/ProductLieGroup.h>
@@ -72,6 +73,7 @@ struct State {
   Calibrations<N> S;  // Sensor calibrations S
 
   static constexpr int dimension = 6 + 3 * N;
+  using TangentVector = Eigen::Matrix<double, dimension, 1>;
 
   /// Constructor
   State(const Rot3& R = Rot3(), const Vector3& b = Z_3x1,
@@ -86,13 +88,13 @@ struct State {
    * @param other The other state
    * @return Local coordinates in the tangent space
    */
-  Vector localCoordinates(const State<N>& other) const {
-    Vector eps(dimension);
+  TangentVector localCoordinates(const State<N>& other) const {
+    TangentVector eps(dimension);
 
     // First 3 elements - attitude
-    eps.head<3>() = R.logmap(other.R);
+    eps.template head<3>() = R.logmap(other.R);
     // Next 3 elements - bias
-    eps.segment<3>(3) = other.b - b;
+    eps.template segment<3>(3) = other.b - b;
 
     // Remaining elements - calibrations
     eps.template segment<3 * N>(6) = S.logmap(other.S);
@@ -105,13 +107,9 @@ struct State {
    * @param v Vector in the tangent space
    * @return New state
    */
-  State retract(const Vector& v) const {
-    if (v.size() != static_cast<Eigen::Index>(dimension)) {
-      throw std::invalid_argument(
-          "Vector size does not match state dimensions");
-    }
-    Rot3 newR = R.expmap(v.head<3>());
-    Vector3 newB = b + v.segment<3>(3);
+  State retract(const TangentVector& v) const {
+    Rot3 newR = R.expmap(v.template head<3>());
+    Vector3 newB = b + v.template segment<3>(3);
     typename Calibrations<N>::TangentVector deltaS;
     deltaS = v.template segment<3 * N>(6);
     Calibrations<N> newS = S.expmap(deltaS);
@@ -255,61 +253,96 @@ struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
  * Eq. (4) of Fornasier et al. (2022).
  */
 template <size_t N>
-struct StateAction {
+struct Symmetry : public GroupAction<Symmetry<N>, Group<N>, State<N>> {
   using M = State<N>;
-  using G = Group<N>;
-
-  const M xi_;  // Reference state
-
-  /**
-   * Construct action functor with reference state
-   * @param xi State object
-   */
-  StateAction(const M& xi) : xi_(xi) {}
+  using Group = gtsam::abc::Group<N>;
+  static constexpr ActionType type = ActionType::Right;
 
   /**
    * Implements group actions on the states
    * @param g An element of the symmetry group G.
    * @return Transformed state
    */
-  M operator()(const G& g) const {
-    const Rot3 new_R = xi_.R * g.A();
-    const Rot3 At = g.A().inverse();
-    const Vector3 new_b = At * (xi_.b - g.a());
+  M operator()(const M& xi, const Group& g,
+               OptionalJacobian<M::dimension, M::dimension> Hm = {},
+               OptionalJacobian<M::dimension, Group::dimension> Hg = {}) const {
+    const Rot3 new_R = xi.R * g.A();
+    Matrix3 skew_p, At;  // derivatives of unrotate
+    const Point3 p = xi.b - g.a();
+    const Vector3 new_b =
+        g.A().unrotate(p, Hg ? &skew_p : nullptr, (Hg || Hm) ? &At : nullptr);
     Calibrations<N> new_S;
     const Calibrations<N>& B = g.calibrations();
-    for (size_t i = 0; i < N; i++) new_S[i] = At * xi_.S[i] * B[i];
+    Rot3 invA = g.A().inverse();  // derivative is (- A)
+    for (size_t i = 0; i < N; i++) {
+      Rot3 SB = xi.S[i].compose(B[i]);  // derivative in B[i] is identity
+      new_S[i] = invA.compose(SB);      // derivative in invA is SB^{-1}.
+    }
+
+    if (Hm) {
+      Hm->setZero();
+
+      // d(R*A)/dR: right-multiplication by A maps a tangent vector δθ to
+      // Ad_{A^{-1}} δθ = Aᵀ δθ.
+      Hm->template block<3, 3>(0, 0) = At;
+
+      // d(At*(b - a))/db = At.
+      Hm->template block<3, 3>(3, 3) = At;
+
+      // d(At * S[i] * B[i]) / dS[i] = Ad_{B[i]^{-1}} on so(3), which is just
+      // multiplication by B[i]ᵀ in vector form.
+      for (size_t i = 0; i < N; ++i) {
+        const size_t row = 6 + 3 * i;
+        const Matrix3 BiT = g.calibrations()[i].matrix().transpose();
+        Hm->template block<3, 3>(row, row) = BiT;
+      }
+    }
+    if (Hg) {
+      Hg->setZero();
+      // Rotation block: δθ maps directly to the state's rotational tangent.
+      Hg->template block<3, 3>(0, 0) = I_3x3;
+
+      // Bias block:
+      Hg->template block<3, 3>(3, 0) = skew_p;
+      Hg->template block<3, 3>(3, 3) = -I_3x3;  // - At * A (from translation()
+
+      // Calibration blocks:
+      Matrix3 A = g.A().matrix();
+      for (size_t i = 0; i < N; ++i) {
+        Rot3 SB = xi.S[i].compose(B[i]);
+        const size_t row = 6 + 3 * i;
+        const size_t col = 6 + 3 * i;
+        Hg->template block<3, 3>(row, 0) = -SB.transpose() * A;
+        Hg->template block<3, 3>(row, col) = I_3x3;
+      }
+    }
     return {new_R, new_b, new_S};
   }
 
-  /**
-   * The Jacobian of the action at the identity of the symmetry group G
-   * @return A matrix representing the jacobian of the state action
-   */
-  /// Jacobian Dφ_{ξ}|_{X=I} mapping Lie algebra perturbations to state tangent
-  /// variations.
-  Matrix jacobianAtIdentity() const {
-    Matrix H = Matrix::Zero(M::dimension, G::dimension);
-
-    // Rotation block: δθ maps directly to the state's rotational tangent.
-    H.block<3, 3>(0, 0) = I_3x3;
-
-    // Bias block: δb = -δa + xi_.b × δθ.
-    H.block<3, 3>(3, 0) = Rot3::Hat(xi_.b);
-    H.block<3, 3>(3, 3) = -I_3x3;
-
-    // Calibration blocks: δs_i = δσ_i - S_i^{-1} δθ.
-    for (size_t i = 0; i < N; ++i) {
-      const Matrix3 S_inv = xi_.S[i].inverse().matrix();
-      const size_t row = 6 + 3 * i;
-      const size_t col = 6 + 3 * i;
-      H.block<3, 3>(row, 0) = -S_inv;  // B[i] is identity for G::Identity
-      H.block<3, 3>(row, col) = I_3x3;
-    }
-
-    return H;
-  }
+  struct Orbit : public group_action::Orbit<Symmetry<N>> {
+    using Base = group_action::Orbit<Symmetry<N>>;
+    using Base::Base;  // Inherit constructors
+  };
 };
+
+/**
+ * Continuous-time dynamics on the manifold M = SO(3) x R^3 x SO(3)^N, as in
+ * Eq. (2) of the paper. Given state ξ = (R, b, S) and body angular velocity
+ * ω, the state derivative is:
+ *   Ṙ = R (ω - b)^
+ *   ḃ = 0
+ *   Ṡ_i = 0
+ * We represent the tangent as a vector with components (δθ, δb, δσ_i).
+ */
+template <size_t N>
+inline typename State<N>::TangentVector dynamics(const Vector3& omega,
+                                                 const State<N>& xi) {
+  typename State<N>::TangentVector xi_dot;
+  xi_dot.setZero();
+  xi_dot.template head<3>() = omega - xi.b;
+  // Remaining components are already zero.
+  return xi_dot;
+}
 
 /**
  * /// Implements the lift Λ(ξ,u) from the paper: Λ encodes the lifted dynamics
@@ -326,15 +359,29 @@ struct Lift {
 
   explicit Lift(const Input& u) : u_(u) {}
 
-  typename G::TangentVector operator()(const M& xi) const {
-    Vector3 w = u_.head<3>();
-    Vector3 corrected_w = w - xi.b;
-
+  typename G::TangentVector operator()(
+      const M& xi, OptionalJacobian<G::dimension, M::dimension> H = {}) const {
     typename G::TangentVector L;
+    Vector3 w = u_.head<3>();  // w = omega
+    Vector3 corrected_w = w - xi.b;
     L.template head<3>() = corrected_w;
     L.template segment<3>(3) = -Rot3::Hat(w) * xi.b;
+    if (H) {
+      H->setZero();
+      // corrected_w / xi:
+      H->template block<3, 3>(0, 3) = -I_3x3;
+
+      // next segment:
+      H->template block<3, 3>(3, 3) = -Rot3::Hat(w);
+    }
     for (size_t i = 0; i < N; i++) {
-      L.template segment<3>(6 + 3 * i) = xi.S[i].unrotate(corrected_w);
+      DenseIndex k = 6 + 3 * i;
+      Vector3 v_i = xi.S[i].unrotate(corrected_w);
+      L.template segment<3>(k) = v_i;
+      if (H) {
+        H->template block<3, 3>(k, 3) = -xi.S[i].transpose();
+        H->template block<3, 3>(k, k) = Rot3::Hat(v_i);
+      }
     }
 
     return L;
@@ -352,36 +399,41 @@ struct Lift {
  * the linearization in Eqs. (20) and (21), using ω̃ = Aᵀ(ω − a).
  */
 template <size_t N>
-struct InputAction {
+struct InputAction : public GroupAction<InputAction<N>, Group<N>, Vector6> {
   using G = Group<N>;
   using Input = Vector6;
+  static constexpr ActionType type = ActionType::Right;
 
-  static Matrix processNoise(const Matrix& Sigma) {
-    std::vector<Matrix> blocks{Sigma};
-    blocks.insert(blocks.end(), N, 1e-9 * I_3x3);
-    return gtsam::diag(blocks);
-  }
-
-  const Input u_;
-
-  explicit InputAction(const Input& u) : u_(u) {}
-
-  Input operator()(const G& X) const {
+  Input operator()(const Input& u, const G& X, OptionalJacobian<6, 6> H_u = {},
+                   OptionalJacobian<6, G::dimension> H_X = {}) const {
     const Rot3 A = X.A();
     const Vector3 a = X.a();
     Input result;
-    result.head<3>() = A.unrotate(u_.head<3>() - a);
+    result.head<3>() = A.unrotate(u.head<3>() - a);
     result.tail<3>() = Z_3x1;
     return result;
   }
+};
 
-  Matrix jacobianAtIdentity() const {
-    Matrix H = Matrix::Zero(Input::RowsAtCompileTime, G::dimension);
-    H.block<3, 3>(0, 0) = Rot3::Hat(u_.head<3>());
-    H.block<3, 3>(0, 3) = -I_3x3;
-    // Remaining blocks stay zero: the virtual input is unaffected by
-    // calibrations.
-    return H;
+template <size_t N>
+struct InputOrbit : public InputAction<N>::Orbit {
+  using G = Group<N>;
+  using Input = Vector6;
+  static constexpr int DimM = State<N>::dimension;
+  using MatrixMM = Eigen::Matrix<double, DimM, DimM>;
+
+  // Input dimension U captures attitude, bias, and N calibration noise blocks.
+  static constexpr int DimU = 6 + 3 * N;
+  using MatrixGU = Eigen::Matrix<double, G::dimension, DimU>;
+  using MatrixMU = Eigen::Matrix<double, DimM, DimU>;
+
+  explicit InputOrbit(const Input& u) : InputAction<N>::Orbit(u) {}
+
+  // Embed a 6x6 Sigma into full DimU by appending small calibration noise.
+  static Matrix processNoise(const Matrix& Sigma6) {
+    std::vector<Matrix> blocks{Sigma6};
+    blocks.insert(blocks.end(), N, 1e-9 * I_3x3);
+    return gtsam::diag(blocks);
   }
 
   Matrix stateMatrixA(const G& X_hat) const {
@@ -393,16 +445,13 @@ struct InputAction {
     A1.block<3, 3>(0, 3) = -I_3x3;
     A1.block<3, 3>(3, 3) = W0;
 
-    // This Jacobian is ∂(lift)/∂(local X) evaluated before the EqF/LieGroupEKF
-    // adds the adjoint correction. In EqF::predict we add G::adjointMap(xi) so
-    // that the net linearized operator matches (Df - ad_xi) from the Lie group
-    // error dynamics, which is also what stateTransitionMatrix encodes.
     std::vector<Matrix> blocks{A1};
     blocks.insert(blocks.end(), N, W0);
     return gtsam::diag(blocks);
   }
 
-  Matrix inputMatrixBt(const G& X_hat) const {
+  // Fixed-size input matrix B(X̂) ∈ R^{DimM×DimU}, mapped onto the manifold.
+  MatrixMU inputMatrixB(const G& X_hat) const {
     const Matrix3 A_matrix = X_hat.A().matrix();
     Matrix B1 = gtsam::diag({A_matrix, A_matrix});
     Matrix B2(3 * N, 3 * N);
@@ -413,66 +462,119 @@ struct InputAction {
     }
 
     return gtsam::diag({B1, B2});
+    // MatrixGU B = MatrixGU::Zero();
+    // // Attitude and bias blocks.
+    // B.template block<3, 3>(0, 0) = A_matrix;
+    // B.template block<3, 3>(3, 3) = A_matrix;
+    // // Calibration blocks.
+    // for (size_t i = 0; i < N; ++i) {
+    //   const size_t idx = 6 + 3 * i;
+    //   B.template block<3, 3>(idx, idx) = X_hat.calibrations()[i].matrix();
+    // }
+    // return D_act * B;
   }
 };
 
 /**
- * Functor encoding the right action ρ_y(X) on direction measurements y
- * (partially applied). For a fixed y coming from sensor Index, applying X = (A,
- * a, B) ∈ G yields φ_y(X) = B[Index]^{-1} y. The corresponding measurement
- * Jacobian C matches the block structure in Eq. (14b) and feeds into the EqF
- * update (23)–(24).
+ * Functor encoding the right action ρ_y(X) on direction measurements y,
+ * parameterized by the sensor index.
  */
 template <size_t N>
-struct OutputAction {
+struct OutputAction : public GroupAction<OutputAction<N>, Group<N>, Vector3> {
   using G = Group<N>;
   using Output = Vector3;
+  static constexpr ActionType type = ActionType::Right;
 
-  OutputAction(const Unit3& y, const Unit3& d, int index)
-      : y_(y), d_(d), index_(index) {
-    if (index_ >= static_cast<int>(N)) {
-      throw std::out_of_range("OutputAction index out of range");
-    }
-  }
+  explicit OutputAction(int index = -1) : index_(index) {}
 
-  Output operator()(const G& X) const {
+  Output operator()(const Output& y, const G& X,
+                    OptionalJacobian<3, 3> H_y = {},
+                    OptionalJacobian<3, G::dimension> H_X = {}) const {
+    if (H_X) H_X->setZero();
     if (index_ == -1) {
-      const Rot3 A = X.A();
-      return A.unrotate(y_.unitVector());
+      Matrix3 H_rot;
+      Vector3 res = X.A().unrotate(y, H_X ? &H_rot : nullptr, H_y);
+      if (H_X) H_X->template block<3, 3>(0, 0) = H_rot;
+      return res;
     } else {
-      const Calibrations<N>& B = X.calibrations();
-      return B[index_].unrotate(y_.unitVector());
+      Matrix3 H_rot;
+      Vector3 res =
+          X.calibrations()[index_].unrotate(y, H_X ? &H_rot : nullptr, H_y);
+      if (H_X) H_X->template block<3, 3>(0, 6 + 3 * index_) = H_rot;
+      return res;
     }
   }
 
-  Matrix jacobianAtIdentity() const {
-    Matrix H = Matrix::Zero(Output::RowsAtCompileTime, G::dimension);
-    if (index_ == -1) {
-      H.block<3, 3>(0, 0) = Rot3::Hat(y_.unitVector());
-    } else {
-      H.block<3, 3>(0, 6 + 3 * index_) = Rot3::Hat(y_.unitVector());
+  int index_;
+};
+
+template <size_t N>
+struct OutputOrbit : public OutputAction<N>::Orbit {
+  using G = Group<N>;
+  using Output = Vector3;
+  using M = State<N>;
+  static constexpr int DimM = M::dimension;
+  static constexpr int dimZ = 3;
+
+  Unit3 y_;   // measured direction
+  Unit3 d_;   // reference direction
+  M xi_ref_;  // reference state on the manifold
+
+  OutputOrbit(const Unit3& y, const Unit3& d, int index)
+      : OutputAction<N>::Orbit(y.unitVector(), OutputAction<N>(index)),
+        y_(y),
+        d_(d),
+        xi_ref_(M::identity()) {
+    if (index >= static_cast<int>(N)) {
+      throw std::out_of_range("OutputOrbit index out of range");
     }
-    return H;
   }
 
-  Vector3 innovation(const G& X_hat) const {
-    // Equivariant innovation: compute ν_y(X̂) := ρ_y(X̂⁻¹).
-    const Vector3 transformed_y = this->operator()(X_hat.inverse());
-    return Rot3::Hat(d_.unitVector()) * transformed_y;
+  OutputOrbit(const Unit3& y, const Unit3& d, int index, const M& xi_ref)
+      : OutputAction<N>::Orbit(y.unitVector(), OutputAction<N>(index)),
+        y_(y),
+        d_(d),
+        xi_ref_(xi_ref) {
+    if (index >= static_cast<int>(N)) {
+      throw std::out_of_range("OutputOrbit index out of range");
+    }
   }
 
-  /**
-   * Computes the linearized measurement matrix. The structure depends on
-   * whether the sensor has a calibration state
-   * @param d reference direction
-   * @return Measurement matrix
-   */
+  Vector3 innovation(const M& xi_hat,
+                     OptionalJacobian<3, M::dimension> H = {}) const {
+    // Recover A and B_i from (xi_ref_, xi_hat) using the symmetry formulas:
+    //   R_hat = R0 * A,   S_hat[i] = Aᵀ * S0[i] * B[i]
+    const Rot3 R0 = xi_ref_.R;
+    const Rot3 Rhat = xi_hat.R;
+    const Rot3 A = R0.inverse() * Rhat;
+
+    Vector3 transformed_y;
+    if (this->index_ == -1) {
+      // Uncalibrated sensor: transformed_y = A * y.
+      transformed_y = A.rotate(y_.unitVector());
+    } else {
+      // Calibrated sensor i: B_i = S0[i]^{-1} * A * S_hat[i]
+      const Rot3& S0i = xi_ref_.S[this->index_];
+      const Rot3& Shati = xi_hat.S[this->index_];
+      const Rot3 Bi = S0i.inverse() * A * Shati;
+      transformed_y = Bi.rotate(y_.unitVector());
+    }
+
+    const Matrix3 wedge_d = Rot3::Hat(d_.unitVector());
+    const Vector3 nu = wedge_d * transformed_y;
+
+    if (H) {
+      *H = measurementMatrixC();
+    }
+    return nu;
+  }
+
   Matrix measurementMatrixC() const {
     Matrix Cc = Matrix::Zero(3, 3 * N);
 
     Matrix3 wedge_d = Rot3::Hat(d_.unitVector());
-    if (index_ >= 0) {
-      Cc.block<3, 3>(0, 3 * index_) = wedge_d;
+    if (this->index_ >= 0) {
+      Cc.block<3, 3>(0, 3 * this->index_) = wedge_d;
     }
 
     Matrix temp(3, 6 + 3 * N);
@@ -483,22 +585,13 @@ struct OutputAction {
     return wedge_d * temp;
   }
 
-  /**
-   * Computes the measurement uncertainty propagation matrix
-   * @return Returns B[idx] for calibrated sensors, A for uncalibrated
-   */
-  Matrix outputMatrixDt(const G& X_hat) const {
-    if (index_ >= 0) {
-      return X_hat.calibrations()[index_].matrix();
+  Matrix3 outputMatrixD(const G& X_hat) const {
+    if (this->index_ >= 0) {
+      return X_hat.calibrations()[this->index_].matrix();
     } else {
       return X_hat.A().matrix();
     }
   }
-
- private:
-  Unit3 y_;    // measured direction
-  Unit3 d_;    // reference direction
-  int index_;  // sensor index
 };
 
 }  // namespace abc

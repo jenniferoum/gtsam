@@ -18,6 +18,7 @@
  */
 
 #include <CppUnitLite/TestHarness.h>
+#include <gtsam/base/GroupAction.h>
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/Vector.h>
 #include <gtsam/base/numericalDerivative.h>
@@ -37,39 +38,33 @@ using M = Unit3;  // physical state: direction η on S^2
 using G = Rot3;   // symmetry group: SO(3) attitude Q
 
 //---------------------------------------------------------------------------
-// StateAction: group action on the state
-//
-// Here we treat the reference direction R_ref (on S^2) and apply the right
-// action as in Mahony:
-//   φ_{R_ref}(Q) = Q^T R_ref.
+// Symmetry: group action on the state
+//   φ_η(Q) = Q^T η.
 //---------------------------------------------------------------------------
 
-struct StateAction {
-  using M = attitude_example::M;
-  using G = attitude_example::G;
+struct Symmetry : public GroupAction<Symmetry, G, M> {
+  static constexpr ActionType type = ActionType::Right;
 
-  const M R_ref_;
-
-  explicit StateAction(const M& R_ref) : R_ref_(R_ref) {}
-
-  /// Group action at state R_ref by group element Q (rotate Unit3).
-  M operator()(const G& Q) const {
-    // Apply the right action Q^T * R_ref as in Mahony's example.
-    const Point3 v = Q.unrotate(R_ref_.point3());
-    return Unit3(v);
-  }
-
-  /// Jacobian of the action at the group identity, using the ambient R^3
-  /// representation of S^2. For the right action φ_Q(η) = Q^T η,
-  /// we have Dφ|_{Q=I}(Ω) = (R_ref ×) Ω, i.e., the cross-product matrix
-  /// of the reference direction.
-  Matrix jacobianAtIdentity() const {
-    const Vector3 v = R_ref_.unitVector();
-    Matrix H = Matrix::Zero(3, 3);
-    H.block<3, 3>(0, 0) = Rot3::Hat(v);
-    return H;
+  /// Group action at state eta by group element Q.
+  M operator()(const M& eta, const G& Q, OptionalJacobian<2, 2> H_eta = {},
+               OptionalJacobian<2, 3> H_Q = {}) const {
+    // Apply the right action Q^T * eta as in Mahony's example.
+    return Q.unrotate(eta, H_Q, H_eta);
   }
 };
+
+//---------------------------------------------------------------------------
+// Dynamics
+//------------------------------------------- --------------------------------
+
+// Compute the dynamics at a given point on the manifold
+Vector2 dynamics(const Vector3& omega, const M& eta) {
+  // eta.cross(omega_) is in 3D ambient space
+  const Vector3 ambient_dynamics = eta.cross(omega);
+
+  // Convert to 2D tangent space via local basis
+  return eta.basis().transpose() * ambient_dynamics;
+}
 
 //---------------------------------------------------------------------------
 // Lift: maps (state, input) -> group tangent
@@ -79,12 +74,13 @@ struct StateAction {
 //---------------------------------------------------------------------------
 
 struct Lift {
-  using G = attitude_example::G;
   using Input = Vector3;
 
-  explicit Lift(const Input& u) : omega_(u) {}
+  explicit Lift(const Input& omega) : omega_(omega) {}
 
-  typename traits<G>::TangentVector operator()(const M& /*R*/) const {
+  typename traits<G>::TangentVector operator()(
+      const M& /*R*/, OptionalJacobian<3, 2> H = {}) const {
+    if (H) *H = Matrix::Zero(3, 2);
     // Tangent space of SO(3) ~ R^3, so we simply return omega.
     return omega_;
   }
@@ -94,7 +90,7 @@ struct Lift {
 };
 
 //---------------------------------------------------------------------------
-// InputAction: group action on the input + system matrices
+// InputOrbit: group action on the input + system matrices
 //
 // We take the input u as a body-frame angular velocity. For this example,
 // we don't use the group action on input in the prediction, but we still
@@ -102,210 +98,406 @@ struct Lift {
 //   - using Input = ...
 //   - processNoise(Sigma): returns Q in lifted coords
 //   - stateTransitionMatrix(X_hat, dt): Dim x Dim
-//   - inputMatrixBt(X_hat): Dim x Dim
+//   - inputMatrixB(X_hat): DimM x DimU
 //---------------------------------------------------------------------------
 
-struct InputAction {
-  using G = attitude_example::G;
-  using Input = Vector3;
+struct InputAction : public GroupAction<InputAction, G, Vector3> {
+  static constexpr ActionType type = ActionType::Right;
 
-  explicit InputAction(const Input& u) : omega_(u) {}
-
-  Input operator()(const G& X) const {
-    // Right group action on input: X^{-1} * omega.
-    // This is not actually used in EqF.predict but is well-defined.
-    return X.unrotate(omega_);
+  /// Right group action on input: Q^{-1} * omega.
+  Vector3 operator()(const Vector3& omega, const G& Q,
+                     OptionalJacobian<3, 3> H_omega = {},
+                     OptionalJacobian<3, 3> H_Q = {}) const {
+    return Q.unrotate(omega, H_Q, H_omega);
   }
+};
 
-  /// Embed process noise covariance into the lifted coordinates.
-  /// For this simple SO(3)-only system, we just pass it through.
-  static Matrix processNoise(const Matrix& Sigma) { return Sigma; }
+struct InputOrbit : public InputAction::Orbit {
+  using Input = Vector3;
+  static constexpr int DimU = 3;
+  using MatrixMU = Matrix23;
+
+  explicit InputOrbit(const Input& u) : InputAction::Orbit(u) {}
+
+  /// Embed process noise covariance into the lifted coordinates (identity for
+  /// this simple example).
+  static Matrix3 processNoise(const Matrix3& Sigma) { return Sigma; }
 
   /// Derivative of the lifted dynamics wrt. local coordinates.
-  /// For this simple test the lift ignores X, so the Jacobian is zero.
-  Matrix stateMatrixA(const G& /*X_hat*/) const { return Matrix::Zero(3, 3); }
+  Matrix2 stateMatrixA(const G& /*Q_hat*/) const { return Matrix2::Zero(); }
 
-  /// Input matrix B^T that maps process noise to lifted coordinates.
-  /// We use the identity for this example.
-  Matrix inputMatrix(const G& /*X_hat*/) const { return I_3x3; }
-
-  Matrix inputMatrixBt(const G& X_hat) const { return inputMatrix(X_hat); }
-
- private:
-  Input omega_;
+  /// Input matrix B that maps process noise to manifold coordinates.
+  MatrixMU inputMatrixB(const G& /*Q_hat*/) const {
+    // TODO(Frank): suspect, should depend on eta? Or make sure it works for
+    // chosen reference direction.
+    return MatrixMU::Identity();
+  }
 };
 
 //---------------------------------------------------------------------------
-// OutputAction: group action on the measurement + Jacobians
+// OutputOrbit: group action on the measurement + Jacobians
 //
-// We consider a direction measurement y with a reference direction d.
-// For simplicity, we define:
-//   y_body(X) = X^{-1} * y
-// and the innovation as:
-//   innovation(X) = d^∧ * y_body(X)
-// same style as in ABC's OutputAction.
+// For simplicity, we follow Van Goor's S² example:
+//   measurement model: z = c_m * η (in R^3)
+// where η is the world-frame direction. The innovation is ẑ - z_measured.
 //---------------------------------------------------------------------------
 
 // Implements the right action ρ_y(Q) = Qᵀ y on S² (partially applied to
 // measurement y).
-struct OutputAction {
-  using G = attitude_example::G;
+struct OutputAction : public GroupAction<OutputAction, G, Vector3> {
+  static constexpr ActionType type = ActionType::Right;
+
+  /// Right action ρ_y(Q) = Qᵀ y
+  Vector3 operator()(const Vector3& y, const G& Q,
+                     OptionalJacobian<3, 3> H_y = {},
+                     OptionalJacobian<3, 3> H_Q = {}) const {
+    return Q.unrotate(y, H_Q, H_y);
+  }
+};
+
+struct OutputOrbit : public OutputAction::Orbit {
   using Output = Vector3;
+  static constexpr int dimZ = 3;
 
-  OutputAction(const Unit3& y, const Unit3& d) : y_(y), d_(d) {}
+  OutputOrbit(const Vector3& z_measured, double c_m)
+      : OutputAction::Orbit(z_measured), z_measured_(z_measured), c_m_(c_m) {}
 
-  Output operator()(const G& X) const {
-    // Transform measured direction into the "reference" frame by unrotating.
-    return X.unrotate(y_.unitVector());
-  }
+  /// Innovation: ẑ - z_measured, with ẑ = c_m * η̂.
+  Vector3 innovation(const Unit3& eta_hat,
+                     OptionalJacobian<3, 2> H = {}) const {
+    // Predicted measurement.
+    const Vector3 z_hat = c_m_ * eta_hat.point3();
+    const Vector3 nu = z_hat - z_measured_;
 
-  /// Jacobian of phi_y at the identity of G.
-  Matrix jacobianAtIdentity() const {
-    Matrix H = Matrix::Zero(3, 3);
-    H.block<3, 3>(0, 0) = Rot3::Hat(y_.unitVector());
-    return H;
-  }
-
-  /// Innovation: wedge(d) * transformed_y
-  Vector3 innovation(const G& Q_hat) const {
-    // Mahony-style innovation: use the right action evaluated at Q̂⁻¹.
-    const Vector3 transformed_y = this->operator()(Q_hat.inverse());
-    return Rot3::Hat(d_.unitVector()) * transformed_y;
-  }
-
-  /// Linearized measurement matrix C.
-  ///
-  /// For this simple example, we define:
-  ///   C = (d^∧) * (d^∧)
-  /// in lifted coordinates, independent of X.
-  Matrix measurementMatrixC() const {
-    const Matrix3 wedge_d = Rot3::Hat(d_.unitVector());
-    Matrix3 temp = wedge_d;  // 3x3
-    return wedge_d * temp;
+    if (H) {
+      // dy/dη in tangent coordinates: 3x2 mapping tangent -> R^3.
+      *H = c_m_ * eta_hat.basis();
+    }
+    return nu;
   }
 
   /// Measurement noise propagation matrix D_t.
-  ///
-  /// Here we propagate measurement noise through the current rotation X_hat.
-  Matrix outputMatrixDt(const G& X_hat) const { return X_hat.matrix(); }
+  Matrix3 outputMatrixD(const G& /*X_hat*/) const { return I_3x3; }
 
  private:
-  Unit3 y_;  // measured direction
-  Unit3 d_;  // reference direction
+  Vector3 z_measured_;  // measured output
+  double c_m_;          // measurement scale
 };
 
+//---------------------------------------------------------------------------
+// example values
+//---------------------------------------------------------------------------
+
+const G Q0;  // Rot3() == identity (observer state \hat{Q})
+
+const M eta_ref = Unit3(0, 0, 1);  // \bar{η}
+const typename Symmetry::Orbit phi_ref(
+    eta_ref);  // state action on reference direction
+const double c_m = 1.2;
+
+// Test dynamics on manifold: eta x omega
+Rot3 Q1 = Rot3::Ypr(0.1, 0.2, 0.3);   // non-identity rotation
+Unit3 eta1 = Q1.inverse() * eta_ref;  // eta1 = Q1 * eta_ref
+
+const Vector3 omega(0.1, -0.2, 0.3);
+Lift lift_omega(omega);
+
+const InputOrbit psi_u(omega);
 }  // namespace attitude_example
 
 //==============================================================================
-// Tests
+// Symmetry Tests
 //==============================================================================
+TEST(EquivariantFilter_Attitude, Symmetry) {
+  using namespace attitude_example;
 
+  // Check the state action
+  Unit3 expected_eta1 = phi_ref(Q1);
+  EXPECT(assert_equal(expected_eta1, eta1));
+
+  // Check jacobian at identity
+  Matrix Dphi0;
+  phi_ref(Q0, Dphi0);
+
+  // Expected Jacobian
+  Matrix expected_Dphi0;
+  Q0.unrotate(eta_ref, expected_Dphi0);
+
+  EXPECT(assert_equal(expected_Dphi0, Dphi0));
+}
+
+//==============================================================================
+// Test the induced group action
+TEST(EquivariantFilter_Attitude, InducedGroupAction) {
+  using namespace attitude_example;
+
+  // Purposefully a vector field which is not the dynamics
+  const auto f = [](const Unit3& eta) -> Vector2 {
+    auto p = eta.point3();
+    return Vector2(p.z() * p.x() * 3, p.y() * p.x());
+  };
+
+  using InducedField = Symmetry::InducedVectorField<decltype(f)>;
+  const InducedField fInduced(Q1, f);
+
+  // A bit of a self-fulfilling prophecy:
+  Matrix H;
+  Symmetry::Diffeomorphism{Q1}(Symmetry::Orbit{eta1}(Q1.inverse()), H);
+  const Vector2 expected = H * f(Symmetry::Orbit{eta1}(Q1.inverse()));
+  const Vector2 actual = fInduced(eta1);
+  EXPECT(assert_equal(expected, actual));
+}
+
+//==============================================================================
+TEST(EquivariantFilter_Attitude, DiffeomorphismPushForward) {
+  using namespace attitude_example;
+
+  const Vector2 tangent = (Vector2() << 0.1, -0.2).finished();
+  Matrix H;
+  Symmetry::Diffeomorphism phi_Q1(Q1);
+  phi_Q1(eta1, H);
+  const Vector2 expected = H * tangent;
+  const Vector2 actual = phi_Q1.pushforward(eta1, tangent);
+  EXPECT(assert_equal(expected, actual));
+}
+
+//==============================================================================
+// Dynamics Tests
+//==============================================================================
+// Manifold dynamics at reference direction (north pole)
+TEST(EquivariantFilter_Attitude, Dynamics0) {
+  using namespace attitude_example;
+
+  Vector3 omega_y(0, 0.1, 0);
+
+  // The tangent space basis for Unit3(0,0,1) is the Y and -X axis.
+  // std::cout << eta_ref.basis() << std::endl; // comment out to verify
+
+  // Manually calculate expected dynamics at eta_ref (Unit3(0,0,1))
+  // eta_ref.cross(omega_y) = (0,0,1) x (0, 0.1, 0) = (-0.1, 0, 0)
+  // The projection of (-0.1, 0, 0) onto tangent space will be (0, 0.1).
+  Vector2 expected_dynamics = Vector2(0, 0.1);
+
+  Vector2 actual_dynamics = dynamics(omega_y, eta_ref);
+  EXPECT(assert_equal(expected_dynamics, actual_dynamics));
+}
+
+//==============================================================================
+// Regression test and affine map construction
+TEST(EquivariantFilter_Attitude, Dynamics) {
+  using namespace attitude_example;
+
+  // Manually calculate expected dynamics: eta1.cross(omega)
+  Matrix23 B1t = eta1.basis().transpose();
+  Vector2 expected = B1t * eta1.cross(omega);
+  Vector2 actual = dynamics(omega, eta1);
+  EXPECT(assert_equal(expected, actual));
+
+  // Regression test
+  EXPECT(assert_equal(Vector2(0.143203, -0.279723), actual, 1e-5));
+
+  // Define vector fields f_i(eta) = eta.cross(e_i)
+  Vector2 f1 = B1t * eta1.cross(Point3(1, 0, 0));
+  Vector2 f2 = B1t * eta1.cross(Point3(0, 1, 0));
+  Vector2 f3 = B1t * eta1.cross(Point3(0, 0, 1));
+
+  // Dynamics as an affine map: omega_x * f1 + omega_y * f2 + omega_z * f3
+  Vector2 actual_affine_map = omega.x() * f1 + omega.y() * f2 + omega.z() * f3;
+  EXPECT(assert_equal(actual, actual_affine_map));
+}
+
+//==============================================================================
+TEST(EquivariantFilter_Attitude, InputEquivariance) {
+  using namespace attitude_example;
+
+  // Use knowledge that induced dynamics is eta .cross(Q.inverse() * omega)
+  const Vector2 expected =
+      eta1.basis().transpose() * eta1.cross(Q1.inverse() * omega);
+  const Vector2 equivariant =
+      dynamics(psi_u(Q1), eta1);  // dynamics given input transformed omega
+  EXPECT(assert_equal(expected, equivariant));
+
+  // f_u is dynamics given input omega
+  auto f_u = [&](const M& eta) -> Vector2 { return dynamics(omega, eta); };
+  using InducedField = Symmetry::InducedVectorField<decltype(f_u)>;
+  const InducedField fInduced(Q1, f_u);
+
+  const Vector2 induced = fInduced(eta1);
+  EXPECT(assert_equal(expected, induced));
+  // Equation (3.5) in Fornasier thesis
+  EXPECT(assert_equal(induced, equivariant));
+}
+
+//==============================================================================
+// Lift shadow property: Dφ_{η}(I) Λ(η, u) = ξ̇ on the manifold.
+TEST(EquivariantFilter_Attitude, LiftShadowManifoldDynamics) {
+  using namespace attitude_example;
+
+  Symmetry::Orbit phi_eta(eta1);
+  Matrix H;
+  phi_eta(G::Identity(), H);  // derivative w.r.t. group at identity
+
+  const Vector3 lifted = Lift(omega)(eta1);
+  const Vector2 shadow = H * lifted;
+
+  const Vector2 manifold = dynamics(omega, eta1);
+  EXPECT(assert_equal(shadow, manifold));
+}
+
+//==============================================================================
+TEST(EquivariantFilter_Attitude, LiftEquivariance) {
+  using namespace attitude_example;
+
+  // Λ should satisfy Ad_{Q^{-1}} Λ(η, u) = Λ(φ_Q(η), ψ_Q(u)).
+  Lift lift_omega(omega);
+  InputOrbit psi_u(omega);
+
+  const Rot3 g = Q1;
+  const Vector3 lifted = lift_omega(eta1);
+  const Vector3 lifted_ad = g.inverse().AdjointMap() * lifted;
+
+  const Vector3 psi_u_transformed = psi_u(g);
+  const Vector3 lifted_equivariant =
+      Lift(psi_u_transformed)(Symmetry::Orbit{eta1}(g));
+
+  EXPECT(assert_equal(lifted_ad, lifted_equivariant));
+}
+
+//==============================================================================
+// Prediction Tests
+//==============================================================================
 TEST(EquivariantFilter_Attitude, Predict) {
   using namespace attitude_example;
 
-  // Initial group and reference state: both identity.
-  const G Q0;       // Rot3() == identity (observer state \hat{Q})
-  const M eta_ref;  // default Unit3 (1,0,0) = \bar{η}
-  Matrix Sigma0 = 0.01 * I_3x3;
-
-  EquivariantFilter<M, StateAction> filter(Q0, eta_ref, Sigma0);
-
-  // Input: body angular velocity
-  Lift::Input omega;
-  omega << 0.1, -0.2, 0.3;
-  const double dt = 0.01;
-
-  // Process noise in input space, then lifted
-  Matrix Sigma_u = 0.1 * I_3x3;
-  Matrix Q = InputAction::processNoise(Sigma_u);
+  // Initial group and reference state: both identity.x
+  Matrix2 Sigma0 = 0.01 * I_2x2;
+  EquivariantFilter<M, Symmetry> filter(eta_ref, Sigma0);
 
   // --- Perform prediction through EqF ---
-  Lift lift_u(omega);
-  InputAction psi_u(omega);
-  filter.predict(lift_u, psi_u, Q, dt);
+  InputOrbit psi_u(omega);
+  Matrix3 Sigma_u = 0.1 * I_3x3;
+  Matrix3 Q = InputOrbit::processNoise(Sigma_u);
+  const double dt = 0.01;
+  filter.predict(lift_omega, psi_u, Q, dt);
 
   // --- Expected result ---
-  const G X_expected = Rot3::Expmap(omega * dt) * Q0;
+  // X_new = X_old * Exp(omega * dt) (Right action predict or left?)
+  // Filter impl: X_ = Compose(X_, Exp(Lambda*dt)) -> X_new = X_old * Exp.
+  const G X_expected = Q0 * Rot3::Expmap(omega * dt);
+  EXPECT(assert_equal(X_expected, filter.groupEstimate()));
 
-  Matrix Phi = I_3x3;
-  Matrix Bt = psi_u.inputMatrixBt(Q0);
-  Matrix Q_process = Bt * Q * Bt.transpose() * dt;
-  Matrix P_expected = Phi * Sigma0 * Phi.transpose() + Q_process;
+  // --- Expected covariance update ---
+  Matrix2 Phi = I_2x2;
 
-  EXPECT(assert_equal(X_expected, filter.groupEstimate(), 1e-9));
-  EXPECT(assert_equal(P_expected, filter.covariance(), 1e-9));
+  // inputMatrixB maps input noise directly to manifold tangent (DimM x DimU).
+  Matrix23 B = psi_u.inputMatrixB(Q0);
+
+  Matrix2 Q_process = B * Q * B.transpose() * dt;
+  Matrix2 P_expected = Phi * Sigma0 * Phi.transpose() + Q_process;
+  EXPECT(assert_equal(P_expected, filter.covariance()));
 
   // stateEstimate() should be the rotated reference direction on S^2
   const Unit3 state_expected(X_expected.unrotate(eta_ref.point3()));
-  EXPECT(assert_equal(state_expected, filter.stateEstimate(), 1e-9));
+  EXPECT(assert_equal(state_expected, filter.stateEstimate()));
 }
 
+//==============================================================================
 TEST(EquivariantFilter_Attitude, Update) {
   using namespace attitude_example;
 
-  // Initial group and reference state: both identity.
-  const G Q0;
-  const M eta_ref;
-  Matrix Sigma0 = 0.01 * I_3x3;
+  // 1. Setup Filter
+  Matrix2 Sigma0 = 0.01 * I_2x2;
+  EquivariantFilter<M, Symmetry> filter(eta_ref, Sigma0);
 
-  EquivariantFilter<M, StateAction> filter(Q0, eta_ref, Sigma0);
-
-  // Do a small prediction first to get a non-trivial covariance.
-  Lift::Input omega;
-  omega << 0.1, -0.2, 0.3;
+  // 2. Predict to move away from identity
   const double dt = 0.01;
-  Matrix Sigma_u = 0.1 * I_3x3;
-  Matrix Q = InputAction::processNoise(Sigma_u);
-  Lift lift_u(omega);
-  InputAction psi_u(omega);
-  filter.predict(lift_u, psi_u, Q, dt);
+  Matrix3 Sigma_u = 0.1 * I_3x3;
+  Matrix3 Q = InputOrbit::processNoise(Sigma_u);
+  filter.predict(lift_omega, psi_u, Q, dt);
 
   const G Q_before = filter.groupEstimate();
-  const Matrix P_before = filter.covariance();
+  const Matrix2 P_before = filter.covariance();
 
-  // Measurement: y is a known direction, d is the reference direction.
-  const Unit3 d(0, 0, 1);  // reference direction (z-axis)
-  const Unit3 y(0, 0, 1);  // measured aligned with d
-  const Matrix R_meas = 0.01 * I_3x3;
+  // 3. Setup Measurement
+  const Vector3 y = c_m * eta_ref.point3();
+  const Matrix3 R_meas = 0.01 * I_3x3;
+  OutputOrbit phi_y(y, c_m);
 
-  OutputAction phi_y(y, d);
-
-  // --- Perform update through EqF ---
-  filter.update<OutputAction>(phi_y, R_meas);
+  // 4. Run Filter Update
+  filter.update<OutputOrbit>(phi_y, R_meas);
 
   const G Q_after = filter.groupEstimate();
-  const Matrix P_after = filter.covariance();
+  const Matrix2 P_after = filter.covariance();
 
-  // --- Manual update (should match EqF) ---
+  // 5. Run Manual Update (Mirroring EquivariantFilter implementation)
 
-  // Innovation lift matrix (inverse of Dphi0)
-  StateAction act_ref(eta_ref);
-  Matrix Dphi0 = act_ref.jacobianAtIdentity();
-  Matrix InnovationLift =
+  // Re-calculate InnovationLift (PseudoInverse of Dphi at identity)
+  Matrix23 Dphi0;
+  phi_ref(G::Identity(), Dphi0);
+  Matrix32 InnovationLift =
       Dphi0.completeOrthogonalDecomposition().pseudoInverse();
 
-  // Measurement matrices
-  Matrix Ct = phi_y.measurementMatrixC();
-  Matrix Dt = phi_y.outputMatrixDt(Q_before);
+  // Re-calculate Measurement Matrix C using helper method
+  const M eta_hat = phi_ref(Q_before);
+  Matrix C = filter.computeMeasurementMatrix(phi_y, eta_hat);
 
-  Matrix S = Ct * P_before * Ct.transpose() + Dt * R_meas * Dt.transpose();
-  Matrix K = P_before * Ct.transpose() * S.inverse();
+  // Calculate Gain K
+  Matrix S = C * P_before * C.transpose() + R_meas;
+  Matrix K = P_before * C.transpose() * S.inverse();
 
-  // Innovation evaluated via ρ_{Q_before⁻¹}(y) inside innovation()
-  Vector3 innovation = phi_y.innovation(Q_before);
-  Vector3 delta_xi = InnovationLift * (K * innovation);
+  // Calculate Innovation
+  Vector3 innovation = phi_y.innovation(eta_hat);
 
-  const G X_expected = Rot3::Expmap(delta_xi) * Q_before;
+  // Calculate Correction
+  Vector2 delta_xi = K * innovation;
+  Vector3 delta_x = InnovationLift * delta_xi;
 
-  Matrix I = Matrix::Identity(P_before.rows(), P_before.cols());
-  Matrix P_expected = (I - K * Ct) * P_before;
+  // Update State: X_new = Exp(delta_x) * X_old (Left Update)
+  const G X_expected = Rot3::Expmap(delta_x) * Q_before;
 
-  EXPECT(assert_equal(X_expected, Q_after, 1e-8));
-  EXPECT(assert_equal(P_expected, P_after, 1e-8));
+  // Update Covariance: Joseph Form
+  Matrix2 I_KC = Matrix2::Identity() - K * C;
+  Matrix2 P_expected =
+      I_KC * P_before * I_KC.transpose() + K * R_meas * K.transpose();
 
-  // Again, stateEstimate() should be the rotated reference direction on S^2.
+  // 6. Assertions
+  EXPECT(assert_equal(P_expected, P_after, 1e-9));
+  EXPECT(assert_equal(X_expected, Q_after, 1e-9));
+
   const Unit3 state_expected(Q_after.unrotate(eta_ref.point3()));
-  EXPECT(assert_equal(state_expected, filter.stateEstimate(), 1e-8));
+  EXPECT(assert_equal(state_expected, filter.stateEstimate(), 1e-9));
+}
+
+//==============================================================================
+TEST(EquivariantFilter_Attitude, CheckMatrices) {
+  using namespace attitude_example;
+
+  // Initial group and reference state: both identity.
+  const G Q0 = Rot3::Ypr(0.1, 0.2, 0.3);
+  const M eta_ref(1, 2, 3);
+  Matrix2 Sigma0 = 0.01 * I_2x2;
+
+  EquivariantFilter<M, Symmetry> filter(eta_ref, Sigma0);
+
+  // Check A matrix
+  InputOrbit psi_u(omega);
+  Matrix2 A_computed =
+      filter.computeErrorDynamicsMatrix<Lift, InputOrbit>(psi_u);
+  Matrix2 A_provided = psi_u.stateMatrixA(Q0);
+  EXPECT(assert_equal(A_provided, A_computed));
+
+  // Check C matrix
+  const Vector3 d(0, 0, 1);  // reference direction (z-axis)
+  const Vector3 y =
+      normalize(Point3(0, 1, 10));  // measured almost aligned with d
+  OutputOrbit phi_y(y, c_m);
+
+  // Use the helper method for the check
+  Matrix C_computed = filter.computeMeasurementMatrix(phi_y, phi_ref(Q0));
+  // Note: Since OutputOrbit doesn't have measurementMatrixC() in this test,
+  // we check self-consistency or if we had a provided C.
+  // Here we just verify it runs.
+  EXPECT(C_computed.rows() == 3 && C_computed.cols() == 2);
 }
 
 //==============================================================================

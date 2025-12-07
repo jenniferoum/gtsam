@@ -14,6 +14,7 @@
  * @date 2025
  */
 #include <gtsam/navigation/EquivariantFilter.h>
+#include <gtsam/slam/dataset.h>
 #include <gtsam_unstable/geometry/ABC.h>
 
 // Use namespace for convenience
@@ -21,11 +22,11 @@ using namespace gtsam;
 constexpr size_t n = 1;  // Number of calibration states
 using M = abc::State<n>;
 using G = abc::Group<n>;
-using StateAction = abc::StateAction<n>;
-using EqFilter = gtsam::EquivariantFilter<M, StateAction>;
+using Symmetry = abc::Symmetry<n>;
+using EqFilter = gtsam::EquivariantFilter<M, Symmetry>;
 using Lift = abc::Lift<n>;
-using InputAction = abc::InputAction<n>;
-using OutputAction = abc::OutputAction<n>;
+using InputOrbit = abc::InputOrbit<n>;
+using OutputOrbit = abc::OutputOrbit<n>;
 
 /// Measurement struct
 struct Measurement {
@@ -266,13 +267,17 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
 
   for (size_t i = 0; i < data_list.size(); i++) {
     const Data& data = data_list[i];
-    Matrix Q = InputAction::processNoise(data.inputCovariance);
+    Matrix Q = InputOrbit::processNoise(data.inputCovariance);
     // Propagate filter with current input and time step
     Vector6 u = abc::toInputVector(data.omega);
     Lift lift_u(u);
-    InputAction psi_u(u);
-    // Use 3rd order transition matrix for better accuracy
-    filter.predict<3>(lift_u, psi_u, Q, data.dt);
+    InputOrbit psi_u(u);
+
+    // Use Explicit Matrices API
+    G X_hat = filter.groupEstimate();
+    Matrix A = psi_u.stateMatrixA(X_hat);
+    Matrix B = psi_u.inputMatrixB(X_hat);
+    filter.predict(lift_u, Q, data.dt, A, B);
 
     // Process all measurements
     for (const auto& measurement : data.measurements) {
@@ -288,8 +293,12 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
       }
 
       try {
-        OutputAction phi_y(measurement.y, measurement.d, measurement.cal_idx);
-        filter.update(phi_y, measurement.R);
+        OutputOrbit phi_y(measurement.y, measurement.d, measurement.cal_idx);
+
+        // Use Explicit Matrices API
+        Matrix C = phi_y.measurementMatrixC();
+        filter.update(phi_y, measurement.R, C);
+
         validMeasurements++;
       } catch (const std::exception& e) {
         std::cerr << "Error updating at t=" << data.t << ": " << e.what()
@@ -444,11 +453,10 @@ int main(int argc, char* argv[]) {
     initialSigma.diagonal().tail<3>() =
         Vector3::Constant(0.1);  // Calibration uncertainty
 
-    G initialGroup = gtsam::traits<G>::Identity();
     M initialState = M::identity();
 
     // Create filter
-    EqFilter filter(initialGroup, initialState, initialSigma);
+    EqFilter filter(initialState, initialSigma);
 
     // Process data
     processDataWithEqF(filter, data);
