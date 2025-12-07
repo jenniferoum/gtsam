@@ -46,6 +46,12 @@ namespace gtsam {
  * Use the InvariantEKF class for prediction via group composition.
  * For details on how static and dynamic dimensions are handled, please refer to
  * the `ManifoldEKF` class documentation.
+ *
+ * Noise convention:
+ * - Overloads **without** `dt` (e.g., `predict(X_next, F, Q)` inherited from
+ *   ManifoldEKF) expect `Q` to be a *discrete* covariance already scaled for
+ *   the step being applied.
+ * - Overloads **with** `dt` interpret `Q` as a *continuous-time* covariance.
  */
 template <typename G>
 class LieGroupEKF : public ManifoldEKF<G> {
@@ -201,7 +207,7 @@ class LieGroupEKF : public ManifoldEKF<G> {
    * OptionalJacobian<Dim,Dim>&)
    * @param f Dynamics functor.
    * @param dt Time step.
-   * @param Q Process noise covariance.
+   * @param Q Continuous-time process noise covariance (will be scaled by dt).
    */
   template <size_t K = 1, typename Dynamics,
             typename = enable_if_dynamics<Dynamics>>
@@ -211,7 +217,8 @@ class LieGroupEKF : public ManifoldEKF<G> {
       Phi.resize(this->n_, this->n_);
     }
     G X_next = predictMean<K>(std::forward<Dynamics>(f), dt, Phi);
-    predict(X_next, Phi, Q);
+    predict(X_next, Phi,
+            Q * dt);  // Q interpreted as continuous-time; discretize with dt
   }
 
   /**
@@ -251,7 +258,7 @@ class LieGroupEKF : public ManifoldEKF<G> {
    * @param f Dynamics functor.
    * @param u Control input.
    * @param dt Time step.
-   * @param Q Process noise covariance.
+   * @param Q Continuous-time process noise covariance (will be scaled by dt).
    */
   template <size_t K = 1, typename Control, typename Dynamics,
             typename = enable_if_full_dynamics<Control, Dynamics>>

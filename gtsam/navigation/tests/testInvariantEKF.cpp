@@ -138,7 +138,8 @@ TEST(InvariantEKF_DynamicMatrix, PredictAndUpdate) {
   Matrix p0Covariance = I_4x4 * 0.01;
   Vector velocityTangent = (Vector(4) << 0.5, 0.1, -0.1, -0.5).finished();
   double dt = 0.1;
-  Matrix Q = I_4x4 * 0.001;
+  // Continuous-time;
+  Matrix Qc = I_4x4 * 0.01;
   Matrix R = Matrix::Identity(1, 1) * 0.005;
 
   InvariantEKF<Matrix> ekf(p0Matrix, p0Covariance);
@@ -146,11 +147,11 @@ TEST(InvariantEKF_DynamicMatrix, PredictAndUpdate) {
   EXPECT_LONGS_EQUAL(4, ekf.dimension());
 
   // --- Predict ---
-  ekf.predict(velocityTangent, dt, Q);
+  ekf.predict(velocityTangent, dt, Qc);
 
   // Verification for Predict
   Matrix pPredictedExpected = invariant_ekf_example::f(p0Matrix, velocityTangent, dt);
-  Matrix pCovariancePredictedExpected = p0Covariance + Q;
+  Matrix pCovariancePredictedExpected = p0Covariance + Qc * dt; // Q is continuous-time here
   EXPECT(assert_equal(pPredictedExpected, ekf.state(), 1e-9));
   EXPECT(assert_equal(pCovariancePredictedExpected, ekf.covariance(), 1e-9));
 

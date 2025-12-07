@@ -176,7 +176,8 @@ TEST(LieGroupEKF_DynamicMatrix, PredictAndUpdate) {
   Matrix p0Matrix = (Matrix(2, 2) << 1.0, 2.0, 3.0, 4.0).finished();
   Matrix p0Covariance = I_4x4 * 0.01;
   double dt = 0.1;
-  Matrix process_noise_Q = I_4x4 * 0.001;
+  // Continuous-time;
+  Matrix process_noise_Qc = I_4x4 * 0.01;
   Matrix measurement_noise_R = Matrix::Identity(1, 1) * 0.005;
 
   LieGroupEKF<Matrix> ekf(p0Matrix, p0Covariance);
@@ -185,16 +186,16 @@ TEST(LieGroupEKF_DynamicMatrix, PredictAndUpdate) {
 
   // --- Predict ---
   // ekf.predict takes f(X, H_X), dt, process_noise_Q
-  ekf.predict(exampleLieGroupDynamicMatrix::f, dt, process_noise_Q);
+  ekf.predict(exampleLieGroupDynamicMatrix::f, dt, process_noise_Qc);
 
   // Verification for Predict
   // For f, Df_DXk = 0 (Jacobian of xi w.r.t X_local is Zero).
   // State transition Jacobian A = Ad_Uinv + Dexp * Df_DXk * dt.
   // For Matrix (VectorSpace): Ad_Uinv = I, Dexp = I.
   // So, A = I + I * 0 * dt = I.
-  // Covariance update: P_next = A * P_current * A.transpose() + Q = I * P_current * I + Q = P_current + Q.
+  // Covariance update: P_next = A * P_current * A.transpose() + Q*dt = I * P_current * I + Q*dt = P_current + Q*dt.
   Matrix pPredictedExpected = traits<Matrix>::Retract(p0Matrix, exampleLieGroupDynamicMatrix::kFixedVelocityTangent * dt);
-  Matrix pCovariancePredictedExpected = p0Covariance + process_noise_Q;
+  Matrix pCovariancePredictedExpected = p0Covariance + process_noise_Qc * dt;
 
   EXPECT(assert_equal(pPredictedExpected, ekf.state(), 1e-9));
   EXPECT(assert_equal(pCovariancePredictedExpected, ekf.covariance(), 1e-9));
