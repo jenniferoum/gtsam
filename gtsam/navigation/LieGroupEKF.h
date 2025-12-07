@@ -63,7 +63,6 @@ class LieGroupEKF : public ManifoldEKF<G> {
   using Jacobian = typename Base::Jacobian;            ///< Dim x Dim
   using Covariance = typename Base::Covariance;        ///< Dim x Dim
   using TangentVector = typename Base::TangentVector;  ///< Tangent vector type.
-  using OptionalJacobian = OptionalJacobian<Dim, Dim>;  ///< Optional Jacobian.
 
  private:
   /**
@@ -74,15 +73,16 @@ class LieGroupEKF : public ManifoldEKF<G> {
   using enable_if_dynamics =
       std::enable_if_t<!std::is_convertible_v<Dynamics, TangentVector> &&
                        std::is_invocable_r_v<TangentVector, Dynamics, const G&,
-                                             OptionalJacobian&>>;
+                                             OptionalJacobian<Dim, Dim>&>>;
 
   /**
    * SFINAE check for state- and control-dependent dynamics function.
    * TangentVector f(const G& X, const Control& u, OptionalJacobian Df)
    */
   template <typename Control, typename Dynamics>
-  using enable_if_full_dynamics = std::enable_if_t<std::is_invocable_r_v<
-      TangentVector, Dynamics, const G&, const Control&, OptionalJacobian&>>;
+  using enable_if_full_dynamics = std::enable_if_t<
+      std::is_invocable_r_v<TangentVector, Dynamics, const G&, const Control&,
+                            OptionalJacobian<Dim, Dim>&>>;
 
   template <typename T, typename = void>
   struct has_adjoint_map : std::false_type {};
@@ -181,7 +181,8 @@ class LieGroupEKF : public ManifoldEKF<G> {
    */
   template <size_t K = 1, typename Dynamics,
             typename = enable_if_dynamics<Dynamics>>
-  G predictMean(Dynamics&& f, double dt, OptionalJacobian Phi = {}) const {
+  G predictMean(Dynamics&& f, double dt,
+                OptionalJacobian<Dim, Dim> Phi = {}) const {
     Jacobian Df, Dexp;
 
     if constexpr (std::is_same_v<G, Matrix>) {
@@ -240,9 +241,10 @@ class LieGroupEKF : public ManifoldEKF<G> {
   template <size_t K = 1, typename Control, typename Dynamics,
             typename = enable_if_full_dynamics<Control, Dynamics>>
   G predictMean(Dynamics&& f, const Control& u, double dt,
-                OptionalJacobian Phi = {}) const {
+                OptionalJacobian<Dim, Dim> Phi = {}) const {
     return predictMean<K>(
-        [&](const G& X, OptionalJacobian Df) { return f(X, u, Df); }, dt, Phi);
+        [&](const G& X, OptionalJacobian<Dim, Dim> Df) { return f(X, u, Df); },
+        dt, Phi);
   }
 
   /**
@@ -264,7 +266,8 @@ class LieGroupEKF : public ManifoldEKF<G> {
             typename = enable_if_full_dynamics<Control, Dynamics>>
   void predict(Dynamics&& f, const Control& u, double dt, const Covariance& Q) {
     return predict<K>(
-        [&](const G& X, OptionalJacobian Df) { return f(X, u, Df); }, dt, Q);
+        [&](const G& X, OptionalJacobian<Dim, Dim> Df) { return f(X, u, Df); },
+        dt, Q);
   }
 
   /**
