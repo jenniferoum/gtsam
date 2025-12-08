@@ -687,9 +687,69 @@ TEST(ABC, ComputeMeasurementMatrix) {
 }
 
 /* ************************************************************************* */
+// Regression expectations for EqFilter predict/update.
+namespace abc_eqf_regression {
+const Group expected_predict({Rot3(1, 0.00015, -0.0004,  //
+                                   -0.00015, 1, 3e-08,   //
+                                   0.0004, 3e-08, 1),
+                              Point3(9.00091e-06, 1.49932e-06, -3.9982e-06)},
+                             {Rot3(1, 0.000149811, -0.000400001,   //
+                                   -0.000149814, 1, -7.46691e-06,  //
+                                   0.000399999, 7.52684e-06, 1),
+                              Rot3(1, 0.000150005, -0.000399278,  //
+                                   -0.000149995, 1, 2.40155e-05,  //
+                                   0.000399282, -2.39557e-05, 1)});
+
+const Matrix expected_P_after_predict =
+    (Matrix(12, 12) << 0.110001, -0, 0, -0.0001, 0, -0, 0, 0, 0, 0, 0, 0,  //
+     -0, 0.110001, -0, 0, -0.0001, -0, 0, 0, 0, 0, 0, 0,                   //
+     0, -0, 0.110001, 0, 0, -0.0001, 0, 0, 0, 0, 0, 0,                     //
+     -0.0001, 0, 0, 0.02, 0, -0, 0, 0, 0, 0, 0, 0,                         //
+     -0, -0.0001, 0, 0, 0.02, 0, 0, 0, 0, 0, 0, 0,                         //
+     -0, -0, -0.0001, -0, 0, 0.02, 0, 0, 0, 0, 0, 0,                       //
+     0, 0, 0, 0, 0, 0, 1, 0, -0, 0, 0, 0,                                  //
+     0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,                                   //
+     0, 0, 0, 0, 0, 0, -0, 0, 1, 0, 0, 0,                                  //
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0, -0,                                //
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0,                                 //
+     0, 0, 0, 0, 0, 0, 0, 0, 0, -0, 0, 0.1)
+        .finished();
+
+const Group expected_after_update({Rot3(0.995195, -0.097908, -0.000400003,  //
+                                        0.097908, 0.995195, 2.98008e-08,    //
+                                        0.000398078, -3.91931e-05, 1),
+                                   Point3(0.00201816, -0.000882995,
+                                          8.60911e-05)},
+                                  {Rot3(0.548024, -0.836459, -0.00263326,  //
+                                        0.83646, 0.548012, 0.00413976,     //
+                                        -0.00201968, -0.0044713, 0.999988),
+                                   Rot3(0.995195, -0.097908, -0.000399281,  //
+                                        0.097908, 0.995195, 2.40155e-05,    //
+                                        0.000395012, -6.2993e-05, 1)});
+
+const Matrix expected_P_after_update =
+    (Matrix(12, 12) <<  //
+         0.0991972,
+     -0, 0, -9.01785e-05, 0, -0, -0.0982151, 0, 0, 0, 0, 0,       //
+     -0, 0.110001, -0, 0, -0.0001, -0, 0, 0, 0, 0, 0, 0,          //
+     0, -0, 0.0991972, 0, 0, -0.0001, 0, 0, -0.0982151, 0, 0, 0,  //
+     -0.0001, 0, 0, 0.02, 0, -0, 0, 0, 0, 0, 0, 0,                //
+     -0, -0.0001, 0, 0, 0.02, 0, 0, 0, 0, 0, 0, 0,                //
+     -0, -0, -0.0001, -0, 0, 0.02, 0, 0, 0, 0, 0, 0,              //
+     -0.0982151, 0, 0, 0, 0, 0, 0.107144, 0, -0, 0, 0, 0,         //
+     0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,                          //
+     0, 0, -0.0982151, 0, 0, 0, -0, 0, 0.107144, 0, 0, 0,         //
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0, -0,                       //
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0,                        //
+     0, 0, 0, 0, 0, 0, 0, 0, 0, -0, 0, 0.1)
+        .finished();
+}  // namespace abc_eqf_regression
+
+/* ************************************************************************* */
 // Equivariant filter regression for predict/update.
 TEST(ABC, EqFilter) {
   using namespace abc_examples;
+  using namespace abc_eqf_regression;
 
   using G = Group;
   const State xi_ref = xi1;  // Reference state (xi circle)
@@ -720,33 +780,7 @@ TEST(ABC, EqFilter) {
   filter.predict(lift_u, psi_u, Qc, dt);
 
   // Regression
-  Group expected({Rot3(1, 0.00015, -0.0004,  //
-                       -0.00015, 1, 3e-08,   //
-                       0.0004, 3e-08, 1),
-                  Point3(9.00091e-06, 1.49932e-06, -3.9982e-06)},
-                 {Rot3(1, 0.000149811, -0.000400001,   //
-                       -0.000149814, 1, -7.46691e-06,  //
-                       0.000399999, 7.52684e-06, 1),
-                  Rot3(1, 0.000150005, -0.000399278,  //
-                       -0.000149995, 1, 2.40155e-05,  //
-                       0.000399282, -2.39557e-05, 1)});
-  // filter.groupEstimate().print("Actual Group Predict: ");
-  EXPECT(assert_equal(expected, filter.groupEstimate(), 1e-4));
-
-  Matrix expected_P_after_predict =
-      (Matrix(12, 12) << 0.110001, -0, 0, -0.0001, 0, -0, 0, 0, 0, 0, 0, 0,  //
-       -0, 0.110001, -0, 0, -0.0001, -0, 0, 0, 0, 0, 0, 0,                   //
-       0, -0, 0.110001, 0, 0, -0.0001, 0, 0, 0, 0, 0, 0,                     //
-       -0.0001, 0, 0, 0.02, 0, -0, 0, 0, 0, 0, 0, 0,                         //
-       -0, -0.0001, 0, 0, 0.02, 0, 0, 0, 0, 0, 0, 0,                         //
-       -0, -0, -0.0001, -0, 0, 0.02, 0, 0, 0, 0, 0, 0,                       //
-       0, 0, 0, 0, 0, 0, 1, 0, -0, 0, 0, 0,                                  //
-       0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,                                   //
-       0, 0, 0, 0, 0, 0, -0, 0, 1, 0, 0, 0,                                  //
-       0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0, -0,                                //
-       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0,                                 //
-       0, 0, 0, 0, 0, 0, 0, 0, 0, -0, 0, 0.1)
-          .finished();
+  EXPECT(assert_equal(expected_predict, filter.groupEstimate(), 1e-4));
   EXPECT(assert_equal(expected_P_after_predict, filter.covariance(), 1e-4));
 
   // Perform an update step
@@ -756,33 +790,54 @@ TEST(ABC, EqFilter) {
   filter.update(innovation, R);
 
   // Regression
-  Group expected_after_update({Rot3(0.995195, -0.097908, -0.000400003,  //
-                                    0.097908, 0.995195, 2.98008e-08,    //
-                                    0.000398078, -3.91931e-05, 1),
-                               Point3(0.00201816, -0.000882995, 8.60911e-05)},
-                              {Rot3(0.548024, -0.836459, -0.00263326,  //
-                                    0.83646, 0.548012, 0.00413976,     //
-                                    -0.00201968, -0.0044713, 0.999988),
-                               Rot3(0.995195, -0.097908, -0.000399281,  //
-                                    0.097908, 0.995195, 2.40155e-05,    //
-                                    0.000395012, -6.2993e-05, 1)});
   EXPECT(assert_equal(expected_after_update, filter.groupEstimate(), 1e-4));
-  Matrix expected_P_after_update =
-      (Matrix(12, 12) <<  //
-           0.0991972,
-       -0, 0, -9.01785e-05, 0, -0, -0.0982151, 0, 0, 0, 0, 0,       //
-       -0, 0.110001, -0, 0, -0.0001, -0, 0, 0, 0, 0, 0, 0,          //
-       0, -0, 0.0991972, 0, 0, -0.0001, 0, 0, -0.0982151, 0, 0, 0,  //
-       -0.0001, 0, 0, 0.02, 0, -0, 0, 0, 0, 0, 0, 0,                //
-       -0, -0.0001, 0, 0, 0.02, 0, 0, 0, 0, 0, 0, 0,                //
-       -0, -0, -0.0001, -0, 0, 0.02, 0, 0, 0, 0, 0, 0,              //
-       -0.0982151, 0, 0, 0, 0, 0, 0.107144, 0, -0, 0, 0, 0,         //
-       0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,                          //
-       0, 0, -0.0982151, 0, 0, 0, -0, 0, 0.107144, 0, 0, 0,         //
-       0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0, -0,                       //
-       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0,                        //
-       0, 0, 0, 0, 0, 0, 0, 0, 0, -0, 0, 0.1)
-          .finished();
+  EXPECT(assert_equal(expected_P_after_update, filter.covariance(), 1e-4));
+}
+
+/* ************************************************************************* */
+// Same regression, but using bespoke A/B helpers instead of automatic A.
+TEST(ABC, EqFilter_BespokeDynamics) {
+  using namespace abc_examples;
+  using namespace abc_eqf_regression;
+
+  using G = Group;
+  const State xi_ref = xi1;  // Reference state (xi circle)
+
+  Matrix initialSigma = Matrix::Identity(G::dimension, G::dimension);
+  initialSigma.diagonal().head<3>() =
+      Vector3::Constant(0.1);  // Attitude uncertainty
+  initialSigma.diagonal().segment<3>(3) =
+      Vector3::Constant(0.01);  // Bias uncertainty
+  initialSigma.diagonal().tail<3>() =
+      Vector3::Constant(0.1);  // Calibration uncertainty
+
+  const G g_0;
+  EquivariantFilter<State, Symmetry> filter(xi_ref, initialSigma);
+
+  EXPECT(assert_equal(g_0, filter.groupEstimate()));
+
+  // Explicit predict with provided A, B, Qc
+  Matrix Sigma = I_6x6;
+  double dt = 0.01;
+  Matrix Q = abc::inputProcessNoise<2>(Sigma);
+  Matrix B = abc::inputMatrixB(g_0);
+  Matrix Qc = B * Q * B.transpose();
+  Lift lift_u(u2);
+  InputOrbit psi_u(u2);
+
+  Matrix A = abc::stateMatrixA(psi_u, g_0);
+  filter.predictWithJacobian<2>(lift_u, A, Qc, dt);
+
+  EXPECT(assert_equal(expected_predict, filter.groupEstimate(), 1e-4));
+  EXPECT(assert_equal(expected_P_after_predict, filter.covariance(), 1e-4));
+
+  // Update
+  const int cal_idx = 0;
+  const Matrix3 R = 0.01 * I_3x3;
+  Innovation innovation(y, d, cal_idx, xi_ref);
+  filter.update(innovation, R);
+
+  EXPECT(assert_equal(expected_after_update, filter.groupEstimate(), 1e-4));
   EXPECT(assert_equal(expected_P_after_update, filter.covariance(), 1e-4));
 }
 
