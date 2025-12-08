@@ -52,10 +52,6 @@
 namespace gtsam {
 namespace abc {
 
-// Forward declare helper to compute measurement matrix C for direction output.
-template <size_t N>
-Matrix measurementMatrixC(const Unit3& d, int index);
-
 /// Convert angular velocity vector to mathematical input (ω, 0)
 inline Vector6 toInputVector(const Vector3& w) {
   return (Vector6() << w, Z_3x1).finished();
@@ -259,7 +255,7 @@ struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
 template <size_t N>
 struct Symmetry : public GroupAction<Symmetry<N>, Group<N>, State<N>> {
   using M = State<N>;
-  using Group = gtsam::abc::Group<N>;
+  using G = gtsam::abc::Group<N>;
   static constexpr ActionType type = ActionType::Right;
 
   /**
@@ -267,9 +263,9 @@ struct Symmetry : public GroupAction<Symmetry<N>, Group<N>, State<N>> {
    * @param g An element of the symmetry group G.
    * @return Transformed state
    */
-  M operator()(const M& xi, const Group& g,
+  M operator()(const M& xi, const G& g,
                OptionalJacobian<M::dimension, M::dimension> Hm = {},
-               OptionalJacobian<M::dimension, Group::dimension> Hg = {}) const {
+               OptionalJacobian<M::dimension, G::dimension> Hg = {}) const {
     const Rot3 new_R = xi.R * g.A();
     Matrix3 skew_p, At;  // derivatives of unrotate
     const Point3 p = xi.b - g.a();
@@ -359,9 +355,8 @@ template <size_t N>
 struct Lift {
   using M = State<N>;
   using G = Group<N>;
-  using Input = Vector6;
 
-  explicit Lift(const Input& u) : u_(u) {}
+  explicit Lift(const Vector6& u) : u_(u) {}
 
   typename G::TangentVector operator()(
       const M& xi, OptionalJacobian<G::dimension, M::dimension> H = {}) const {
@@ -392,7 +387,7 @@ struct Lift {
   }
 
  private:
-  Input u_;
+  Vector6 u_;
 };
 
 /**
@@ -405,14 +400,14 @@ struct Lift {
 template <size_t N>
 struct InputAction : public GroupAction<InputAction<N>, Group<N>, Vector6> {
   using G = Group<N>;
-  using Input = Vector6;
   static constexpr ActionType type = ActionType::Right;
 
-  Input operator()(const Input& u, const G& X, OptionalJacobian<6, 6> H_u = {},
-                   OptionalJacobian<6, G::dimension> H_X = {}) const {
+  Vector6 operator()(const Vector6& u, const G& X,
+                     OptionalJacobian<6, 6> H_u = {},
+                     OptionalJacobian<6, G::dimension> H_X = {}) const {
     const Rot3 A = X.A();
     const Vector3 a = X.a();
-    Input result;
+    Vector6 result;
     result.head<3>() = A.unrotate(u.head<3>() - a);
     result.tail<3>() = Z_3x1;
     return result;
@@ -445,8 +440,7 @@ inline Matrix stateMatrixA(const typename InputAction<N>::Orbit& psi_u,
 
 /// Compute the input matrix B(X_hat).
 template <size_t N>
-inline Eigen::Matrix<double, State<N>::dimension, 6 + 3 * N> inputMatrixB(
-    const Group<N>& X_hat) {
+inline Matrix inputMatrixB(const Group<N>& X_hat) {
   const Matrix3 A_matrix = X_hat.A().matrix();
   Matrix B1 = gtsam::diag({A_matrix, A_matrix});
   Matrix B2(3 * N, 3 * N);
@@ -454,12 +448,7 @@ inline Eigen::Matrix<double, State<N>::dimension, 6 + 3 * N> inputMatrixB(
   for (size_t i = 0; i < N; ++i) {
     B2.block<3, 3>(3 * i, 3 * i) = X_hat.calibrations()[i].matrix();
   }
-  constexpr int DimM = State<N>::dimension;
-  constexpr int DimU = 6 + 3 * N;
-  using MatrixMU = Eigen::Matrix<double, DimM, DimU>;
-  MatrixMU result = MatrixMU::Zero();
-  result = gtsam::diag({B1, B2});
-  return result;
+  return gtsam::diag({B1, B2});
 }
 
 /**
@@ -469,14 +458,13 @@ inline Eigen::Matrix<double, State<N>::dimension, 6 + 3 * N> inputMatrixB(
 template <size_t N>
 struct OutputAction : public GroupAction<OutputAction<N>, Group<N>, Vector3> {
   using G = Group<N>;
-  using Output = Vector3;
   static constexpr ActionType type = ActionType::Right;
 
   explicit OutputAction(int index = -1) : index_(index) {}
 
-  Output operator()(const Output& y, const G& X,
-                    OptionalJacobian<3, 3> H_y = {},
-                    OptionalJacobian<3, G::dimension> H_X = {}) const {
+  Vector3 operator()(const Vector3& y, const G& X,
+                     OptionalJacobian<3, 3> H_y = {},
+                     OptionalJacobian<3, G::dimension> H_X = {}) const {
     if (H_X) H_X->setZero();
     if (index_ == -1) {
       Matrix3 H_rot;
@@ -494,6 +482,24 @@ struct OutputAction : public GroupAction<OutputAction<N>, Group<N>, Vector3> {
 
   int index_;
 };
+
+/// Compute the measurement matrix C(φ_y).
+template <size_t N>
+inline Matrix measurementMatrixC(const Unit3& d, int index) {
+  Matrix Cc = Matrix::Zero(3, 3 * N);
+
+  Matrix3 wedge_d = Rot3::Hat(d.unitVector());
+  if (index >= 0) {
+    Cc.block<3, 3>(0, 3 * index) = wedge_d;
+  }
+
+  Matrix temp(3, 6 + 3 * N);
+  temp.block<3, 3>(0, 0) = wedge_d;
+  temp.block<3, 3>(0, 3) = Matrix3::Zero();
+  temp.block(0, 6, 3, 3 * N) = Cc;
+
+  return wedge_d * temp;
+}
 
 template <size_t N>
 struct Innovation {
@@ -539,24 +545,6 @@ struct Innovation {
   M xi_ref_;  // reference state on the manifold
   int index_;
 };
-
-/// Compute the measurement matrix C(φ_y).
-template <size_t N>
-inline Matrix measurementMatrixC(const Unit3& d, int index) {
-  Matrix Cc = Matrix::Zero(3, 3 * N);
-
-  Matrix3 wedge_d = Rot3::Hat(d.unitVector());
-  if (index >= 0) {
-    Cc.block<3, 3>(0, 3 * index) = wedge_d;
-  }
-
-  Matrix temp(3, 6 + 3 * N);
-  temp.block<3, 3>(0, 0) = wedge_d;
-  temp.block<3, 3>(0, 3) = Matrix3::Zero();
-  temp.block(0, 6, 3, 3 * N) = Cc;
-
-  return wedge_d * temp;
-}
 
 template <size_t N>
 inline Matrix3 outputMatrixD(const Group<N>& X_hat, int index) {

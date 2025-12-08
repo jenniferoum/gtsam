@@ -74,9 +74,7 @@ Vector2 dynamics(const Vector3& omega, const M& eta) {
 //---------------------------------------------------------------------------
 
 struct Lift {
-  using Input = Vector3;
-
-  explicit Lift(const Input& omega) : omega_(omega) {}
+  explicit Lift(const Vector3& omega) : omega_(omega) {}
 
   typename traits<G>::TangentVector operator()(
       const M& /*R*/, OptionalJacobian<3, 2> H = {}) const {
@@ -86,7 +84,7 @@ struct Lift {
   }
 
  private:
-  Input omega_;
+  Vector3 omega_;
 };
 
 //---------------------------------------------------------------------------
