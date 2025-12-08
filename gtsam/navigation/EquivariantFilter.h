@@ -34,12 +34,9 @@ namespace gtsam {
  * specific frame.
  *
  * This implementation supports two modes:
- * 1. **Automatic**: The filter calculates Jacobians (A, B, C) using auxiliary
- *    methods on the Orbit objects (`inputMatrixB`, `measurementMatrixC`) or
- *    the system structure (for A).
- * 2. **Explicit**: You provide the Jacobians (A, B, C) directly. This allows
- *    using "pure" group actions/orbits that don't need to know about system
- *    linearization matrices.
+ * 1. **Automatic**: The filter calculates Jacobian A using the input orbit.
+ * 2. **Explicit**: You provide the Jacobian A and the manifold covariance Qc
+ *    directly.
  *
  * @tparam M Manifold type for the physical state.
  * @tparam Symmetry Functor encoding the group action on the state.
@@ -70,16 +67,6 @@ class EquivariantFilter {
 
   G X_;            // Group element estimate
   CovarianceM P_;  // Covariance on the Manifold M
-
-  // SFINAE helpers to detect optional matrix methods
-  struct internal {
-    template <typename T, typename Group, typename = void>
-    struct has_inputMatrixB : std::false_type {};
-    template <typename T, typename Group>
-    struct has_inputMatrixB<T, Group,
-                            std::void_t<decltype(std::declval<T>().inputMatrixB(
-                                std::declval<Group>()))>> : std::true_type {};
-  };
 
  public:
   /**
@@ -113,6 +100,13 @@ class EquivariantFilter {
    *
    * Calculates A = D_phi|_0 * D_lift|_u0, where u0 is the input mapped to the
    * origin.
+   *
+   * Concept requirements:
+   * - `Lift` must be callable as `Lift(u_origin)(xi_ref, D_lift)` where
+   *   D_lift is an OptionalJacobian of shape DimM x DimG.
+   * - `InputOrbit` must be a group action on the input space with operator()
+   *   that accepts the current group estimate X and returns the mapped input
+   *   (no other methods are required by the filter).
    *
    * @tparam Lift Functor for the lift Λ(ξ, u).
    * @tparam InputOrbit Functor for the input orbit ψ_u.
@@ -151,8 +145,13 @@ class EquivariantFilter {
   /**
    * @brief Propagate the filter state (Automatic).
    *
-   * Automatically computes the error dynamics matrix A and asks `psi_u` for
-   * the input noise matrix B.
+   * Automatically computes the error dynamics matrix A.
+   *
+   * Concept requirements:
+   * - `Lift` is used as `Lift(u_origin)(xi_ref_, D_lift)` to obtain the lift
+   *   and its Jacobian w.r.t. the manifold state.
+   * - `InputOrbit` is only used via `psi_u(X_.inverse())` to map the current
+   *   input to the origin; no other methods are needed.
    *
    * @tparam K Truncation order for discretization (1 = first order Euler,
    *         >1 uses matrix exponential expm(A*dt, K)).
@@ -160,44 +159,40 @@ class EquivariantFilter {
    * @tparam InputOrbit Functor for the input orbit ψ_u.
    * @param lift_u Lift functor for the current input.
    * @param psi_u Input Orbit for the current input.
-   * @param Q Process noise covariance in the Input space.
+   * @param A Error dynamics matrix (DimM x DimM).
+   * @param Qc Process noise covariance on the manifold (continuous-time).
    * @param dt Time step.
    */
   template <size_t K = 1, typename Lift, typename InputOrbit>
-  void predict(const Lift& lift_u, const InputOrbit& psi_u, const Matrix& Q,
+  void predict(const Lift& lift_u, const InputOrbit& psi_u, const MatrixM& Qc,
                double dt) {
     // 1. Compute A automatically
     MatrixM A = computeErrorDynamicsMatrix<Lift>(psi_u);
 
-    // 2. Get B from InputOrbit (Must exist in Automatic mode)
-    static_assert(
-        internal::template has_inputMatrixB<InputOrbit, G>::value,
-        "InputOrbit must provide inputMatrixB(Group) for automatic "
-        "predict. Use explicit predict(...) overload for pure Orbits.");
-    Matrix B = psi_u.inputMatrixB(X_);
-
-    // 3. Delegate to explicit predict
-    predict<K>(lift_u, Q, dt, A, B);
+    // 2. Delegate to explicit predict with manifold Qc
+    predictWithJacobian<K>(lift_u, A, Qc, dt);
   }
 
   /**
    * @brief Propagate the filter state (Explicit).
    *
-   * Uses provided Jacobians A and B. This allows `psi_u` to be a pure Orbit
-   * without needing to implement `inputMatrixB`.
+   * Uses provided Jacobian A and manifold covariance Qc. This allows `psi_u`
+   * to be a pure Orbit without needing to implement `inputMatrixB`.
+   *
+   * Concept requirements:
+   * - `Lift` is only used via `Lift(xi_est)` to produce a tangent vector.
+   *   No additional methods are needed for this overload.
    *
    * @tparam Lift Functor for the lift Λ(ξ, u).
    * @param lift_u Lift functor for the current input.
-   * @param Q Process noise covariance in the Input space.
-   * @param dt Time step.
    * @param A Error dynamics matrix (DimM x DimM).
-   * @param B Input noise mapping matrix (DimM x DimInput).
+   * @param Qc Process noise covariance on the manifold (continuous-time).
+   * @param dt Time step.
    */
   template <size_t K = 1, typename Lift>
-  void predict(const Lift& lift_u, const Matrix& Q, double dt, const MatrixM& A,
-               const Matrix& B) {
+  void predictWithJacobian(const Lift& lift_u, const MatrixM& A,
+                           const MatrixM& Qc, double dt) {
     // 1. Mean Propagation on Group
-    // We don't need Jacobians here, just the value
     M xi_est = act_on_ref_(X_);             // Pure action
     TangentVector Lambda = lift_u(xi_est);  // Pure lift
 
@@ -206,8 +201,8 @@ class EquivariantFilter {
     // 2. Covariance Propagation on Manifold
     MatrixM Phi = transitionMatrix<K>(A, dt);
 
-    // Map noise: Q_M = B * Q * B^T * dt
-    CovarianceM Q_manifold = B * Q * B.transpose() * dt;
+    // Qc is manifold continuous-time covariance: Q_M = Qc * dt
+    CovarianceM Q_manifold = Qc * dt;
 
     P_ = Phi * P_ * Phi.transpose() + Q_manifold;
   }
@@ -220,14 +215,22 @@ class EquivariantFilter {
    * @return The measurement Jacobian C (DimZ x DimM).
    */
   template <typename OutputOrbit>
-  Eigen::Matrix<double, OutputOrbit::dimZ, DimM> computeMeasurementMatrix(
-      const OutputOrbit& phi_y, const M& xi_hat) const {
-    using MatrixZM = Eigen::Matrix<double, OutputOrbit::dimZ, DimM>;
+  auto computeMeasurementMatrix(const OutputOrbit& phi_y,
+                                const M& xi_hat) const {
+    using Measurement = typename OutputOrbit::Manifold;
+    static constexpr int DimZ = traits<Measurement>::dimension;
 
-    MatrixZM C;
-    // Expect innovation to provide Jacobian via pointer
-    phi_y.innovation(xi_hat, &C);
-    return C;
+    if constexpr (DimZ == Eigen::Dynamic) {
+      auto innovation = phi_y.innovation(xi_hat);
+      const int m = innovation.rows();
+      Eigen::Matrix<double, Eigen::Dynamic, DimM> C(m, DimM);
+      phi_y.innovation(xi_hat, &C);
+      return C;
+    } else {
+      Eigen::Matrix<double, DimZ, DimM> C;
+      phi_y.innovation(xi_hat, &C);
+      return C;
+    }
   }
 
   /**
@@ -235,26 +238,33 @@ class EquivariantFilter {
    *
    * Computes the measurement Jacobian C (H internally) automatically.
    *
+   * Concept requirements:
+   * - `OutputOrbit` must implement the group action on outputs via
+   *   `phi_y.innovation(xi_hat, H)`. No other methods are required.
+   *
    * @tparam OutputOrbit Functor for the output orbit ρ_y.
    * @param phi_y Output Orbit instance.
    * @param R Measurement noise covariance.
    */
   template <typename OutputOrbit>
-  void update(
-      const OutputOrbit& phi_y,
-      const Eigen::Matrix<double, OutputOrbit::dimZ, OutputOrbit::dimZ>& R) {
-    static constexpr int DimZ = OutputOrbit::dimZ;
-    using MatrixZM = Eigen::Matrix<double, DimZ, DimM>;
-    using VectorZ = Eigen::Matrix<double, DimZ, 1>;
-
+  void update(const OutputOrbit& phi_y, const Eigen::MatrixXd& R) {
     M xi_hat = stateEstimate();
-    VectorZ innovation;
-    MatrixZM H;
 
-    // Expect innovation to provide Jacobian
-    innovation = phi_y.innovation(xi_hat, &H);
+    using Measurement = typename OutputOrbit::Manifold;
+    static constexpr int DimZ = traits<Measurement>::dimension;
 
-    updateInternal(innovation, H, R);
+    if constexpr (DimZ == Eigen::Dynamic) {
+      auto innovation = phi_y.innovation(xi_hat);
+      const int m = innovation.rows();
+      Eigen::Matrix<double, Eigen::Dynamic, DimM> H(m, DimM);
+      phi_y.innovation(xi_hat, &H);
+      updateInternal(innovation, H, R);
+    } else {
+      Eigen::Matrix<double, DimZ, 1> innovation;
+      Eigen::Matrix<double, DimZ, DimM> H;
+      innovation = phi_y.innovation(xi_hat, &H);
+      updateInternal(innovation, H, R);
+    }
   }
 
   /**
@@ -268,10 +278,8 @@ class EquivariantFilter {
    * @param C Measurement Jacobian (DimZ x DimM).
    */
   template <typename OutputOrbit>
-  void update(
-      const OutputOrbit& phi_y,
-      const Eigen::Matrix<double, OutputOrbit::dimZ, OutputOrbit::dimZ>& R,
-      const Eigen::Matrix<double, OutputOrbit::dimZ, DimM>& C) {
+  void update(const OutputOrbit& phi_y, const Eigen::MatrixXd& R,
+              const Eigen::MatrixXd& C) {
     // Compute innovation without Jacobian
     M xi_hat = stateEstimate();
     auto innovation = phi_y.innovation(xi_hat);

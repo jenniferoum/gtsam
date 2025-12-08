@@ -156,9 +156,6 @@ struct OutputAction : public GroupAction<OutputAction, G, Vector3> {
 };
 
 struct OutputOrbit : public OutputAction::Orbit {
-  using Output = Vector3;
-  static constexpr int dimZ = 3;
-
   OutputOrbit(const Vector3& z_measured, double c_m)
       : OutputAction::Orbit(z_measured), z_measured_(z_measured), c_m_(c_m) {}
 
@@ -175,9 +172,6 @@ struct OutputOrbit : public OutputAction::Orbit {
     }
     return nu;
   }
-
-  /// Measurement noise propagation matrix D_t.
-  Matrix3 outputMatrixD(const G& /*X_hat*/) const { return I_3x3; }
 
  private:
   Vector3 z_measured_;  // measured output
@@ -377,8 +371,10 @@ TEST(EquivariantFilter_Attitude, Predict) {
   InputOrbit psi_u(omega);
   Matrix3 Sigma_u = 0.1 * I_3x3;
   Matrix3 Q = InputOrbit::processNoise(Sigma_u);
+  Matrix23 B = psi_u.inputMatrixB(Q0);
+  Matrix2 Qc = B * Q * B.transpose();  // manifold continuous-time covariance
   const double dt = 0.01;
-  filter.predict(lift_omega, psi_u, Q, dt);
+  filter.predict(lift_omega, psi_u, Qc, dt);
 
   // --- Expected result ---
   // X_new = X_old * Exp(omega * dt) (Right action predict or left?)
@@ -389,10 +385,8 @@ TEST(EquivariantFilter_Attitude, Predict) {
   // --- Expected covariance update ---
   Matrix2 Phi = I_2x2;
 
-  // inputMatrixB maps input noise directly to manifold tangent (DimM x DimU).
-  Matrix23 B = psi_u.inputMatrixB(Q0);
-
-  Matrix2 Q_process = B * Q * B.transpose() * dt;
+  // Qc is already on manifold, continuous-time.
+  Matrix2 Q_process = Qc * dt;
   Matrix2 P_expected = Phi * Sigma0 * Phi.transpose() + Q_process;
   EXPECT(assert_equal(P_expected, filter.covariance()));
 
@@ -413,7 +407,9 @@ TEST(EquivariantFilter_Attitude, Update) {
   const double dt = 0.01;
   Matrix3 Sigma_u = 0.1 * I_3x3;
   Matrix3 Q = InputOrbit::processNoise(Sigma_u);
-  filter.predict(lift_omega, psi_u, Q, dt);
+  Matrix23 B = psi_u.inputMatrixB(Q0);
+  Matrix2 Qc = B * Q * B.transpose();  // manifold continuous-time covariance
+  filter.predict(lift_omega, psi_u, Qc, dt);
 
   const G Q_before = filter.groupEstimate();
   const Matrix2 P_before = filter.covariance();

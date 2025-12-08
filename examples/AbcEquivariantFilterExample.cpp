@@ -275,9 +275,10 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
 
     // Use Explicit Matrices API
     G X_hat = filter.groupEstimate();
-    Matrix A = psi_u.stateMatrixA(X_hat);
-    Matrix B = psi_u.inputMatrixB(X_hat);
-    filter.predict<2>(lift_u, Q, data.dt, A, B);
+    Matrix A = abc::stateMatrixA<n>(psi_u, X_hat);
+    Matrix B = abc::inputMatrixB<n>(X_hat);
+    Matrix Qc = B * Q * B.transpose();  // continuous-time manifold covariance
+    filter.predictWithJacobian<2>(lift_u, A, Qc, data.dt);
 
     // Process all measurements
     for (const auto& measurement : data.measurements) {
@@ -294,9 +295,9 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
 
       try {
         OutputOrbit phi_y(measurement.y, measurement.d, measurement.cal_idx);
-
         // Use Explicit Matrices API
-        Matrix C = phi_y.measurementMatrixC();
+        Matrix C =
+            abc::measurementMatrixC<n>(measurement.d, measurement.cal_idx);
         filter.update(phi_y, measurement.R, C);
 
         validMeasurements++;

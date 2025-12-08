@@ -52,6 +52,10 @@
 namespace gtsam {
 namespace abc {
 
+// Forward declare helper to compute measurement matrix C for OutputOrbit.
+template <size_t N>
+Matrix measurementMatrixC(const Unit3& d, int index);
+
 /// Convert angular velocity vector to mathematical input (ω, 0)
 inline Vector6 toInputVector(const Vector3& w) {
   return (Vector6() << w, Z_3x1).finished();
@@ -418,16 +422,14 @@ struct InputAction : public GroupAction<InputAction<N>, Group<N>, Vector6> {
 template <size_t N>
 struct InputOrbit : public InputAction<N>::Orbit {
   using G = Group<N>;
-  using Input = Vector6;
   static constexpr int DimM = State<N>::dimension;
-  using MatrixMM = Eigen::Matrix<double, DimM, DimM>;
-
+  
   // Input dimension U captures attitude, bias, and N calibration noise blocks.
   static constexpr int DimU = 6 + 3 * N;
   using MatrixGU = Eigen::Matrix<double, G::dimension, DimU>;
   using MatrixMU = Eigen::Matrix<double, DimM, DimU>;
 
-  explicit InputOrbit(const Input& u) : InputAction<N>::Orbit(u) {}
+  explicit InputOrbit(const Vector6& u) : InputAction<N>::Orbit(u) {}
 
   // Embed a 6x6 Sigma into full DimU by appending small calibration noise.
   static Matrix processNoise(const Matrix& Sigma6) {
@@ -435,45 +437,35 @@ struct InputOrbit : public InputAction<N>::Orbit {
     blocks.insert(blocks.end(), N, 1e-9 * I_3x3);
     return gtsam::diag(blocks);
   }
-
-  Matrix stateMatrixA(const G& X_hat) const {
-    const Vector3 omega_tilde =
-        this->operator()(X_hat.inverse()).template head<3>();
-    Matrix3 W0 = Rot3::Hat(omega_tilde);
-
-    Matrix A1 = Matrix::Zero(6, 6);
-    A1.block<3, 3>(0, 3) = -I_3x3;
-    A1.block<3, 3>(3, 3) = W0;
-
-    std::vector<Matrix> blocks{A1};
-    blocks.insert(blocks.end(), N, W0);
-    return gtsam::diag(blocks);
-  }
-
-  // Fixed-size input matrix B(X̂) ∈ R^{DimM×DimU}, mapped onto the manifold.
-  MatrixMU inputMatrixB(const G& X_hat) const {
-    const Matrix3 A_matrix = X_hat.A().matrix();
-    Matrix B1 = gtsam::diag({A_matrix, A_matrix});
-    Matrix B2(3 * N, 3 * N);
-    B2.setZero();
-
-    for (size_t i = 0; i < N; ++i) {
-      B2.block<3, 3>(3 * i, 3 * i) = X_hat.calibrations()[i].matrix();
-    }
-
-    return gtsam::diag({B1, B2});
-    // MatrixGU B = MatrixGU::Zero();
-    // // Attitude and bias blocks.
-    // B.template block<3, 3>(0, 0) = A_matrix;
-    // B.template block<3, 3>(3, 3) = A_matrix;
-    // // Calibration blocks.
-    // for (size_t i = 0; i < N; ++i) {
-    //   const size_t idx = 6 + 3 * i;
-    //   B.template block<3, 3>(idx, idx) = X_hat.calibrations()[i].matrix();
-    // }
-    // return D_act * B;
-  }
 };
+
+/// Compute the state matrix A(X_hat).
+template <size_t N>
+inline Matrix stateMatrixA(const InputOrbit<N>& psi_u, const Group<N>& X_hat) {
+  const Vector6 u0 = psi_u(X_hat.inverse());  // ψ_u(X)^ω (omega, 0)
+  Matrix3 W0 = Rot3::Hat(u0.template head<3>());
+
+  Matrix A1 = Matrix::Zero(6, 6);
+  A1.block<3, 3>(0, 3) = -I_3x3;
+  A1.block<3, 3>(3, 3) = W0;
+
+  std::vector<Matrix> blocks{A1};
+  blocks.insert(blocks.end(), N, W0);
+  return gtsam::diag(blocks);
+}
+
+/// Compute the input matrix B(X_hat).
+template <size_t N>
+inline typename InputOrbit<N>::MatrixMU inputMatrixB(const Group<N>& X_hat) {
+  const Matrix3 A_matrix = X_hat.A().matrix();
+  Matrix B1 = gtsam::diag({A_matrix, A_matrix});
+  Matrix B2(3 * N, 3 * N);
+  B2.setZero();
+  for (size_t i = 0; i < N; ++i) {
+    B2.block<3, 3>(3 * i, 3 * i) = X_hat.calibrations()[i].matrix();
+  }
+  return gtsam::diag({B1, B2});
+}
 
 /**
  * Functor encoding the right action ρ_y(X) on direction measurements y,
@@ -511,10 +503,7 @@ struct OutputAction : public GroupAction<OutputAction<N>, Group<N>, Vector3> {
 template <size_t N>
 struct OutputOrbit : public OutputAction<N>::Orbit {
   using G = Group<N>;
-  using Output = Vector3;
   using M = State<N>;
-  static constexpr int DimM = M::dimension;
-  static constexpr int dimZ = 3;
 
   Unit3 y_;   // measured direction
   Unit3 d_;   // reference direction
@@ -564,35 +553,39 @@ struct OutputOrbit : public OutputAction<N>::Orbit {
     const Vector3 nu = wedge_d * transformed_y;
 
     if (H) {
-      *H = measurementMatrixC();
+      *H = measurementMatrixC<N>(d_, this->index_);
     }
     return nu;
   }
 
-  Matrix measurementMatrixC() const {
-    Matrix Cc = Matrix::Zero(3, 3 * N);
-
-    Matrix3 wedge_d = Rot3::Hat(d_.unitVector());
-    if (this->index_ >= 0) {
-      Cc.block<3, 3>(0, 3 * this->index_) = wedge_d;
-    }
-
-    Matrix temp(3, 6 + 3 * N);
-    temp.block<3, 3>(0, 0) = wedge_d;
-    temp.block<3, 3>(0, 3) = Matrix3::Zero();
-    temp.block(0, 6, 3, 3 * N) = Cc;
-
-    return wedge_d * temp;
-  }
-
-  Matrix3 outputMatrixD(const G& X_hat) const {
-    if (this->index_ >= 0) {
-      return X_hat.calibrations()[this->index_].matrix();
-    } else {
-      return X_hat.A().matrix();
-    }
-  }
 };
+
+/// Compute the measurement matrix C(φ_y).
+template <size_t N>
+inline Matrix measurementMatrixC(const Unit3& d, int index) {
+  Matrix Cc = Matrix::Zero(3, 3 * N);
+
+  Matrix3 wedge_d = Rot3::Hat(d.unitVector());
+  if (index >= 0) {
+    Cc.block<3, 3>(0, 3 * index) = wedge_d;
+  }
+
+  Matrix temp(3, 6 + 3 * N);
+  temp.block<3, 3>(0, 0) = wedge_d;
+  temp.block<3, 3>(0, 3) = Matrix3::Zero();
+  temp.block(0, 6, 3, 3 * N) = Cc;
+
+  return wedge_d * temp;
+}
+
+template <size_t N>
+inline Matrix3 outputMatrixD(const Group<N>& X_hat, int index) {
+  if (index >= 0) {
+    return X_hat.calibrations()[index].matrix();
+  } else {
+    return X_hat.A().matrix();
+  }
+}
 
 }  // namespace abc
 

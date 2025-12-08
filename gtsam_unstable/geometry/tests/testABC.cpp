@@ -386,7 +386,7 @@ TEST(ABC, LiftEquivariance) {
 TEST(ABC, InputAction_stateMatrixA) {
   using namespace abc_input_action_example;
 
-  Matrix A_matrix = psi_u.stateMatrixA(X_hat);
+  Matrix A_matrix = abc::stateMatrixA(psi_u, X_hat);
   Matrix3 W0 = Rot3::Hat(psi_u(X_hat.inverse()).head<3>());
 
   Matrix expected_A1 = Matrix::Zero(6, 6);
@@ -417,7 +417,7 @@ TEST(ABC, ComputeErrorDynamicsMatrixMatchesLegacy) {
   // A_provided should now be the Manifold-space matrix
   // stateMatrixA returns the correct Manifold-space matrix (DimM x DimM)
   InputOrbit psi_u(u);
-  Matrix expected_A = psi_u.stateMatrixA(X_hat);
+  Matrix expected_A = abc::stateMatrixA(psi_u, X_hat);
 
   // A_computed is now computed on Manifold (D_act * D_lift)
   Matrix A_computed =
@@ -551,7 +551,7 @@ TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF) {
 
   Matrix Phi_expected = stateTransitionMatrix<2>(psi_u, X_hat, dt);
 
-  Group::Jacobian Df = psi_u.stateMatrixA(X_hat) + Group::adjointMap(xi);
+  Group::Jacobian Df = abc::stateMatrixA(psi_u, X_hat) + Group::adjointMap(xi);
   Group::Jacobian P0 = Group::Jacobian::Identity();
   LieGroupEKF<Group> ekf(X_hat, P0);
 
@@ -570,7 +570,7 @@ TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF_K1) {
 
   double dt = 1e-4;
 
-  Group::Jacobian Df = psi_u.stateMatrixA(X_hat) + Group::adjointMap(xi);
+  Group::Jacobian Df = abc::stateMatrixA(psi_u, X_hat) + Group::adjointMap(xi);
   Group::Jacobian P0 = Group::Jacobian::Identity();
   LieGroupEKF<Group> ekf(X_hat, P0);
 
@@ -589,7 +589,7 @@ TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF_K1) {
 TEST(ABC, InputAction_inputMatrix) {
   using namespace abc_input_action_example;
 
-  Matrix input_matrix = psi_u.inputMatrixB(X_hat);
+  Matrix input_matrix = abc::inputMatrixB(X_hat);
 
   const Matrix3 A = X_hat.A().matrix();
   Matrix expected_B1 = gtsam::diag({A, A});
@@ -658,7 +658,7 @@ TEST(ABC, OutputAction_measurementMatrixC) {
   // Test with calibrated sensor (idx = 0)
   int cal_idx = 0;
   OutputOrbit phi_y(y, d, cal_idx);
-  Matrix C_cal = phi_y.measurementMatrixC();
+  Matrix C_cal = abc::measurementMatrixC<2>(phi_y.d_, phi_y.index_);
 
   Matrix expected_Cc_cal = Matrix::Zero(3, 3 * 2);
   expected_Cc_cal.block<3, 3>(0, 3 * cal_idx) = wedge_d;
@@ -685,7 +685,7 @@ TEST(ABC, ComputeMeasurementMatrix) {
   // Check C matrix
   OutputOrbit phi_y(y, d, 0, xi_ref);
   Matrix C_computed = filter.computeMeasurementMatrix(phi_y, xi_ref);
-  Matrix C_legacy = phi_y.measurementMatrixC();
+  Matrix C_legacy = abc::measurementMatrixC<2>(phi_y.d_, phi_y.index_);
   EXPECT(assert_equal(C_legacy, C_computed, 1e-9));
 }
 
@@ -716,9 +716,11 @@ TEST(ABC, EqFilter) {
   Matrix Sigma = I_6x6;
   double dt = 0.01;
   Matrix Q = InputOrbit::processNoise(Sigma);
+  Matrix B = abc::inputMatrixB(g_0);
+  Matrix Qc = B * Q * B.transpose();  // manifold continuous-time covariance
   Lift lift_u(u2);
   InputOrbit psi_u(u2);
-  filter.predict(lift_u, psi_u, Q, dt);
+  filter.predict(lift_u, psi_u, Qc, dt);
 
   // Regression
   Group expected({Rot3(1, 0.00015, -0.0004,  //
