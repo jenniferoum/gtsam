@@ -121,42 +121,6 @@ inline Matrix23 inputMatrixB(const G& /*Q_hat*/) {
   return Matrix23::Identity();
 }
 
-//---------------------------------------------------------------------------
-// OutputOrbit: group action on the measurement + Jacobians
-//
-// For simplicity, we follow Van Goor's S² example:
-//   measurement model: z = c_m * η (in R^3)
-// where η is the world-frame direction. The innovation is ẑ - z_measured.
-//---------------------------------------------------------------------------
-
-// Implements the right action ρ_y(Q) = Qᵀ y on S² (partially applied to
-// measurement y).
-struct OutputAction : public GroupAction<OutputAction, G, Vector3> {
-  static constexpr ActionType type = ActionType::Right;
-
-  /// Right action ρ_y(Q) = Qᵀ y
-  Vector3 operator()(const Vector3& y, const G& Q,
-                     OptionalJacobian<3, 3> H_y = {},
-                     OptionalJacobian<3, 3> H_Q = {}) const {
-    return Q.unrotate(y, H_Q, H_y);
-  }
-};
-
-struct OutputOrbit {
-  using Manifold = Vector3;
-
-  explicit OutputOrbit(const Vector3& z_measured, double c_m)
-      : orbit_(z_measured), z_measured_(z_measured), c_m_(c_m) {}
-
-  Vector3 operator()(const G& Q, OptionalJacobian<3, 3> H_Q = {}) const {
-    return orbit_(Q, H_Q);
-  }
-
-  OutputAction::Orbit orbit_;
-  Vector3 z_measured_;  // measured output
-  double c_m_;          // measurement scale
-};
-
 struct Innovation {
   Innovation(const Vector3& z_measured, double c_m)
       : z_measured_(z_measured), c_m_(c_m) {}
@@ -491,9 +455,6 @@ TEST(EquivariantFilter_Attitude, CheckMatrices) {
   // Use the helper method for the check
   Innovation innovation(y, c_m);
   Matrix C_computed = filter.computeMeasurementMatrix(innovation, phi_ref(Q0));
-  // Note: Since OutputOrbit doesn't have measurementMatrixC() in this test,
-  // we check self-consistency or if we had a provided C.
-  // Here we just verify it runs.
   EXPECT(C_computed.rows() == 3 && C_computed.cols() == 2);
 }
 

@@ -52,7 +52,7 @@
 namespace gtsam {
 namespace abc {
 
-// Forward declare helper to compute measurement matrix C for OutputOrbit.
+// Forward declare helper to compute measurement matrix C for direction output.
 template <size_t N>
 Matrix measurementMatrixC(const Unit3& d, int index);
 
@@ -492,30 +492,6 @@ struct OutputAction : public GroupAction<OutputAction<N>, Group<N>, Vector3> {
     }
   }
 
-  int index_;
-};
-
-template <size_t N>
-struct OutputOrbit {
-  using G = Group<N>;
-  using Manifold = Vector3;
-  using Orbit = typename OutputAction<N>::Orbit;
-
-  OutputOrbit(const Unit3& y, int index)
-      : action_(index), orbit_(y.unitVector(), action_), y_(y), index_(index) {
-    if (index >= static_cast<int>(N)) {
-      throw std::out_of_range("OutputOrbit index out of range");
-    }
-  }
-
-  Vector3 operator()(const G& X,
-                     OptionalJacobian<3, G::dimension> H_X = {}) const {
-    return orbit_(X, H_X);
-  }
-
-  OutputAction<N> action_;
-  Orbit orbit_;
-  Unit3 y_;  // measured direction
   int index_;
 };
 

@@ -26,7 +26,6 @@ using Symmetry = abc::Symmetry<n>;
 using EqFilter = gtsam::EquivariantFilter<M, Symmetry>;
 using Lift = abc::Lift<n>;
 using InputOrbit = typename abc::InputAction<n>::Orbit;
-using OutputOrbit = abc::OutputOrbit<n>;
 using Innovation = abc::Innovation<n>;
 
 /// Measurement struct

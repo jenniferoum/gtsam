@@ -24,7 +24,7 @@ using Group = abc::Group<2>;
 using Symmetry = abc::Symmetry<2>;
 using Lift = abc::Lift<2>;
 using InputOrbit = abc::InputAction<2>::Orbit;
-using OutputOrbit = abc::OutputOrbit<2>;
+using OutputOrbit = abc::OutputAction<2>::Orbit;
 using Innovation = abc::Innovation<2>;
 using Calibrations = abc::Calibrations<2>;
 
@@ -624,19 +624,18 @@ TEST(ABC, OutputOrbit) {
 
   // Test outputAction (calibrated sensor)
   int cal_idx = 0;
-  OutputOrbit phi_y(y, cal_idx);
+  OutputOrbit phi_y(y.unitVector(), abc::OutputAction<2>(cal_idx));
   Vector3 transformed_y_calibrated = phi_y(g1);
   EXPECT(assert_equal<Vector>(transformed_y_calibrated,
                               g1.calibrations()[0].unrotate(y.unitVector())));
 
   // Test outputAction (uncalibrated sensor)
   int uncalibrated_idx = -1;
-  OutputOrbit uncalibrated_phi_y(y, uncalibrated_idx);
+  OutputOrbit uncalibrated_phi_y(y.unitVector(),
+                                 abc::OutputAction<2>(uncalibrated_idx));
   Vector3 transformed_y_uncalibrated = uncalibrated_phi_y(g1);
   EXPECT(assert_equal<Vector>(transformed_y_uncalibrated,
                               g1.A().unrotate(y.unitVector())));
-
-  CHECK_EXCEPTION(OutputOrbit(y, 2), std::out_of_range);
 }
 
 /* ************************************************************************* */
@@ -656,7 +655,6 @@ TEST(ABC, OutputAction_measurementMatrixC) {
 
   // Test with calibrated sensor (idx = 0)
   int cal_idx = 0;
-  OutputOrbit phi_y(y, cal_idx);
   Matrix C_cal = abc::measurementMatrixC<2>(d, cal_idx);
 
   Matrix expected_Cc_cal = Matrix::Zero(3, 3 * 2);
@@ -682,7 +680,6 @@ TEST(ABC, ComputeMeasurementMatrix) {
   EquivariantFilter<State, abc::Symmetry<2>> filter(xi_ref, initialSigma);
 
   // Check C matrix
-  OutputOrbit phi_y(y, 0);
   Innovation innovation(y, d, 0, xi_ref);
   Matrix C_computed = filter.computeMeasurementMatrix(innovation, xi_ref);
   Matrix C_legacy = abc::measurementMatrixC<2>(d, 0);
