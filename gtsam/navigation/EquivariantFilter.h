@@ -133,12 +133,7 @@ class EquivariantFilter : public ManifoldEKF<M> {
   template <size_t K = 1>
   MatrixM transitionMatrix(const MatrixM& A, double dt) const {
     if constexpr (K == 1) {
-      if constexpr (DimM == Eigen::Dynamic) {
-        const auto n = this->dimension();
-        return MatrixM::Identity(n, n) + A * dt;
-      } else {
-        return MatrixM::Identity() + A * dt;
-      }
+      return this->I_ + A * dt;
     } else {
       return MatrixM(expm(A * dt, K));
     }

@@ -294,7 +294,7 @@ class LieGroupEKF : public ManifoldEKF<G> {
                           const Covariance& Q) {
     Jacobian A_local;
     if constexpr (std::is_same_v<G, Matrix>) {
-      const Matrix I_n = Matrix::Identity(this->n_, this->n_);
+      const Matrix& I_n = this->I_;
       A_local = I_n + J_UX;
       this->X_ = traits<Matrix>::Retract(this->X_, U);
     } else {

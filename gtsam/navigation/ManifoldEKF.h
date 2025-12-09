@@ -95,8 +95,10 @@ class ManifoldEKF {
             ") do not match state's tangent space dimension (" +
             std::to_string(n_) + ").");
       }
+      I_ = Jacobian::Identity(n_, n_);
     } else {
       n_ = Dim;
+      I_ = Jacobian::Identity();
     }
 
     P_ = P0;
@@ -152,14 +154,7 @@ class ManifoldEKF {
   /// Joseph-form covariance update using a precomputed gain.
   template <typename GainMatrix, typename HMatrix, typename RMatrix>
   void JosephUpdate(const GainMatrix& K, const HMatrix& H, const RMatrix& R) {
-    Jacobian I_n;  // Eigen::Matrix<double, Dim, Dim>
-    if constexpr (Dim == Eigen::Dynamic) {
-      I_n = Jacobian::Identity(n_, n_);
-    } else {
-      I_n = Jacobian::Identity();
-    }
-
-    Jacobian I_KH = I_n - K * H;
+    Jacobian I_KH = I_ - K * H;
     P_ = I_KH * P_ * I_KH.transpose() + K * R * K.transpose();
   }
 
@@ -272,6 +267,7 @@ class ManifoldEKF {
  protected:
   M X_;           ///< Manifold state estimate.
   Covariance P_;  ///< Covariance (Eigen::Matrix<double, Dim, Dim>).
+  Jacobian I_;    ///< Identity matrix sized to the state dimension.
   int n_;         ///< Runtime tangent space dimension of M.
 };
 
