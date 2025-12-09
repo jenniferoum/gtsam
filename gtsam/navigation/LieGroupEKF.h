@@ -189,7 +189,7 @@ class LieGroupEKF : public ManifoldEKF<G> {
     if constexpr (std::is_same_v<G, Matrix>) {
       TangentVector xi = f(this->X_, Phi ? &Df : nullptr);
       if (Phi) *Phi = expm(Df * dt, K);
-      return traits<G>::Retract(this->X_, xi * dt);
+      return traits<G>::Expmap(this->X_, xi * dt);
     } else {
       TangentVector xi = f(this->X_, Phi ? &Df : nullptr);
       G U = traits<G>::Expmap(xi * dt, Phi ? &Dexp : nullptr);
@@ -296,7 +296,7 @@ class LieGroupEKF : public ManifoldEKF<G> {
     if constexpr (std::is_same_v<G, Matrix>) {
       const Matrix& I_n = this->I_;
       A_local = I_n + J_UX;
-      this->X_ = traits<Matrix>::Retract(this->X_, U);
+      this->X_ = traits<Matrix>::Expmap(this->X_, U);
     } else {
       A_local = traits<G>::Inverse(U).AdjointMap() + J_UX;
       this->X_ = this->X_.compose(U);

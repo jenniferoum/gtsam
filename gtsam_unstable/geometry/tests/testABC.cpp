@@ -142,7 +142,7 @@ TEST(ABC, GroupOperations) {
   EXPECT(assert_equal(Group::Logmap(g_exp), v_tangent));
 
   // Test retract on G
-  Group g_retracted = g1.retract(v_tangent);
+  Group g_retracted = g1.expmap(v_tangent);
 
   const Group composed = g1 * Group::Expmap(v_tangent);
   EXPECT(assert_equal(g_retracted.A(), composed.A()));
