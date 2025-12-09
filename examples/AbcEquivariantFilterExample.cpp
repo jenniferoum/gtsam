@@ -309,7 +309,7 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
     }
 
     // Get current state estimate
-    M estimate = filter.stateEstimate();
+    M estimate = filter.state();
 
     // Calculate errors
     Vector3 att_error = Rot3::Logmap(data.xi.R.between(estimate.R));
@@ -352,7 +352,7 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
 
   // Calculate final errors from last data point
   const Data& final_data = data_list.back();
-  M final_estimate = filter.stateEstimate();
+  M final_estimate = filter.state();
   Vector3 final_att_error =
       Rot3::Logmap(final_data.xi.R.between(final_estimate.R));
   Vector3 final_bias_error = final_estimate.b - final_data.xi.b;

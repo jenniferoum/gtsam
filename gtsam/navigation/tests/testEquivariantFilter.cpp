@@ -354,9 +354,9 @@ TEST(EquivariantFilter_Attitude, Predict) {
   Matrix2 P_expected = Phi * Sigma0 * Phi.transpose() + Q_process;
   EXPECT(assert_equal(P_expected, filter.covariance()));
 
-  // stateEstimate() should be the rotated reference direction on S^2
+  // state() should be the rotated reference direction on S^2
   const Unit3 state_expected(X_expected.unrotate(eta_ref.point3()));
-  EXPECT(assert_equal(state_expected, filter.stateEstimate()));
+  EXPECT(assert_equal(state_expected, filter.state()));
 }
 
 //==============================================================================
@@ -425,7 +425,7 @@ TEST(EquivariantFilter_Attitude, Update) {
   EXPECT(assert_equal(X_expected, Q_after, 1e-9));
 
   const Unit3 state_expected(Q_after.unrotate(eta_ref.point3()));
-  EXPECT(assert_equal(state_expected, filter.stateEstimate(), 1e-9));
+  EXPECT(assert_equal(state_expected, filter.state(), 1e-9));
 }
 
 //==============================================================================

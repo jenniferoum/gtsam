@@ -19,6 +19,7 @@
 #include <gtsam/geometry/Unit3.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/navigation/ImuBias.h>
+#include <gtsam/navigation/ManifoldEKF.h>
 #include <gtsam/nonlinear/Values.h>
 
 #include <iostream>
@@ -42,18 +43,20 @@ namespace gtsam {
  * @tparam Symmetry Functor encoding the group action on the state.
  */
 template <typename M, typename Symmetry>
-class EquivariantFilter {
+class EquivariantFilter : public ManifoldEKF<M> {
  public:
+  using Base = ManifoldEKF<M>;
+
   // Manifold traits
-  static constexpr int DimM = traits<M>::dimension;
-  using TangentM = typename traits<M>::TangentVector;
-  using MatrixM = Eigen::Matrix<double, DimM, DimM>;
-  using CovarianceM = MatrixM;
+  static constexpr int DimM = Base::Dim;
+  using TangentM = typename Base::TangentVector;
+  using MatrixM = typename Base::Jacobian;
+  using CovarianceM = typename Base::Covariance;
 
   // Group traits
   using G = typename Symmetry::Group;
   static constexpr int DimG = traits<G>::dimension;
-  using TangentVector = typename traits<G>::TangentVector;
+  using TangentG = typename traits<G>::TangentVector;
 
   // Cross-dimension helpers
   using MatrixMG = Eigen::Matrix<double, DimM, DimG>;
@@ -65,8 +68,7 @@ class EquivariantFilter {
   MatrixMG Dphi0_;           // Differential of state action at identity
   MatrixGM InnovationLift_;  // Innovation lift matrix ((Dphi0)^+)
 
-  G X_;            // Group element estimate
-  CovarianceM P_;  // Covariance on the Manifold M
+  G g_;  // Group element estimate
 
  public:
   /**
@@ -78,22 +80,17 @@ class EquivariantFilter {
    */
   EquivariantFilter(const M& xi_ref, const CovarianceM& Sigma,
                     const G& X0 = traits<G>::Identity())
-      : xi_ref_(xi_ref), act_on_ref_(xi_ref), X_(X0), P_(Sigma) {
+      : Base(xi_ref, Sigma), xi_ref_(xi_ref), act_on_ref_(xi_ref), g_(X0) {
     // Compute differential of action phi at identity (Dphi0)
     act_on_ref_(traits<G>::Identity(), &Dphi0_);
 
     // Precompute the Innovation Lift matrix (pseudo-inverse of Dphi0)
     InnovationLift_ = Dphi0_.completeOrthogonalDecomposition().pseudoInverse();
+    this->X_ = act_on_ref_(g_);
   }
 
-  /// @return Estimated physical state on the manifold M.
-  M stateEstimate() const { return act_on_ref_(X_); }
-
   /// @return Current group estimate.
-  const G& groupEstimate() const { return X_; }
-
-  /// @return Current covariance estimate on the manifold.
-  const CovarianceM& covariance() const { return P_; }
+  const G& groupEstimate() const { return g_; }
 
   /**
    * @brief Compute the error dynamics matrix A (Automatic).
@@ -117,7 +114,7 @@ class EquivariantFilter {
   MatrixM computeErrorDynamicsMatrix(const InputOrbit& psi_u) const {
     MatrixGM D_lift;
     // Map current input to origin: u_origin = psi_u(X^-1)
-    auto u_origin = psi_u(X_.inverse());
+    auto u_origin = psi_u(g_.inverse());
 
     // Lift at origin: D_lift = d(Lambda(xi_ref, u_origin))/dxi
     Lift lift_u_origin(u_origin);
@@ -136,7 +133,12 @@ class EquivariantFilter {
   template <size_t K = 1>
   MatrixM transitionMatrix(const MatrixM& A, double dt) const {
     if constexpr (K == 1) {
-      return MatrixM::Identity() + A * dt;
+      if constexpr (DimM == Eigen::Dynamic) {
+        const auto n = this->dimension();
+        return MatrixM::Identity(n, n) + A * dt;
+      } else {
+        return MatrixM::Identity() + A * dt;
+      }
     } else {
       return MatrixM(expm(A * dt, K));
     }
@@ -193,10 +195,11 @@ class EquivariantFilter {
   void predictWithJacobian(const Lift& lift_u, const MatrixM& A,
                            const MatrixM& Qc, double dt) {
     // 1. Mean Propagation on Group
-    M xi_est = act_on_ref_(X_);             // Pure action
-    TangentVector Lambda = lift_u(xi_est);  // Pure lift
+    M xi_est = this->state();          // Pure action
+    TangentG Lambda = lift_u(xi_est);  // Pure lift
 
-    X_ = traits<G>::Compose(X_, traits<G>::Expmap(Lambda * dt));
+    g_ = traits<G>::Compose(g_, traits<G>::Expmap(Lambda * dt));
+    M xi_next = act_on_ref_(g_);
 
     // 2. Covariance Propagation on Manifold
     MatrixM Phi = transitionMatrix<K>(A, dt);
@@ -204,7 +207,7 @@ class EquivariantFilter {
     // Qc is manifold continuous-time covariance: Q_M = Qc * dt
     CovarianceM Q_manifold = Qc * dt;
 
-    P_ = Phi * P_ * Phi.transpose() + Q_manifold;
+    Base::predict(xi_next, Phi, Q_manifold);
   }
 
   /**
@@ -246,7 +249,7 @@ class EquivariantFilter {
    */
   template <typename Innovation>
   void update(const Innovation& innovation, const Eigen::MatrixXd& R) {
-    const M xi_hat = stateEstimate();
+    const M xi_hat = this->state();
     auto nu = innovation(xi_hat);
     using VectorZ = decltype(nu);
     static constexpr int DimZ = VectorZ::RowsAtCompileTime;
@@ -273,7 +276,7 @@ class EquivariantFilter {
   template <typename Innovation>
   void update(const Innovation& innovation, const Eigen::MatrixXd& R,
               const Eigen::MatrixXd& C) {
-    const M xi_hat = stateEstimate();
+    const M xi_hat = this->state();
     auto nu = innovation(xi_hat);
     updateInternal(nu, C, R);
   }
@@ -291,25 +294,19 @@ class EquivariantFilter {
                       const MatrixZ& R) {
     using MatrixMZ = Eigen::Matrix<double, DimM, VectorZ::RowsAtCompileTime>;
 
-    // Kalman Gain
-    // Evaluated strictly to avoid lazy evaluation issues when P_ updates
-    auto Ht = H.transpose();
-    MatrixZ S = H * P_ * Ht + R;
-    MatrixMZ K = P_ * Ht * S.inverse();
-
-    // Update Covariance (Joseph form)
-    MatrixM I_KH = MatrixM::Identity() - K * H;
-    P_ = I_KH * P_ * I_KH.transpose() + K * R * K.transpose();
+    MatrixMZ K = this->KalmanGain(H, R);
 
     // Correction in Manifold tangent space
     // K matches dimensions with innovation, so result is TangentM
     TangentM delta_xi = K * innovation;
 
     // Lift correction to Group tangent space
-    TangentVector delta_x = InnovationLift_ * delta_xi;
+    TangentG delta_x = InnovationLift_ * delta_xi;
+    g_ = traits<G>::Compose(traits<G>::Expmap(delta_x), g_);
+    this->X_ = act_on_ref_(g_);
 
-    // Update Group estimate
-    X_ = traits<G>::Compose(traits<G>::Expmap(delta_x), X_);
+    // Update covariance on Manifold using Joseph form
+    this->JosephUpdate(K, H, R);
   }
 };
 
