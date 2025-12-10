@@ -402,9 +402,7 @@ struct InputAction : public GroupAction<InputAction<N>, Group<N>, Vector6> {
   using G = Group<N>;
   static constexpr ActionType type = ActionType::Right;
 
-  Vector6 operator()(const Vector6& u, const G& X,
-                     OptionalJacobian<6, 6> H_u = {},
-                     OptionalJacobian<6, G::dimension> H_X = {}) const {
+  Vector6 operator()(const Vector6& u, const G& X) const {
     const Rot3 A = X.A();
     const Vector3 a = X.a();
     Vector6 result;

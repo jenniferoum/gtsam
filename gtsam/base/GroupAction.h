@@ -22,6 +22,8 @@
 #include <gtsam/base/OptionalJacobian.h>
 #include <gtsam/base/Testable.h>
 
+#include <type_traits>
+
 namespace gtsam {
 
 /// Enum to specify whether the action is a Left or Right action
@@ -53,11 +55,29 @@ struct Orbit : public Action {
   /// Constructor binding an explicit action instance (for stateful actions)
   Orbit(const M& m, const Action& a) : Action(a), m0(m) {}
 
-  M operator()(const G& g, OptionalJacobian<DimM, DimG> H = {}) const {
+  /// @brief  Apply the orbit to a group element.
+  M operator()(const G& g) const {
     if constexpr (Action::type == ActionType::Left) {
-      return Action::operator()(g, m0, H, {});  // H is Jacobian w.r.t g
+      return Action::operator()(g, m0);
     } else {
-      return Action::operator()(m0, g, {}, H);  // H is Jacobian w.r.t g
+      return Action::operator()(m0, g);
+    }
+  }
+
+  // Version with Jacobian request: requires the action to provide Jacobians.
+  template <typename A = Action,
+            typename = std::enable_if_t<
+                std::is_invocable_r_v<M, const A&, const G&, const M&,
+                                      OptionalJacobian<DimM, DimG>,
+                                      OptionalJacobian<DimM, DimM>> ||
+                std::is_invocable_r_v<M, const A&, const M&, const G&,
+                                      OptionalJacobian<DimM, DimM>,
+                                      OptionalJacobian<DimM, DimG>>>>
+  M operator()(const G& g, OptionalJacobian<DimM, DimG> H) const {
+    if constexpr (Action::type == ActionType::Left) {
+      return Action::operator()(g, m0, H, {});
+    } else {
+      return Action::operator()(m0, g, {}, H);
     }
   }
 };
@@ -85,11 +105,29 @@ struct Diffeomorphism : public Action {
   /// Constructor with explicit action instance
   Diffeomorphism(const G& g, const Action& a) : Action(a), g0(g) {}
 
-  M operator()(const M& m, OptionalJacobian<DimM, DimM> H = {}) const {
+  /// @brief Apply the diffeomorphism to a manifold point.
+  M operator()(const M& m) const {
     if constexpr (Action::type == ActionType::Left) {
-      return Action::operator()(g0, m, {}, H);  // H is Jacobian w.r.t m
+      return Action::operator()(g0, m);
     } else {
-      return Action::operator()(m, g0, H, {});  // H is Jacobian w.r.t m
+      return Action::operator()(m, g0);
+    }
+  }
+
+  // Version with Jacobian request: requires the action to provide Jacobians.
+  template <typename A = Action,
+            typename = std::enable_if_t<
+                std::is_invocable_r_v<M, const A&, const G&, const M&,
+                                      OptionalJacobian<DimM, DimG>,
+                                      OptionalJacobian<DimM, DimM>> ||
+                std::is_invocable_r_v<M, const A&, const M&, const G&,
+                                      OptionalJacobian<DimM, DimM>,
+                                      OptionalJacobian<DimM, DimG>>>>
+  M operator()(const M& m, OptionalJacobian<DimM, DimM> H) const {
+    if constexpr (Action::type == ActionType::Left) {
+      return Action::operator()(g0, m, {}, H);
+    } else {
+      return Action::operator()(m, g0, H, {});
     }
   }
 
@@ -101,6 +139,14 @@ struct Diffeomorphism : public Action {
    * standard way to transport vectors between tangent spaces induced by the
    * group action.
    */
+  template <typename A = Action,
+            typename = std::enable_if_t<
+                std::is_invocable_r_v<M, const A&, const G&, const M&,
+                                      OptionalJacobian<DimM, DimG>,
+                                      OptionalJacobian<DimM, DimM>> ||
+                std::is_invocable_r_v<M, const A&, const M&, const G&,
+                                      OptionalJacobian<DimM, DimM>,
+                                      OptionalJacobian<DimM, DimG>>>>
   typename traits<M>::TangentVector pushforward(
       const M& m, const typename traits<M>::TangentVector& v,
       OptionalJacobian<DimM, DimM> H = {}) const {
@@ -200,8 +246,7 @@ struct GroupAction {
     using Base = group_action::InducedVectorField<Derived, VectorField>;
     using Base::Base;  // inherit default/aux constructors
 
-    InducedVectorField(const Group& g, const VectorField& f)
-        : Base(g, f) {}
+    InducedVectorField(const Group& g, const VectorField& f) : Base(g, f) {}
 
     InducedVectorField(const Group& g, const VectorField& f,
                        const Derived& action)
@@ -233,10 +278,14 @@ inline bool leftActionEqual(const Action& phi, const G_& g1, const G_& g2,
   return assert_equal(left, right);
 }
 
-#define EXPECT_RIGHT_ACTION(phi, m, g1, g2) \
-  do { EXPECT(::gtsam::rightActionEqual((phi), (m), (g1), (g2))); } while (0)
+#define EXPECT_RIGHT_ACTION(phi, m, g1, g2)                    \
+  do {                                                         \
+    EXPECT(::gtsam::rightActionEqual((phi), (m), (g1), (g2))); \
+  } while (0)
 
-#define EXPECT_LEFT_ACTION(phi, g1, g2, m) \
-  do { EXPECT(::gtsam::leftActionEqual((phi), (g1), (g2), (m))); } while (0)
+#define EXPECT_LEFT_ACTION(phi, g1, g2, m)                    \
+  do {                                                        \
+    EXPECT(::gtsam::leftActionEqual((phi), (g1), (g2), (m))); \
+  } while (0)
 
 }  // namespace gtsam
