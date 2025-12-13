@@ -103,6 +103,12 @@ void Marginals::computeBayesTree(const Ordering& ordering) {
 /* ************************************************************************* */
 void Marginals::print(const std::string& str, const KeyFormatter& keyFormatter) const
 {
+  if (factorization_ == CHOLESKY)
+    cout << str << "Marginals using CHOLESKY factorization" << endl;
+  else if (factorization_ == QR)
+    cout << str << "Marginals using QR factorization" << endl;
+  else
+    cout << str << "Marginals using UNKNOWN factorization" << endl;
   graph_.print(str+"Graph: ");
   values_.print(str+"Solution: ", keyFormatter);
   bayesTree_.print(str+"Bayes Tree: ");
@@ -191,6 +197,11 @@ JointMarginal Marginals::jointMarginalInformation(const KeyVector& variables) co
 /* ************************************************************************* */
 VectorValues Marginals::optimize() const {
   return bayesTree_.optimize();
+}
+
+/* ************************************************************************* */
+void Marginals::deleteCachedShortcuts() {
+  bayesTree_.deleteCachedShortcuts();
 }
 
 /* ************************************************************************* */
