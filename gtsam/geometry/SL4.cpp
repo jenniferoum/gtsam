@@ -75,11 +75,6 @@ struct LogDeterminantResult {
   double logAbsDet;
 };
 
-// Threshold on |log(det)| below which we treat a negative sign as numerical.
-// We allow a generous tolerance to account for overflow when exponentiating
-// large trace-zero matrices.
-constexpr double kSignFlipLogTolerance = 1e3;
-
 LogDeterminantResult logDeterminantWithSign(const gtsam::Matrix4& pose) {
   const Eigen::FullPivLU<gtsam::Matrix4> lu(pose);
   double sign =
@@ -166,19 +161,13 @@ SL4 SL4::Expmap(const Vector& xi, SL4Jacobian H) {
   Matrix44 expA = A.exp();
   LogDeterminantResult logDet = logDeterminantWithSign(expA);
 
-  // The exponential of a trace-zero matrix should have det=1. If we see a
-  // negative sign but the magnitude is reasonable (within tolerance), treat it
-  // as a numerical sign flip and continue; otherwise reject.
-  if (logDet.sign < 0.0) {
-    if (std::abs(logDet.logAbsDet) < kSignFlipLogTolerance) {
-      logDet.sign = 1.0;  // ignore spurious sign
-    } else {
-      throw std::runtime_error("SL4::Expmap: Negative determinant from exp.");
-    }
-  }
-
-  if (logDet.sign == 0.0 || !std::isfinite(logDet.logAbsDet)) {
-    throw std::runtime_error("SL4::Expmap: Singular result from matrix exp.");
+  // The exponential of a trace-zero matrix should have det=1. A non-positive
+  // determinant indicates severe numerical instability that cannot be corrected
+  // by simple renormalization.
+  if (logDet.sign <= 0.0 || !std::isfinite(logDet.logAbsDet)) {
+    throw std::runtime_error(
+        "SL4::Expmap: Matrix exponential has non-positive or infinite "
+        "determinant, cannot project to SL(4).");
   }
 
   SL4 result;
