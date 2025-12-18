@@ -138,22 +138,9 @@ SL4 SL4::Expmap(const Vector& xi, SL4Jacobian H) {
   // The exponential of a trace-zero matrix should have determinant 1 by the property:
   // det(exp(A)) = exp(trace(A)) = exp(0) = 1.
   // However, for large tangent vectors, numerical errors in the matrix exponential
-  // can cause the determinant to drift from 1. We check for this and renormalize if needed.
+  // can cause the determinant to drift from 1. The constructor handles normalization.
   
   Matrix44 expA = A.exp();
-  
-  // Check if the result is numerically close to having determinant 1
-  // If so, we can return it directly without renormalization
-  double det = expA.determinant();
-  if (std::abs(det - 1.0) < 1e-6 && std::isfinite(det)) {
-    // Result is already close to det=1, use it directly
-    SL4 result;
-    result.T_ = expA;
-    return result;
-  }
-  
-  // For large tangent vectors, the determinant may drift significantly.
-  // In this case, we need to renormalize using the constructor.
   return SL4(expA);
 }
 
