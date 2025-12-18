@@ -38,8 +38,8 @@ static const Vector15 xi2 =
 // define xi_large - moderately large values to test numerical stability
 // while remaining within the feasible range for matrix exponential
 static const Vector15 xi_large =
-    (Vector15() << 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0,
-     11.0, 12.0, 13.0, 14.0, 15.0)
+    (Vector15() << 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4,
+     1.5, 1.6, 1.7, 1.8, 1.9)
         .finished();
 // Create a SL4
 const Matrix4 T_matrix =

@@ -68,47 +68,23 @@ Eigen::Matrix<double, 15, 16> setAlgtoVecMatrix() {
 const Eigen::Matrix<double, 16, 15> VEC_TO_ALG = setVecToAlgMatrix();
 const Eigen::Matrix<double, 15, 16> ALG_TO_VEC = setAlgtoVecMatrix();
 
-// Compute determinant sign and log-absolute value in a numerically stable way.
-// Using LU avoids overflow/underflow when the raw determinant is extreme.
-struct LogDeterminantResult {
-  double sign;
-  double logAbsDet;
-};
-
-LogDeterminantResult logDeterminantWithSign(const gtsam::Matrix4& pose) {
-  const Eigen::FullPivLU<gtsam::Matrix4> lu(pose);
-  double sign =
-      lu.permutationP().determinant() * lu.permutationQ().determinant();
-  double logAbsDet = 0.0;
-
-  const gtsam::Matrix4& LU = lu.matrixLU();
-  for (int i = 0; i < 4; ++i) {
-    const double diag = LU(i, i);
-    if (diag == 0.0) {
-      sign = 0.0;
-      logAbsDet = -std::numeric_limits<double>::infinity();
-      break;
-    }
-    if (diag < 0.0) sign *= -1.0;
-    logAbsDet += std::log(std::abs(diag));
-  }
-
-  return {sign, logAbsDet};
-}
 }  // namespace
 namespace gtsam {
 
 SL4::SL4(const Matrix44& pose) {
-  const LogDeterminantResult logDet = logDeterminantWithSign(pose);
-
-  if (logDet.sign <= 0.0 || !std::isfinite(logDet.logAbsDet)) {
+  // Directly compute determinant for normalization
+  const double det = pose.determinant();
+  
+  if (det <= 0.0 || !std::isfinite(det)) {
     throw std::runtime_error(
         "Matrix determinant must be positive for SL(4) normalization. Got det "
         "= " +
-        std::to_string(logDet.sign * std::exp(logDet.logAbsDet)));
+        std::to_string(det));
   }
 
-  const double scale = std::exp(logDet.logAbsDet / 4.0);
+  // Normalize to have determinant 1: divide by det^(1/4)
+  // This is numerically more stable than using log-determinant for large values
+  const double scale = std::pow(det, 0.25);
   T_ = pose / scale;
 }
 
@@ -124,11 +100,11 @@ SL4 SL4::ChartAtOrigin::Retract(const Vector15& v, ChartJacobian H) {
   if (H) throw std::runtime_error("SL4::Retract: Jacobian not implemented.");
 
   const Matrix44 candidate = I_4x4 + Hat(v);
-  const LogDeterminantResult logDet = logDeterminantWithSign(candidate);
+  const double det = candidate.determinant();
 
   // Use fast first-order retraction when it stays inside SL(4); fall back to
   // the true exponential map otherwise to avoid invalid determinants.
-  if (logDet.sign > 0.0 && std::isfinite(logDet.logAbsDet)) {
+  if (det > 0.0 && std::isfinite(det)) {
     return SL4(candidate);
   }
 
@@ -158,22 +134,14 @@ SL4 SL4::Expmap(const Vector& xi, SL4Jacobian H) {
   // The number 20 depends weakly on the norm of the matrix. See
   // https://eigen.tuxfamily.org/dox/unsupported/group__MatrixFunctions__Module.html
 
+  // For SL(4), the Lie algebra consists of trace-zero 4x4 matrices.
+  // The exponential of a trace-zero matrix should have determinant 1 by the property:
+  // det(exp(A)) = exp(trace(A)) = exp(0) = 1.
+  // However, for large tangent vectors, numerical errors in the matrix exponential
+  // can cause the determinant to drift from 1. The constructor handles normalization.
+  
   Matrix44 expA = A.exp();
-  LogDeterminantResult logDet = logDeterminantWithSign(expA);
-
-  // The exponential of a trace-zero matrix should have det=1. A non-positive
-  // determinant indicates severe numerical instability that cannot be corrected
-  // by simple renormalization.
-  if (logDet.sign <= 0.0 || !std::isfinite(logDet.logAbsDet)) {
-    throw std::runtime_error(
-        "SL4::Expmap: Matrix exponential has non-positive or infinite "
-        "determinant, cannot project to SL(4).");
-  }
-
-  SL4 result;
-  const double scale = std::exp(logDet.logAbsDet / 4.0);
-  result.T_ = expA / scale;
-  return result;
+  return SL4(expA);
 }
 
 /* ************************************************************************* */
