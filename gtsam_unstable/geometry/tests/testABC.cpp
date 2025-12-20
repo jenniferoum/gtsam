@@ -34,13 +34,13 @@ const Rot3 A1 = Rot3::Rx(0.1);
 const Vector3 t1(0.01, 0.02, 0.03);
 const Calibrations B1{Rot3::Ry(0.05), Rot3::Rz(0.06)};
 const State xi1(A1, t1, B1);
-const Group g1(A1, t1, B1);
+const Group g1{{A1, t1}, B1};
 
 const Rot3 A2 = Rot3::Ry(0.2);
 const Vector3 t2(0.04, 0.05, 0.06);
 const Calibrations B2{Rot3::Rz(0.07), Rot3::Rx(0.08)};
 const State xi2(A2, t2, B2);
-const Group g2(A2, t2, B2);
+const Group g2{{A2, t2}, B2};
 
 const Vector3 omega(1, 2, 3);
 const Vector6 u = abc::toInputVector(omega);
@@ -109,27 +109,35 @@ TEST(ABC, GroupOperations) {
 
   // Test group multiplication
   Group g1_g2 = g1 * g2;
-  EXPECT(assert_equal(g1_g2.A(), A1 * A2));
-  Vector3 expected_a = t1 + A1.matrix() * t2;
-  EXPECT(assert_equal(g1_g2.a(), expected_a));
-  EXPECT(assert_equal(g1_g2.calibrations()[0], B1[0] * B2[0]));
-  EXPECT(assert_equal(g1_g2.calibrations()[1], B1[1] * B2[1]));
+  {
+    auto [A, a, B] = abc::asTriple<2>(g1_g2);
+    EXPECT(assert_equal(A, A1 * A2));
+    Vector3 expected_a = t1 + A1.matrix() * t2;
+    EXPECT(assert_equal(a, expected_a));
+    EXPECT(assert_equal(B[0], B1[0] * B2[0]));
+    EXPECT(assert_equal(B[1], B1[1] * B2[1]));
+  }
 
   // Test inverse
   Group g1_inv = g1.inverse();
-  EXPECT(assert_equal(g1_inv.A(), A1.inverse()));
-  Vector3 expected_a_inv = -A1.inverse().matrix() * t1;
-  EXPECT(assert_equal(g1_inv.a(), expected_a_inv));
-  EXPECT(assert_equal(g1_inv.calibrations()[0], B1[0].inverse()));
-  EXPECT(assert_equal(g1_inv.calibrations()[1], B1[1].inverse()));
+  {
+    auto [A, a, B] = abc::asTriple<2>(g1_inv);
+    EXPECT(assert_equal(A, A1.inverse()));
+    Vector3 expected_a_inv = -A1.inverse().matrix() * t1;
+    EXPECT(assert_equal(a, expected_a_inv));
+    EXPECT(assert_equal(B[0], B1[0].inverse()));
+    EXPECT(assert_equal(B[1], B1[1].inverse()));
+  }
 
   // Test g * g.inv() == identity
   Group identity_check = g1 * g1_inv;
-  Group expected_identity = Group::Identity();
-  EXPECT(assert_equal(identity_check.A(), expected_identity.A()));
-  EXPECT(assert_equal(identity_check.a(), expected_identity.a()));
-  EXPECT(assert_equal(identity_check.calibrations(),
-                      expected_identity.calibrations()));
+  {
+    auto [A, a, B] = abc::asTriple<2>(identity_check);
+    Group expected_identity = Group::Identity();
+    EXPECT(assert_equal(A, Rot3()));
+    EXPECT(assert_equal(a, Vector3(0, 0, 0)));
+    EXPECT(assert_equal(B, {Rot3(), Rot3()}));
+  }
 
   // Test Expmap and Logmap
   Group::TangentVector v_tangent = Group::TangentVector::Zero();
@@ -143,19 +151,37 @@ TEST(ABC, GroupOperations) {
 
   // Test retract on G
   Group g_retracted = g1.expmap(v_tangent);
-
   const Group composed = g1 * Group::Expmap(v_tangent);
-  EXPECT(assert_equal(g_retracted.A(), composed.A()));
-  EXPECT(assert_equal(g_retracted.a(), composed.a()));
-  EXPECT(assert_equal(g_retracted.calibrations(), composed.calibrations()));
+  {
+    auto [rA, ra, rB] = abc::asTriple<2>(g_retracted);
+    auto [cA, ca, cB] = abc::asTriple<2>(composed);
+    EXPECT(assert_equal(rA, cA));
+    EXPECT(assert_equal(ra, ca));
+    EXPECT(assert_equal(rB, cB));
+  }
 
   // Test traits for G
-  const Group identity = Group::Identity();
-  EXPECT(assert_equal(traits<Group>::Identity().A(), identity.A()));
-  EXPECT(assert_equal(traits<Group>::Identity().a(), identity.a()));
-  EXPECT(assert_equal(traits<Group>::Identity().calibrations(),
-                      identity.calibrations()));
-  // testLie<Group>(g1, g2);
+  {
+    auto [A, a, B] = abc::asTriple<2>(traits<Group>::Identity());
+    EXPECT(assert_equal(A, Rot3()));
+    EXPECT(assert_equal(a, Vector3(0, 0, 0)));
+    EXPECT(assert_equal(B, {Rot3(), Rot3()}));
+  }
+}
+
+/* ************************************************************************* */
+/*
+ * Matrix representation of the Lie-algebra adjoint operator ad_xi on g. For
+ * this direct product group it is block-diagonal with Pose3 and Rot3 blocks.
+ */
+static Group::Jacobian adjointMap(const Group::TangentVector& xi) {
+  Group::Jacobian result = Group::Jacobian::Zero();
+  result.block<6, 6>(0, 0) = Pose3::adjointMap(xi.head<6>());
+  for (size_t i = 0; i < 2; ++i) {
+    result.block<3, 3>(6 + 3 * i, 6 + 3 * i) =
+        Rot3::adjointMap(xi.segment<3>(6 + 3 * i));
+  }
+  return result;
 }
 
 //******************************************************************************
@@ -163,15 +189,14 @@ TEST(ABC, GroupOperations) {
 TEST(ABC, AdjointMap) {
   using namespace abc_examples;
 
-  Group::Jacobian adjoint = g1.AdjointMap();
+  Group::Jacobian Ad1 = g1.AdjointMap();
   Group::Jacobian expected = Group::Jacobian::Zero();
-  expected.block<6, 6>(0, 0) = g1.pose().AdjointMap();
-  for (size_t i = 0; i < Group::numSensors; ++i) {
-    expected.block<3, 3>(6 + 3 * i, 6 + 3 * i) =
-        g1.calibrations()[i].AdjointMap();
+  expected.block<6, 6>(0, 0) = Pose3(A1, t1).AdjointMap();
+  for (size_t i = 0; i < 2; ++i) {
+    expected.block<3, 3>(6 + 3 * i, 6 + 3 * i) = B1[i].AdjointMap();
   }
 
-  EXPECT(assert_equal(adjoint, expected));
+  EXPECT(assert_equal(Ad1, expected));
 
   Group::TangentVector xi = Group::TangentVector::Zero();
   xi.head<3>() << 0.1, -0.2, 0.3;
@@ -179,7 +204,7 @@ TEST(ABC, AdjointMap) {
   xi.segment<3>(6) << 0.05, -0.04, 0.02;
   xi.segment<3>(9) << -0.03, 0.07, -0.01;
 
-  Group::Jacobian ad_xi = Group::adjointMap(xi);
+  Group::Jacobian ad_xi = adjointMap(xi);
   Group::Jacobian expected_ad = Group::Jacobian::Zero();
   expected_ad.block<6, 6>(0, 0) = Pose3::adjointMap(xi.head<6>());
   expected_ad.block<3, 3>(6, 6) = Rot3::adjointMap(xi.segment<3>(6));
@@ -196,15 +221,11 @@ TEST(ABC, Symmetry) {
   // Basic sanity check on state action
   Symmetry phi;
   State transformed_xi = phi(xi2, g1);
-  EXPECT(assert_equal(transformed_xi.R, xi2.R * g1.A()));
-  EXPECT(assert_equal<Matrix>(transformed_xi.b,
-                              g1.A().inverse().matrix() * (xi2.b - g1.a())));
-  EXPECT(assert_equal(transformed_xi.S[0],
-                      g1.A().inverse() * xi2.S[0] * g1.calibrations()[0],
-                      1e-9));
-  EXPECT(assert_equal(transformed_xi.S[1],
-                      g1.A().inverse() * xi2.S[1] * g1.calibrations()[1],
-                      1e-9));
+  EXPECT(assert_equal(transformed_xi.R, xi2.R * A1));
+  auto invA1 = A1.inverse();
+  EXPECT(assert_equal<Matrix>(transformed_xi.b, invA1.rotate(xi2.b - t1)));
+  EXPECT(assert_equal(transformed_xi.S[0], invA1 * xi2.S[0] * B1[0], 1e-9));
+  EXPECT(assert_equal(transformed_xi.S[1], invA1 * xi2.S[1] * B1[1], 1e-9));
 }
 
 /* ************************************************************************* */
@@ -277,12 +298,13 @@ Group::TangentVector xi = lift_u(state_est);
 /* ************************************************************************* */
 // Input action should map angular velocity as defined.
 TEST(ABC, InputOrbit) {
+  using abc_examples::A1;
+  using abc_examples::t1;
   using namespace abc_input_action_example;
 
   Vector6 transformed_u = psi_u(X_hat);
-  EXPECT(assert_equal<Vector>(
-      transformed_u.head<3>(),
-      X_hat.A().unrotate(abc_examples::omega - X_hat.a())));
+  EXPECT(assert_equal<Vector>(transformed_u.head<3>(),
+                              A1.unrotate(abc_examples::omega - t1)));
   EXPECT(assert_equal<Vector>(transformed_u.tail<3>(), Z_3x1,
                               1e-9));  // Virtual input stays zero
 
@@ -550,16 +572,22 @@ TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF) {
 
   Matrix Phi_expected = stateTransitionMatrix<2>(psi_u, X_hat, dt);
 
-  Group::Jacobian Df = abc::stateMatrixA(psi_u, X_hat) + Group::adjointMap(xi);
+  Group::Jacobian ad_xi = adjointMap(xi);
+  Group::Jacobian Df = abc::stateMatrixA(psi_u, X_hat) + ad_xi;
   Group::Jacobian P0 = Group::Jacobian::Identity();
   LieGroupEKF<Group> ekf(X_hat, P0);
 
   Group::Jacobian Dexp;
   Group U = Group::Expmap(xi * dt, &Dexp);
 
-  Group::Jacobian Phi_liekf = ekf.transitionMatrix<2>(xi, Df, dt, U, Dexp);
+  // Below does the same as
+  // Group::Jacobian Phi_ekf = ekf.transitionMatrix<2>(xi, Df, dt, U, Dexp);
+  // We inline as Group does not have adjointMap member function.
+  const size_t K = 2;
+  const Matrix A = Df - ad_xi;
+  Group::Jacobian Phi_ekf = expm(A * dt, K);
 
-  EXPECT(assert_equal(Phi_expected, Phi_liekf, 2e-5));
+  EXPECT(assert_equal(Phi_expected, Phi_ekf, 2e-5));
 }
 
 /* ************************************************************************* */
@@ -569,33 +597,35 @@ TEST(ABC, InputAction_stateTransitionMatchesLieGroupEKF_K1) {
 
   double dt = 1e-4;
 
-  Group::Jacobian Df = abc::stateMatrixA(psi_u, X_hat) + Group::adjointMap(xi);
+  Group::Jacobian Df = abc::stateMatrixA(psi_u, X_hat) + adjointMap(xi);
   Group::Jacobian P0 = Group::Jacobian::Identity();
   LieGroupEKF<Group> ekf(X_hat, P0);
 
   Group::Jacobian Dexp;
   Group U = Group::Expmap(xi * dt, &Dexp);
 
-  Group::Jacobian Phi_liekf = ekf.transitionMatrix<1>(xi, Df, dt, U, Dexp);
+  Group::Jacobian Phi_ekf = ekf.transitionMatrix<1>(xi, Df, dt, U, Dexp);
 
   Group::Jacobian Phi_expected = stateTransitionMatrix<2>(psi_u, X_hat, dt);
 
-  EXPECT(assert_equal(Phi_expected, Phi_liekf, 1e-6));
+  EXPECT(assert_equal(Phi_expected, Phi_ekf, 1e-6));
 }
 
 /* ************************************************************************* */
 // Input matrix Bt should match block-diagonal structure.
 TEST(ABC, InputAction_inputMatrix) {
   using namespace abc_input_action_example;
+  using abc_examples::A1;
+  using abc_examples::B1;
 
   Matrix input_matrix = abc::inputMatrixB(X_hat);
 
-  const Matrix3 A = X_hat.A().matrix();
+  const Matrix3 A = A1.matrix();
   Matrix expected_B1 = gtsam::diag({A, A});
   Matrix expected_B2(3 * 2, 3 * 2);
   expected_B2.setZero();
   for (size_t i = 0; i < 2; ++i) {
-    expected_B2.block<3, 3>(3 * i, 3 * i) = X_hat.calibrations()[i].matrix();
+    expected_B2.block<3, 3>(3 * i, 3 * i) = B1[i].matrix();
   }
   Matrix expected_input_matrix = gtsam::diag({expected_B1, expected_B2});
 
@@ -627,7 +657,7 @@ TEST(ABC, OutputOrbit) {
   OutputOrbit phi_y(y.unitVector(), abc::OutputAction<2>(cal_idx));
   Vector3 transformed_y_calibrated = phi_y(g1);
   EXPECT(assert_equal<Vector>(transformed_y_calibrated,
-                              g1.calibrations()[0].unrotate(y.unitVector())));
+                              B1[0].unrotate(y.unitVector())));
 
   // Test outputAction (uncalibrated sensor)
   int uncalibrated_idx = -1;
@@ -635,7 +665,7 @@ TEST(ABC, OutputOrbit) {
                                  abc::OutputAction<2>(uncalibrated_idx));
   Vector3 transformed_y_uncalibrated = uncalibrated_phi_y(g1);
   EXPECT(assert_equal<Vector>(transformed_y_uncalibrated,
-                              g1.A().unrotate(y.unitVector())));
+                              A1.unrotate(y.unitVector())));
 }
 
 /* ************************************************************************* */
@@ -689,10 +719,10 @@ TEST(ABC, ComputeMeasurementMatrix) {
 /* ************************************************************************* */
 // Regression expectations for EqFilter predict/update.
 namespace abc_eqf_regression {
-const Group expected_predict(Rot3(1, 0.00015, -0.0004,  //
-                                  -0.00015, 1, 3e-08,   //
-                                  0.0004, 3e-08, 1),
-                             Point3(9.00091e-06, 1.49932e-06, -3.9982e-06),
+const Group expected_predict({Rot3(1, 0.00015, -0.0004,  //
+                                   -0.00015, 1, 3e-08,   //
+                                   0.0004, 3e-08, 1),
+                              Point3(9.00091e-06, 1.49932e-06, -3.9982e-06)},
                              {Rot3(1, 0.000149811, -0.000400001,   //
                                    -0.000149814, 1, -7.46691e-06,  //
                                    0.000399999, 7.52684e-06, 1),
@@ -715,10 +745,11 @@ const Matrix expected_P_after_predict =
      0, 0, 0, 0, 0, 0, 0, 0, 0, -0, 0, 0.1)
         .finished();
 
-const Group expected_after_update(Rot3(0.995195, -0.097908, -0.000400003,  //
-                                       0.097908, 0.995195, 2.98008e-08,    //
-                                       0.000398078, -3.91931e-05, 1),
-                                  Point3(0.00201816, -0.000882995, 8.60911e-05),
+const Group expected_after_update({Rot3(0.995195, -0.097908, -0.000400003,  //
+                                        0.097908, 0.995195, 2.98008e-08,    //
+                                        0.000398078, -3.91931e-05, 1),
+                                   Point3(0.00201816, -0.000882995,
+                                          8.60911e-05)},
                                   {Rot3(0.548024, -0.836459, -0.00263326,  //
                                         0.83646, 0.548012, 0.00413976,     //
                                         -0.00201968, -0.0044713, 0.999988),

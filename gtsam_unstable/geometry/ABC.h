@@ -149,79 +149,13 @@ struct State {
  * part acting on (R, b) and Calibrations<n> handles the N extrinsic rotations.
  */
 template <size_t n>
-struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
-  using Base = ProductLieGroup<Pose3, Calibrations<n>>;
-  using typename Base::ChartJacobian;
-  using typename Base::Jacobian;
-  using typename Base::TangentVector;
+using Group = ProductLieGroup<Pose3, Calibrations<n>>;
 
-  static constexpr int dimension = Base::dimension;
-  static constexpr size_t numSensors = n;
-
-  Group() : Base() {}
-  Group(const Base& base) : Base(base) {}
-  Group(const Rot3& A, const Vector3& a, const Calibrations<n>& B)
-      : Base(Pose3(A, a), B) {}
-
-  static Group Identity() { return Group(); }
-
-  Group operator*(const Group& other) const {
-    return Group(Base::operator*(other));
-  }
-
-  Group compose(const Group& other, ChartJacobian H1 = ChartJacobian(),
-                ChartJacobian H2 = ChartJacobian()) const {
-    return Group(Base::compose(other, H1, H2));
-  }
-
-  Group between(const Group& other, ChartJacobian H1 = ChartJacobian(),
-                ChartJacobian H2 = ChartJacobian()) const {
-    return Group(Base::between(other, H1, H2));
-  }
-
-  Group inverse(ChartJacobian D = ChartJacobian()) const {
-    return Group(Base::inverse(D));
-  }
-
-  Group retract(const TangentVector& v, ChartJacobian H1 = ChartJacobian(),
-                ChartJacobian H2 = ChartJacobian()) const {
-    return Group(Base::retract(v, H1, H2));
-  }
-
-  Group expmap(const TangentVector& v) const { return Group(Base::expmap(v)); }
-
-  TangentVector logmap(const Group& g) const { return Base::logmap(g); }
-
-  static Group Expmap(const TangentVector& v,
-                      ChartJacobian Hv = ChartJacobian()) {
-    return Group(Base::Expmap(v, Hv));
-  }
-
-  static TangentVector Logmap(const Group& g,
-                              ChartJacobian Hg = ChartJacobian()) {
-    return Base::Logmap(g, Hg);
-  }
-
-  /**
-   * Matrix representation of the Lie-algebra adjoint operator ad_xi on g.
-   * For this direct product group it is block-diagonal with Pose3 and Rot3
-   * blocks.
-   */
-  static Jacobian adjointMap(const TangentVector& xi) {
-    Jacobian result = Jacobian::Zero();
-    result.template block<6, 6>(0, 0) =
-        Pose3::adjointMap(xi.template head<6>());
-    for (size_t i = 0; i < n; ++i) {
-      result.template block<3, 3>(6 + 3 * i, 6 + 3 * i) =
-          Rot3::adjointMap(xi.template segment<3>(6 + 3 * i));
-    }
-    return result;
-  }
-
-  const Pose3& pose() const { return this->first; }
-  Rot3 A() const { return this->first.rotation(); }
-  Vector3 a() const { return this->first.translation(); }
-  const Calibrations<n>& calibrations() const { return this->second; }
+/// @brief Unpack g into A, a, and B
+template <size_t N>
+auto asTriple = [](const Group<N>& g)
+    -> std::tuple<const Rot3&, const Vector3&, const Calibrations<N>&> {
+  return std::tie(g.first.rotation(), g.first.translation(), g.second);
 };
 
 //========================================================================
@@ -248,14 +182,14 @@ struct Symmetry : public GroupAction<Symmetry<N>, Group<N>, State<N>> {
   M operator()(const M& xi, const G& g,
                OptionalJacobian<M::dimension, M::dimension> Hm = {},
                OptionalJacobian<M::dimension, G::dimension> Hg = {}) const {
-    const Rot3 new_R = xi.R * g.A();
+    auto [A, a, B] = asTriple<N>(g);
+    const Rot3 new_R = xi.R * A;
     Matrix3 skew_p, At;  // derivatives of unrotate
-    const Point3 p = xi.b - g.a();
+    const Point3 p = xi.b - a;
     const Vector3 new_b =
-        g.A().unrotate(p, Hg ? &skew_p : nullptr, (Hg || Hm) ? &At : nullptr);
+        A.unrotate(p, Hg ? &skew_p : nullptr, (Hg || Hm) ? &At : nullptr);
     Calibrations<N> new_S;
-    const Calibrations<N>& B = g.calibrations();
-    Rot3 invA = g.A().inverse();  // derivative is (- A)
+    Rot3 invA = A.inverse();  // derivative is (- A)
     for (size_t i = 0; i < N; i++) {
       Rot3 SB = xi.S[i].compose(B[i]);  // derivative in B[i] is identity
       new_S[i] = invA.compose(SB);      // derivative in invA is SB^{-1}.
@@ -275,8 +209,7 @@ struct Symmetry : public GroupAction<Symmetry<N>, Group<N>, State<N>> {
       // multiplication by B[i]ᵀ in vector form.
       for (size_t i = 0; i < N; ++i) {
         const size_t row = 6 + 3 * i;
-        const Matrix3 BiT = g.calibrations()[i].matrix().transpose();
-        Hm->template block<3, 3>(row, row) = BiT;
+        Hm->template block<3, 3>(row, row) = B[i].transpose();
       }
     }
     if (Hg) {
@@ -289,12 +222,12 @@ struct Symmetry : public GroupAction<Symmetry<N>, Group<N>, State<N>> {
       Hg->template block<3, 3>(3, 3) = -I_3x3;  // - At * A (from translation()
 
       // Calibration blocks:
-      Matrix3 A = g.A().matrix();
+      Matrix3 A_matrix = A.matrix();
       for (size_t i = 0; i < N; ++i) {
         Rot3 SB = xi.S[i].compose(B[i]);
         const size_t row = 6 + 3 * i;
         const size_t col = 6 + 3 * i;
-        Hg->template block<3, 3>(row, 0) = -SB.transpose() * A;
+        Hg->template block<3, 3>(row, 0) = -SB.transpose() * A_matrix;
         Hg->template block<3, 3>(row, col) = I_3x3;
       }
     }
@@ -385,8 +318,8 @@ struct InputAction : public GroupAction<InputAction<N>, Group<N>, Vector6> {
   static constexpr ActionType type = ActionType::Right;
 
   Vector6 operator()(const Vector6& u, const G& X) const {
-    const Rot3 A = X.A();
-    const Vector3 a = X.a();
+    const Rot3& A = X.first.rotation();
+    const Vector3& a = X.first.translation();
     Vector6 result;
     result.head<3>() = A.unrotate(u.head<3>() - a);
     result.tail<3>() = Z_3x1;
@@ -420,13 +353,15 @@ inline Matrix stateMatrixA(const typename InputAction<N>::Orbit& psi_u,
 
 /// Compute the input matrix B(X_hat).
 template <size_t N>
-inline Matrix inputMatrixB(const Group<N>& X_hat) {
-  const Matrix3 A_matrix = X_hat.A().matrix();
+inline Matrix inputMatrixB(const Group<N>& g) {
+  const Rot3& A = g.first.rotation();
+  const Calibrations<N>& B = g.second;
+  const Matrix3 A_matrix = A.matrix();
   Matrix B1 = gtsam::diag({A_matrix, A_matrix});
   Matrix B2(3 * N, 3 * N);
   B2.setZero();
   for (size_t i = 0; i < N; ++i) {
-    B2.block<3, 3>(3 * i, 3 * i) = X_hat.calibrations()[i].matrix();
+    B2.block<3, 3>(3 * i, 3 * i) = B[i].matrix();
   }
   return gtsam::diag({B1, B2});
 }
@@ -447,15 +382,15 @@ struct OutputAction : public GroupAction<OutputAction<N>, Group<N>, Vector3> {
                      OptionalJacobian<3, 3> H_y = {},
                      OptionalJacobian<3, G::dimension> H_X = {}) const {
     if (H_X) H_X->setZero();
+    auto [A, a, B] = asTriple<N>(X);
     if (index_ == -1) {
       Matrix3 H_rot;
-      Vector3 res = X.A().unrotate(y, H_X ? &H_rot : nullptr, H_y);
+      Vector3 res = A.unrotate(y, H_X ? &H_rot : nullptr, H_y);
       if (H_X) H_X->template block<3, 3>(0, 0) = H_rot;
       return res;
     } else {
       Matrix3 H_rot;
-      Vector3 res =
-          X.calibrations()[index_].unrotate(y, H_X ? &H_rot : nullptr, H_y);
+      Vector3 res = B[index_].unrotate(y, H_X ? &H_rot : nullptr, H_y);
       if (H_X) H_X->template block<3, 3>(0, 6 + 3 * index_) = H_rot;
       return res;
     }
@@ -498,8 +433,8 @@ struct Innovation {
     // Recover A and B_i from (xi_ref_, xi_hat) using the symmetry formulas:
     //   R_hat = R0 * A,   S_hat[i] = Aᵀ * S0[i] * B[i]
     const Rot3 R0 = xi_ref_.R;
-    const Rot3 Rhat = xi_hat.R;
-    const Rot3 A = R0.inverse() * Rhat;
+    const Rot3 R_hat = xi_hat.R;
+    const Rot3 A = R0.inverse() * R_hat;
 
     Vector3 transformed_y;
     if (index_ == -1) {
