@@ -465,10 +465,11 @@ struct Innovation {
 
 template <size_t N>
 inline Matrix3 outputMatrixD(const Group<N>& X_hat, int index) {
+  auto [A, a, B] = asTriple<N>(X_hat);
   if (index >= 0) {
-    return X_hat.calibrations()[index].matrix();
+    return B[index].matrix();
   } else {
-    return X_hat.A().matrix();
+    return A.matrix();
   }
 }
 
