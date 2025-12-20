@@ -111,22 +111,22 @@ TEST(ABC, GroupOperations) {
   Group g1_g2 = g1 * g2;
   {
     auto [A, a, B] = abc::asTriple<2>(g1_g2);
-    EXPECT(assert_equal(A, A1 * A2));
+    EXPECT(assert_equal(A1 * A2, A));
     Vector3 expected_a = t1 + A1.matrix() * t2;
-    EXPECT(assert_equal(a, expected_a));
-    EXPECT(assert_equal(B[0], B1[0] * B2[0]));
-    EXPECT(assert_equal(B[1], B1[1] * B2[1]));
+    EXPECT(assert_equal(expected_a, a));
+    EXPECT(assert_equal(B1[0] * B2[0], B[0]));
+    EXPECT(assert_equal(B1[1] * B2[1], B[1]));
   }
 
   // Test inverse
   Group g1_inv = g1.inverse();
   {
     auto [A, a, B] = abc::asTriple<2>(g1_inv);
-    EXPECT(assert_equal(A, A1.inverse()));
+    EXPECT(assert_equal(A1.inverse(), A));
     Vector3 expected_a_inv = -A1.inverse().matrix() * t1;
-    EXPECT(assert_equal(a, expected_a_inv));
-    EXPECT(assert_equal(B[0], B1[0].inverse()));
-    EXPECT(assert_equal(B[1], B1[1].inverse()));
+    EXPECT(assert_equal(expected_a_inv, a));
+    EXPECT(assert_equal(B1[0].inverse(), B[0]));
+    EXPECT(assert_equal(B1[1].inverse(), B[1]));
   }
 
   // Test g * g.inv() == identity
@@ -134,9 +134,9 @@ TEST(ABC, GroupOperations) {
   {
     auto [A, a, B] = abc::asTriple<2>(identity_check);
     Group expected_identity = Group::Identity();
-    EXPECT(assert_equal(A, Rot3()));
-    EXPECT(assert_equal(a, Vector3(0, 0, 0)));
-    EXPECT(assert_equal(B, {Rot3(), Rot3()}));
+    EXPECT(assert_equal(Rot3(), A));
+    EXPECT(assert_equal(Vector3(0, 0, 0), a));
+    EXPECT(assert_equal(Calibrations{Rot3(), Rot3()}, B));
   }
 
   // Test Expmap and Logmap
@@ -147,7 +147,7 @@ TEST(ABC, GroupOperations) {
   v_tangent.segment<3>(9) << 0.07, 0.08, 0.09;  // For B[1]
 
   Group g_exp = Group::Expmap(v_tangent);
-  EXPECT(assert_equal(Group::Logmap(g_exp), v_tangent));
+  EXPECT(assert_equal(v_tangent, Group::Logmap(g_exp)));
 
   // Test retract on G
   Group g_retracted = g1.expmap(v_tangent);
@@ -155,17 +155,18 @@ TEST(ABC, GroupOperations) {
   {
     auto [rA, ra, rB] = abc::asTriple<2>(g_retracted);
     auto [cA, ca, cB] = abc::asTriple<2>(composed);
-    EXPECT(assert_equal(rA, cA));
-    EXPECT(assert_equal(ra, ca));
-    EXPECT(assert_equal(rB, cB));
+    EXPECT(assert_equal(cA, rA));
+    EXPECT(assert_equal(ca, ra));
+    EXPECT(assert_equal(cB, rB));
   }
 
   // Test traits for G
   {
-    auto [A, a, B] = abc::asTriple<2>(traits<Group>::Identity());
-    EXPECT(assert_equal(A, Rot3()));
-    EXPECT(assert_equal(a, Vector3(0, 0, 0)));
-    EXPECT(assert_equal(B, {Rot3(), Rot3()}));
+    const Group identity = traits<Group>::Identity();
+    auto [A, a, B] = abc::asTriple<2>(identity);
+    EXPECT(assert_equal(Rot3(), A));
+    EXPECT(assert_equal(Vector3(0, 0, 0), a));
+    EXPECT(assert_equal(Calibrations{Rot3(), Rot3()}, B));
   }
 }
 
