@@ -47,21 +47,6 @@ namespace gtsam {
  * Prediction requires providing the predicted next state and the state
  * transition Jacobian F. Updates apply a measurement function h and correct the
  * state using the tangent space error.
- *
- * **Handling Static and Dynamic Dimensions:**
- * The filter supports manifolds M with either a compile-time fixed dimension or
- * a runtime dynamic dimension. This is determined by
- * `gtsam::traits<M>::dimension`.
- * - If `dimension` is an integer (e.g., 3, 6), it's a fixed-size manifold.
- * - If `dimension` is `Eigen::Dynamic`, it's a dynamically-sized manifold. In
- * this case, `gtsam::traits<M>::GetDimension(const M&)` must be available to
- * retrieve the actual dimension at runtime. The internal protected member `n_`
- * stores this runtime dimension. Covariance matrices (e.g., `P_`, method
- * argument `Q`) and Jacobians (e.g., method argument `F`) are typed using
- * `Covariance` and `Jacobian` typedefs, which are specializations of
- * `Eigen::Matrix<double, Dim, Dim>`, where `Dim` is `traits<M>::dimension`.
- * For dynamically-sized manifolds (`Dim == Eigen::Dynamic`), these Eigen types
- * represent dynamically-sized matrices.
  */
 template <typename M>
 class ManifoldEKF {
@@ -85,8 +70,8 @@ class ManifoldEKF {
     static_assert(IsManifold<M>::value,
                   "Template parameter M must be a GTSAM Manifold.");
 
+    n_ = traits<M>::GetDimension(X0);
     if constexpr (Dim == Eigen::Dynamic) {
-      n_ = traits<M>::GetDimension(X0);
       // Validate dimensions of initial covariance P0.
       if (P0.rows() != n_ || P0.cols() != n_) {
         throw std::invalid_argument(
@@ -97,7 +82,6 @@ class ManifoldEKF {
       }
       I_ = Jacobian::Identity(n_, n_);
     } else {
-      n_ = Dim;
       I_ = Jacobian::Identity();
     }
 
@@ -162,11 +146,9 @@ class ManifoldEKF {
    * Measurement update: Corrects the state and covariance using a
    * pre-calculated predicted measurement and its Jacobian.
    *
-   * @tparam Measurement Type of the measurement vector (e.g., VectorN<m>,
-   * Vector).
+   * @tparam Measurement type of the measurement space.
    * @param prediction Predicted measurement.
-   * @param H Jacobian of the measurement function h w.r.t. local(X), H =
-   * dh/dlocal(X).
+   * @param H Jacobian of the measurement function h.
    * @param z Observed measurement.
    * @param R Measurement noise covariance.
    */
@@ -203,10 +185,8 @@ class ManifoldEKF {
    * Measurement update: Corrects the state and covariance using a measurement
    * model function.
    *
-   * @tparam Measurement Type of the measurement vector.
-   * @tparam MeasurementFunction Functor/lambda providing measurement and its
-   * Jacobian. Signature: `Measurement h(const M& x, Jac& H_jacobian)` where H =
-   * d(h)/d(local(X)).
+   * @tparam Measurement type of the measurement space.
+   * @tparam MeasurementFunction Functor/lambda providing measurement+Jacobian.
    * @param h Measurement model function.
    * @param z Observed measurement.
    * @param R Measurement noise covariance.
@@ -218,21 +198,12 @@ class ManifoldEKF {
     static_assert(IsManifold<Measurement>::value,
                   "Template parameter Measurement must be a GTSAM Manifold.");
 
-    static constexpr int MeasDim = traits<Measurement>::dimension;
-
-    int m_runtime;
-    if constexpr (MeasDim == Eigen::Dynamic) {
-      m_runtime = traits<Measurement>::GetDimension(z);
-    } else {
-      m_runtime = MeasDim;
-    }
-
     // Predict measurement and get Jacobian H = dh/dlocal(X)
-    Matrix H(m_runtime, n_);
+    Matrix H(traits<Measurement>::GetDimension(z), n_);
     Measurement prediction = h(X_, H);
 
     // Call the other update function
-    update(prediction, H, z, R);
+    update<Measurement>(prediction, H, z, R);
   }
 
   /// Convenience bridge for wrappers: vector measurement update calling
@@ -241,10 +212,15 @@ class ManifoldEKF {
   /// gtsam::Vector (dynamic size).
   void updateWithVector(const gtsam::Vector& prediction, const Matrix& H,
                         const gtsam::Vector& z, const Matrix& R) {
-    // Basic dimension checks for dynamic-sized measurement
-    const int m = static_cast<int>(prediction.size());
+    validateInputs(prediction, H, z, R);
+    update<Vector>(prediction, H, z, R);
+  }
 
-    // Validate sizes, as often called from wrapper.
+ protected:
+  /// Validate inputs to update.
+  void validateInputs(const gtsam::Vector& prediction, const Matrix& H,
+                      const gtsam::Vector& z, const Matrix& R) {
+    const int m = static_cast<int>(prediction.size());
     if (static_cast<int>(z.size()) != m) {
       throw std::invalid_argument(
           "ManifoldEKF::updateWithVector: prediction and z must have same "
@@ -260,9 +236,6 @@ class ManifoldEKF {
           "ManifoldEKF::updateWithVector: R must be m x m where m = "
           "measurement size.");
     }
-
-    // Forward to templated update with Measurement = Vector
-    this->template update<Vector>(prediction, H, z, R);
   }
 
  protected:
