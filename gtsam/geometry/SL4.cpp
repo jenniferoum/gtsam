@@ -10,6 +10,7 @@
 #include <cmath>
 #include <limits>
 #include <unsupported/Eigen/MatrixFunctions>
+#include <Eigen/SVD>
 
 using namespace std;
 
@@ -72,20 +73,34 @@ const Eigen::Matrix<double, 15, 16> ALG_TO_VEC = setAlgtoVecMatrix();
 namespace gtsam {
 
 SL4::SL4(const Matrix44& pose) {
-  // Directly compute determinant for normalization
-  const double det = pose.determinant();
+  // Compute SVD: pose = U * S * V^T
+  Eigen::JacobiSVD<Matrix44> svd(pose, Eigen::ComputeFullU | Eigen::ComputeFullV);
+
+  Matrix44 U = svd.matrixU();
+  const Matrix44 V = svd.matrixV();
+  const Vector4 S = svd.singularValues();
+
+  // Handle Orientation (Negative Determinant / Reflection)
+  double detUV = (U * V.transpose()).determinant();
   
-  if (det <= 0.0 || !std::isfinite(det)) {
-    throw std::runtime_error(
-        "Matrix determinant must be positive for SL(4) normalization. Got det "
-        "= " +
-        std::to_string(det));
+  if (detUV < 0.0) {
+    U.col(3) = -U.col(3);
   }
 
-  // Normalize to have determinant 1: divide by det^(1/4)
-  // This is numerically more stable than using log-determinant for large values
-  const double scale = std::pow(det, 0.25);
-  T_ = pose / scale;
+  // Reconstruct the matrix with corrected orientation
+  Matrix44 M_corrected = U * S.asDiagonal() * V.transpose();
+  double current_det_mag = S.prod();
+  
+   // Check for Singularity
+  if (current_det_mag <= std::numeric_limits<double>::epsilon() || !std::isfinite(current_det_mag)) {
+    throw std::runtime_error(
+        "SL4 Constructor: Input matrix is singular or invalid. " 
+        "SVD singular values product = " + std::to_string(current_det_mag));
+  }
+
+  // Normalize: T = M / det^(1/4)
+  double scale = std::pow(current_det_mag, 0.25);
+  T_ = M_corrected / scale;
 }
 
 /* ************************************************************************* */
