@@ -74,22 +74,22 @@ namespace gtsam {
 
 SL4::SL4(const Matrix44& pose) {
   // Compute SVD: pose = U * S * V^T
-  Eigen::JacobiSVD<Matrix44> svd(pose, Eigen::ComputeFullU | Eigen::ComputeFullV);
+  const Eigen::JacobiSVD<Matrix44> svd(pose, Eigen::ComputeFullU | Eigen::ComputeFullV);
 
   Matrix44 U = svd.matrixU();
   const Matrix44 V = svd.matrixV();
   const Vector4 S = svd.singularValues();
 
   // Handle Orientation (Negative Determinant / Reflection)
-  double detUV = (U * V.transpose()).determinant();
+  const double detUV = (U * V.transpose()).determinant();
   
   if (detUV < 0.0) {
     U.col(3) = -U.col(3);
   }
 
   // Reconstruct the matrix with corrected orientation
-  Matrix44 M_corrected = U * S.asDiagonal() * V.transpose();
-  double current_det_mag = S.prod();
+  const Matrix44 M_corrected = U * S.asDiagonal() * V.transpose();
+  const double current_det_mag = S.prod();
   
    // Check for Singularity
   if (current_det_mag <= std::numeric_limits<double>::epsilon() || !std::isfinite(current_det_mag)) {
@@ -99,7 +99,7 @@ SL4::SL4(const Matrix44& pose) {
   }
 
   // Normalize: T = M / det^(1/4)
-  double scale = std::pow(current_det_mag, 0.25);
+  const double scale = std::pow(current_det_mag, 0.25);
   T_ = M_corrected / scale;
 }
 
