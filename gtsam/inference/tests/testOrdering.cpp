@@ -373,7 +373,7 @@ TEST(Ordering, MetisDisconnectedGraph) {
   EXPECT(adjExpected == mi.adj());
 
   Ordering metis = Ordering::Metis(symbolicGraph);
-#if defined(__APPLE__) || defined(__QNX__)
+#if defined(__APPLE__) || defined(_WIN32)
   Ordering expected{0, 1, 2, 3};
 #else
   Ordering expected{2, 3, 0, 1};
