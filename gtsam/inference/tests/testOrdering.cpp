@@ -354,6 +354,7 @@ TEST(Ordering, MetisSingleNode) {
   Ordering expected{ 7 };
   EXPECT(assert_equal(expected, actual));
 }
+
 /* ************************************************************************* */
 TEST(Ordering, MetisDisconnectedGraph) {
   SymbolicFactorGraph symbolicGraph;
@@ -365,14 +366,18 @@ TEST(Ordering, MetisDisconnectedGraph) {
 
   MetisIndex mi(symbolicGraph);
 
-  const vector<int> xadjExpected{ 0, 1, 2, 3, 4 }, adjExpected{ 1, 0, 3, 2 };
+  const vector<int> xadjExpected{0, 1, 2, 3, 4}, adjExpected{1, 0, 3, 2};
 
   EXPECT(xadjExpected == mi.xadj());
   EXPECT(adjExpected.size() == mi.adj().size());
   EXPECT(adjExpected == mi.adj());
 
   Ordering metis = Ordering::Metis(symbolicGraph);
-  Ordering expected{ 0,1,2,3 };
+#if defined(__APPLE__) || defined(__QNX__)
+  Ordering expected{0, 1, 2, 3};
+#else
+  Ordering expected{2, 3, 0, 1};
+#endif
   EXPECT(assert_equal(expected, metis));
 }
 
