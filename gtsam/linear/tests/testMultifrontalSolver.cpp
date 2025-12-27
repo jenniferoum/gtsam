@@ -20,6 +20,7 @@
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/linear/GaussianBayesTree.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
+#include <gtsam/linear/MultifrontalClique.h>
 #include <gtsam/linear/MultifrontalSolver.h>
 #include <tests/smallExample.h>
 
@@ -56,26 +57,26 @@ TEST(MultifrontalSolver, Constructor) {
 
   // Root should be {x3, x4} (merged)
   // Frontals: x3, x4
-  EXPECT_LONGS_EQUAL(2, root->frontalKeys.size());
-  EXPECT_LONGS_EQUAL(x3, root->frontalKeys[0]);
-  EXPECT_LONGS_EQUAL(x4, root->frontalKeys[1]);
+  EXPECT_LONGS_EQUAL(2, root->frontals().size());
+  EXPECT_LONGS_EQUAL(x3, root->frontals()[0]);
+  EXPECT_LONGS_EQUAL(x4, root->frontals()[1]);
 
   // Root should have 1 child {x2, x1}
-  EXPECT_LONGS_EQUAL(1, root->children.size());
-  auto c1 = root->children[0];
+  EXPECT_LONGS_EQUAL(1, root->children().size());
+  auto c1 = root->children()[0];
 
   // Verify matrices in leaf (c1)
-  EXPECT_LONGS_EQUAL(4, c1->sbm.nBlocks());
-  EXPECT_LONGS_EQUAL(2, c1->Ab.rows());
-  EXPECT_LONGS_EQUAL(4, c1->Ab.nBlocks());
+  EXPECT_LONGS_EQUAL(4, c1->sbm().nBlocks());
+  EXPECT_LONGS_EQUAL(2, c1->Ab().rows());
+  EXPECT_LONGS_EQUAL(4, c1->Ab().nBlocks());
 
   // Verify initial load for c1
   // Block 0 (x2):
-  Matrix A0 = c1->Ab(0);  // 2x1
+  Matrix A0 = c1->Ab()(0);  // 2x1
   EXPECT(assert_equal((Matrix(2, 1) << 1., 1.).finished(), A0));
 
   // Block 3 (RHS):
-  Matrix Ab = c1->Ab(3);  // 2x1
+  Matrix Ab = c1->Ab()(3);  // 2x1
   EXPECT(assert_equal((Matrix(2, 1) << 1., 1.).finished(), Ab));
 }
 
@@ -99,10 +100,10 @@ TEST(MultifrontalSolver, Load) {
 
   // Verify values in c1
   auto root = solver.roots()[0];
-  auto c1 = root->children[0];
+  auto c1 = root->children()[0];
 
   // Block 0 (x2) should now be 2.0
-  Matrix A0 = c1->Ab(0);
+  Matrix A0 = c1->Ab()(0);
   EXPECT(assert_equal((Matrix(2, 1) << 2., 2.).finished(), A0));
 }
 
@@ -124,59 +125,62 @@ TEST(MultifrontalSolver, Eliminate) {
 /* ************************************************************************* */
 TEST(MultifrontalSolver, BalancedSmoother) {
   // Create smoother with 7 nodes
-  GaussianFactorGraph smoother = example::createSmoother(7);
+  auto [nlfg, poses] = example::createNonlinearSmoother(7);
+  poses.print("Poses:");
+  poses.update(X(1), Point2(1.1, 0.2));
+  GaussianFactorGraph smoother = *nlfg.linearize(poses);
 
   // Create the Bayes tree ordering
   const Ordering ordering{X(1), X(3), X(5), X(7), X(2), X(6), X(4)};
 
   MultifrontalSolver solver(smoother, ordering);
+  std::cout << solver << std::endl;
+  solver.print();
 
   // Verify roots
   EXPECT(solver.roots().size() == 1);
   auto root = solver.roots()[0];
 
-  EXPECT_LONGS_EQUAL(root->frontalKeys.size() + root->separatorKeys.size() + 1,
-                     root->sbm.nBlocks());
+  EXPECT_LONGS_EQUAL(root->frontals().size() + root->separatorKeys().size() + 1,
+                     root->sbm().nBlocks());
 
   // Check a leaf clique (for X(1))
   MultifrontalSolver::CliquePtr cX1 = nullptr;
   std::function<void(MultifrontalSolver::CliquePtr)> findX1 =
       [&](MultifrontalSolver::CliquePtr c) {
-        for (Key k : c->frontalKeys)
+        for (Key k : c->frontals())
           if (k == X(1)) cX1 = c;
-        for (auto child : c->children) findX1(child);
+      for (auto child : c->children()) findX1(child);
       };
   findX1(root);
 
   EXPECT(cX1 != nullptr);
-  EXPECT_LONGS_EQUAL(3, cX1->sbm.nBlocks());
+  EXPECT_LONGS_EQUAL(3, cX1->sbm().nBlocks());
+
+  // Eliminate and solve
+  solver.eliminate();
+  solver.print();
+  VectorValues actual = solver.solve();
+  GTSAM_PRINT(actual);
+
+  GaussianBayesTree expectedBT = *smoother.eliminateMultifrontal(ordering);
+  VectorValues expected = expectedBT.optimize();
+  EXPECT(assert_equal(expected, actual, 1e-9));
+
+  // Eliminate and solve after loading new values
+  solver.load(smoother);
+  solver.print();
+  solver.eliminate();
+  VectorValues actual2 = solver.solve();
+  EXPECT(assert_equal(expected, actual2, 1e-9));
 }
 
-/* ************************************************************************* */
-TEST(MultifrontalSolver, IterativeSolve) {
-  GaussianFactorGraph smoother = example::createSmoother(100);
-  const Ordering ordering = Ordering::Colamd(smoother);
-
-  MultifrontalSolver solver(smoother, ordering);
-
-  for (size_t i = 0; i < 5; ++i) {
-    solver.load(smoother);
-    solver.eliminate();
-    VectorValues actual = solver.solve();
-
-    if (i == 0) {
-      GaussianBayesTree expectedBT = *smoother.eliminateMultifrontal(ordering);
-      VectorValues expected = expectedBT.optimize();
-      EXPECT(assert_equal(expected, actual, 1e-9));
-    }
-  }
-}
-
-/* ************************************************************************* */
+/* *************************************************************************
+ */
 TEST(MultifrontalSolver, Benchmark) {
   const size_t T = 500;
   GaussianFactorGraph smoother = example::createSmoother(T);
-  const Ordering ordering = Ordering::Colamd(smoother);
+  const Ordering ordering = Ordering::Metis(smoother);
 
   const size_t iterations = 100;
 
