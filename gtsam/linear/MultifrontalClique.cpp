@@ -26,6 +26,30 @@
 
 namespace gtsam {
 
+namespace {
+
+// Build a stacked separator vector x_sep in the provided scratch buffer.
+Vector& buildSeparatorVector(const KeyVector& separatorKeys,
+                             const std::map<Key, size_t>& dims,
+                             const VectorValues& x, Vector* scratch) {
+  size_t separatorDim = 0;
+  for (Key key : separatorKeys) {
+    separatorDim += dims.at(key);
+  }
+  if (static_cast<size_t>(scratch->size()) != separatorDim) {
+    scratch->resize(separatorDim);
+  }
+  size_t offset = 0;
+  for (Key key : separatorKeys) {
+    const Vector& values = x.at(key);
+    scratch->segment(offset, values.size()) = values;
+    offset += values.size();
+  }
+  return *scratch;
+}
+
+}  // namespace
+
 MultifrontalClique::MultifrontalClique(
     const SymbolicJunctionTree::sharedNode& cluster) {
   if (!cluster) {
@@ -187,48 +211,59 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
 void MultifrontalClique::eliminateClique() {
   sbm_.selfadjointView().rankUpdate(Ab_.matrix().transpose());
   sbm_.choleskyPartial(frontals().size());
-  R_Sd_ = sbm_.split(frontals().size());
 
   auto parent = parent_.lock();
   if (!parent) return;
+  const size_t nFrontals = frontals().size();
   const size_t nSeparatorBlocks = separatorKeys_.size();
   for (size_t i = 0; i <= nSeparatorBlocks; ++i) {
     size_t p_i = parentIndices_[i];
-    parent->sbm_.updateDiagonalBlock(p_i, sbm_.diagonalBlock(i));
+    parent->sbm_.updateDiagonalBlock(p_i, sbm_.diagonalBlock(nFrontals + i));
     for (size_t j = i + 1; j <= nSeparatorBlocks; ++j) {
       size_t p_j = parentIndices_[j];
-      parent->sbm_.updateOffDiagonalBlock(p_i, p_j,
-                                          sbm_.aboveDiagonalBlock(i, j));
+      parent->sbm_.updateOffDiagonalBlock(
+          p_i, p_j, sbm_.aboveDiagonalBlock(nFrontals + i, nFrontals + j));
     }
   }
 }
 
 void MultifrontalClique::solveClique(const std::map<Key, size_t>& dims,
                                      VectorValues* x) const {
+  // Solve with block back-substitution on the Cholesky-stored SBM, avoiding
+  // materializing an explicit R matrix or split representation.
+  const auto oldStart = sbm_.blockStart();
+  sbm_.blockStart() = 0;
   const size_t nFrontals = frontals().size();
   const size_t nSeparators = separatorKeys_.size();
 
-  size_t nFrontalDim = 0;
-  for (Key k : frontals()) nFrontalDim += dims.at(k);
+  const size_t rhsBlock = nFrontals + nSeparators;
 
-  const Matrix& RSd = R_Sd_.full();
-  Vector rhs = RSd.col(RSd.cols() - 1);
+  size_t frontalDim = 0;
+  for (Key key : frontals()) {
+    frontalDim += dims.at(key);
+  }
+  if (static_cast<size_t>(rhsScratch_.size()) != frontalDim) {
+    rhsScratch_.resize(frontalDim);
+  }
+  rhsScratch_.noalias() =
+      sbm_.aboveDiagonalRange(0, nFrontals, rhsBlock, rhsBlock + 1);
 
-  for (size_t i = 0; i < nSeparators; ++i) {
-    Key k = separatorKeys_[i];
-    rhs.noalias() -= R_Sd_(nFrontals + i) * x->at(k);
+  // Eliminate separator contributions: b -= S * x_sep.
+  if (nSeparators > 0) {
+    const Vector& xSep =
+        buildSeparatorVector(separatorKeys_, dims, *x, &xSepScratch_);
+    rhsScratch_.noalias() -=
+        sbm_.aboveDiagonalRange(0, nFrontals, nFrontals,
+                                nFrontals + nSeparators) *
+        xSep;
   }
 
-  Vector xF = RSd.leftCols(nFrontalDim)
-                  .template triangularView<Eigen::Upper>()
-                  .solve(rhs);
+  // Solve the contiguous frontal system in one triangular solve.
+  sbm_.triangularView(0, nFrontals).solveInPlace(rhsScratch_);
 
-  size_t offset = 0;
-  for (Key k : frontals()) {
-    size_t d = dims.at(k);
-    x->insert(k, xF.segment(offset, d));
-    offset += d;
-  }
+  // Write solved frontal blocks back into the global solution.
+  x->insert(rhsScratch_, frontals(), dims);
+  sbm_.blockStart() = oldStart;
 }
 
 void MultifrontalClique::print(const std::string& s,
@@ -267,7 +302,6 @@ void MultifrontalClique::print(const std::string& s,
 
   std::cout << "  Ab:\n" << Ab_.matrix() << "\n";
   std::cout << "  SBM:\n" << assembleSbm(sbm_) << "\n";
-  std::cout << "  R_Sd:\n" << R_Sd_.matrix() << "\n";
 }
 
 std::ostream& operator<<(std::ostream& os, const MultifrontalClique& clique) {

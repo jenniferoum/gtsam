@@ -24,7 +24,6 @@
 #include <gtsam/linear/MultifrontalSolver.h>
 #include <tests/smallExample.h>
 
-#include <chrono>
 #include <functional>
 
 using namespace std;
@@ -35,12 +34,9 @@ namespace {
 const Key x1 = 1, x2 = 2, x3 = 3, x4 = 4;
 const SharedDiagonal chainNoise = noiseModel::Isotropic::Sigma(1, 0.5);
 const GaussianFactorGraph chain = {
-    std::make_shared<JacobianFactor>(x2, I_1x1, x1, I_1x1,
-                                     (Vector(1) << 1.).finished(), chainNoise),
-    std::make_shared<JacobianFactor>(x2, I_1x1, x3, I_1x1,
-                                     (Vector(1) << 1.).finished(), chainNoise),
-    std::make_shared<JacobianFactor>(x3, I_1x1, x4, I_1x1,
-                                     (Vector(1) << 1.).finished(), chainNoise),
+    std::make_shared<JacobianFactor>(x2, I_1x1, x1, I_1x1, I_1x1, chainNoise),
+    std::make_shared<JacobianFactor>(x2, I_1x1, x3, I_1x1, I_1x1, chainNoise),
+    std::make_shared<JacobianFactor>(x3, I_1x1, x4, I_1x1, I_1x1, chainNoise),
     std::make_shared<JacobianFactor>(x4, I_1x1, (Vector(1) << 1.).finished(),
                                      chainNoise)};
 const Ordering chainOrdering{x2, x1, x3, x4};
@@ -126,7 +122,6 @@ TEST(MultifrontalSolver, Eliminate) {
 TEST(MultifrontalSolver, BalancedSmoother) {
   // Create smoother with 7 nodes
   auto [nlfg, poses] = example::createNonlinearSmoother(7);
-  poses.print("Poses:");
   poses.update(X(1), Point2(1.1, 0.2));
   GaussianFactorGraph smoother = *nlfg.linearize(poses);
 
@@ -134,8 +129,6 @@ TEST(MultifrontalSolver, BalancedSmoother) {
   const Ordering ordering{X(1), X(3), X(5), X(7), X(2), X(6), X(4)};
 
   MultifrontalSolver solver(smoother, ordering);
-  std::cout << solver << std::endl;
-  solver.print();
 
   // Verify roots
   EXPECT(solver.roots().size() == 1);
@@ -150,7 +143,7 @@ TEST(MultifrontalSolver, BalancedSmoother) {
       [&](MultifrontalSolver::CliquePtr c) {
         for (Key k : c->frontals())
           if (k == X(1)) cX1 = c;
-      for (auto child : c->children()) findX1(child);
+        for (auto child : c->children()) findX1(child);
       };
   findX1(root);
 
@@ -159,9 +152,7 @@ TEST(MultifrontalSolver, BalancedSmoother) {
 
   // Eliminate and solve
   solver.eliminate();
-  solver.print();
   VectorValues actual = solver.solve();
-  GTSAM_PRINT(actual);
 
   GaussianBayesTree expectedBT = *smoother.eliminateMultifrontal(ordering);
   VectorValues expected = expectedBT.optimize();
@@ -169,47 +160,9 @@ TEST(MultifrontalSolver, BalancedSmoother) {
 
   // Eliminate and solve after loading new values
   solver.load(smoother);
-  solver.print();
   solver.eliminate();
   VectorValues actual2 = solver.solve();
   EXPECT(assert_equal(expected, actual2, 1e-9));
-}
-
-/* *************************************************************************
- */
-TEST(MultifrontalSolver, Benchmark) {
-  const size_t T = 500;
-  GaussianFactorGraph smoother = example::createSmoother(T);
-  const Ordering ordering = Ordering::Metis(smoother);
-
-  const size_t iterations = 100;
-
-  // Standard GTSAM
-  auto start = std::chrono::high_resolution_clock::now();
-  for (size_t i = 0; i < iterations; ++i) {
-    GaussianBayesTree bt = *smoother.eliminateMultifrontal(ordering);
-    VectorValues x = bt.optimize();
-  }
-  auto end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> t_standard = end - start;
-
-  // MultifrontalSolver
-  MultifrontalSolver solver(smoother, ordering);
-  start = std::chrono::high_resolution_clock::now();
-  for (size_t i = 0; i < iterations; ++i) {
-    solver.load(smoother);
-    solver.eliminate();
-    VectorValues x = solver.solve();
-  }
-  end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> t_imperative = end - start;
-
-  std::cout << "\nBenchmark (T=" << T << ", iterations=" << iterations
-            << "):\n";
-  std::cout << "  Standard GTSAM:     " << t_standard.count() << " s\n";
-  std::cout << "  MultifrontalSolver: " << t_imperative.count() << " s\n";
-  std::cout << "  Speedup:            "
-            << t_standard.count() / t_imperative.count() << "x\n";
 }
 
 /* ************************************************************************* */

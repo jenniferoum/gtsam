@@ -78,7 +78,6 @@ class GTSAM_EXPORT MultifrontalClique {
   const VerticalBlockMatrix& Ab() const { return Ab_; }
   SymmetricBlockMatrix& sbm() { return sbm_; }
   const SymmetricBlockMatrix& sbm() const { return sbm_; }
-  const VerticalBlockMatrix& R_Sd() const { return R_Sd_; }
   const std::vector<size_t>& parentIndices() const { return parentIndices_; }
   /// @}
 
@@ -108,8 +107,9 @@ class GTSAM_EXPORT MultifrontalClique {
   std::vector<shared_ptr> children_;
 
   VerticalBlockMatrix Ab_;
-  SymmetricBlockMatrix sbm_;
-  VerticalBlockMatrix R_Sd_;
+  mutable SymmetricBlockMatrix sbm_;
+  mutable Vector rhsScratch_;
+  mutable Vector xSepScratch_;
 
   SymbolicJunctionTree::sharedNode cluster_;
   KeyVector separatorKeys_;

@@ -85,12 +85,9 @@ class GTSAM_EXPORT MultifrontalSolver {
              const KeyFormatter& keyFormatter = DefaultKeyFormatter) const;
 
   friend std::ostream& operator<<(std::ostream& os,
-                                  const MultifrontalClique& clique);
-  friend std::ostream& operator<<(std::ostream& os,
                                   const MultifrontalSolver& solver);
 };
 
-std::ostream& operator<<(std::ostream& os, const MultifrontalClique& clique);
 std::ostream& operator<<(std::ostream& os, const MultifrontalSolver& solver);
 
 }  // namespace gtsam

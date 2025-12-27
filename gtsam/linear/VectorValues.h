@@ -208,6 +208,10 @@ namespace gtsam {
      *  inserted are already used. */
     VectorValues& insert(const VectorValues& values);
 
+    /** Insert values from a concatenated vector using an explicit key order and dims. */
+    VectorValues& insert(const Vector& values, const KeyVector& keys,
+                         const Dims& dims);
+
     /** insert that mimics the STL map insert - if the value already exists, the map is not modified
      *  and an iterator to the existing value is returned, along with 'false'.  If the value did not
      *  exist, it is inserted and an iterator pointing to the new element, along with 'true', is

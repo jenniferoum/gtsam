@@ -133,6 +133,11 @@ namespace gtsam {
     /// This method makes a copy - use the methods below if performance is critical.
     Matrix block(DenseIndex I, DenseIndex J) const;
 
+    /// Get a block view (anywhere in the matrix) without allocating a copy.
+    constBlock blockView(DenseIndex I, DenseIndex J) const {
+      return block_(I, J);
+    }
+
     /// Return the J'th diagonal block as a self adjoint view.
     Eigen::SelfAdjointView<Block, Eigen::Upper> diagonalBlock(DenseIndex J) {
       return block_(J, J).selfadjointView<Eigen::Upper>();
