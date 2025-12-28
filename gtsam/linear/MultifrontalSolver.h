@@ -48,6 +48,7 @@ class GTSAM_EXPORT MultifrontalSolver {
   std::vector<CliquePtr> cliques_;           // All cliques
   std::vector<CliquePtr> postOrderCliques_;  // For elimination
   std::map<Key, size_t> dims_;               // Variable dimensions
+  mutable VectorValues solution_;
 
  public:
   /**
@@ -76,9 +77,9 @@ class GTSAM_EXPORT MultifrontalSolver {
   /**
    * Solve for the update vector.
    *
-   * @return The solution vector delta.
+   * @return Reference to the internally cached solution vector.
    */
-  VectorValues solve() const;
+  const VectorValues& solve() const;
 
   // Accessors for testing
   const std::vector<CliquePtr>& roots() const { return roots_; }

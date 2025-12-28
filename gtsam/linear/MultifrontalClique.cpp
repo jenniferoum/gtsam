@@ -29,21 +29,19 @@ namespace gtsam {
 namespace {
 
 // Build a stacked separator vector x_sep in the provided scratch buffer.
-Vector& buildSeparatorVector(const KeyVector& separatorKeys,
-                             const std::map<Key, size_t>& dims,
-                             const VectorValues& x, Vector* scratch) {
+Vector& buildSeparatorVector(const std::vector<const Vector*>& separatorPtrs,
+                             Vector* scratch) {
   size_t separatorDim = 0;
-  for (Key key : separatorKeys) {
-    separatorDim += dims.at(key);
+  for (const Vector* values : separatorPtrs) {
+    separatorDim += values->size();
   }
   if (static_cast<size_t>(scratch->size()) != separatorDim) {
     scratch->resize(separatorDim);
   }
   size_t offset = 0;
-  for (Key key : separatorKeys) {
-    const Vector& values = x.at(key);
-    scratch->segment(offset, values.size()) = values;
-    offset += values.size();
+  for (const Vector* values : separatorPtrs) {
+    scratch->segment(offset, values->size()) = *values;
+    offset += values->size();
   }
   return *scratch;
 }
@@ -116,6 +114,19 @@ void MultifrontalClique::calculateSeparatorKeys() {
   separatorKeys_.assign(allKeys.begin(), allKeys.end());
 }
 
+void MultifrontalClique::cacheValuePointers(VectorValues* values) {
+  frontalPtrs_.clear();
+  separatorPtrs_.clear();
+  frontalPtrs_.reserve(frontals().size());
+  separatorPtrs_.reserve(separatorKeys_.size());
+  for (Key key : frontals()) {
+    frontalPtrs_.push_back(&values->at(key));
+  }
+  for (Key key : separatorKeys_) {
+    separatorPtrs_.push_back(&values->at(key));
+  }
+}
+
 const KeyVector& MultifrontalClique::separatorKeys() const {
   return separatorKeys_;
 }
@@ -183,7 +194,8 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
     auto indexed =
         std::dynamic_pointer_cast<internal::IndexedSymbolicFactor>(factor);
     if (!indexed) continue;
-    auto jacobianFactor = std::dynamic_pointer_cast<JacobianFactor>(graph[indexed->index_]);
+    auto jacobianFactor =
+        std::dynamic_pointer_cast<JacobianFactor>(graph[indexed->index_]);
     if (!jacobianFactor) continue;
 
     for (auto it = jacobianFactor->begin(); it != jacobianFactor->end(); ++it) {
@@ -200,10 +212,12 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
         } else
           continue;
       }
-      Ab_(blockIdx).middleRows(rowOffset, jacobianFactor->rows()) = jacobianFactor->getA(it);
+      Ab_(blockIdx).middleRows(rowOffset, jacobianFactor->rows()) =
+          jacobianFactor->getA(it);
     }
     size_t rhsBlockIdx = Ab_.nBlocks() - 1;  // RHS block is appended by VBM.
-    Ab_(rhsBlockIdx).middleRows(rowOffset, jacobianFactor->rows()) = jacobianFactor->getb();
+    Ab_(rhsBlockIdx).middleRows(rowOffset, jacobianFactor->rows()) =
+        jacobianFactor->getb();
     rowOffset += jacobianFactor->rows();
   }
 }
@@ -227,20 +241,19 @@ void MultifrontalClique::eliminateClique() {
   }
 }
 
-void MultifrontalClique::solveClique(const std::map<Key, size_t>& dims,
-                                     VectorValues* x) const {
+void MultifrontalClique::solveClique() const {
   // Solve with block back-substitution on the Cholesky-stored SBM, avoiding
   // materializing an explicit R matrix or split representation.
   const auto oldStart = sbm_.blockStart();
   sbm_.blockStart() = 0;
-  const size_t nFrontals = frontals().size();
-  const size_t nSeparators = separatorKeys_.size();
+  const size_t nFrontals = frontalPtrs_.size();
+  const size_t nSeparators = separatorPtrs_.size();
 
   const size_t rhsBlock = nFrontals + nSeparators;
 
   size_t frontalDim = 0;
-  for (Key key : frontals()) {
-    frontalDim += dims.at(key);
+  for (const Vector* values : frontalPtrs_) {
+    frontalDim += values->size();
   }
   if (static_cast<size_t>(rhsScratch_.size()) != frontalDim) {
     rhsScratch_.resize(frontalDim);
@@ -251,18 +264,22 @@ void MultifrontalClique::solveClique(const std::map<Key, size_t>& dims,
   // Eliminate separator contributions: b -= S * x_sep.
   if (nSeparators > 0) {
     const Vector& xSep =
-        buildSeparatorVector(separatorKeys_, dims, *x, &separatorScratch_);
-    rhsScratch_.noalias() -=
-        sbm_.aboveDiagonalRange(0, nFrontals, nFrontals,
-                                nFrontals + nSeparators) *
-        xSep;
+        buildSeparatorVector(separatorPtrs_, &separatorScratch_);
+    rhsScratch_.noalias() -= sbm_.aboveDiagonalRange(0, nFrontals, nFrontals,
+                                                     nFrontals + nSeparators) *
+                             xSep;
   }
 
   // Solve the contiguous frontal system in one triangular solve.
   sbm_.triangularView(0, nFrontals).solveInPlace(rhsScratch_);
 
   // Write solved frontal blocks back into the global solution.
-  x->insert(rhsScratch_, frontals(), dims);
+  size_t offset = 0;
+  for (Vector* values : frontalPtrs_) {
+    const size_t dim = values->size();
+    values->noalias() = rhsScratch_.segment(offset, dim);
+    offset += dim;
+  }
   sbm_.blockStart() = oldStart;
 }
 

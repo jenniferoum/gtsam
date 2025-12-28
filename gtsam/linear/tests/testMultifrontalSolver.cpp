@@ -88,8 +88,8 @@ TEST(MultifrontalSolver, Load) {
     for (auto it = jacobianFactor->begin(); it != jacobianFactor->end(); ++it) {
       terms[*it] = jacobianFactor->getA(it) * 2.0;
     }
-    chain2.push_back(std::make_shared<JacobianFactor>(terms, jacobianFactor->getb() * 2.0,
-                                                      jacobianFactor->get_model()));
+    chain2.push_back(std::make_shared<JacobianFactor>(
+        terms, jacobianFactor->getb() * 2.0, jacobianFactor->get_model()));
   }
 
   solver.load(chain2);
@@ -109,7 +109,7 @@ TEST(MultifrontalSolver, Eliminate) {
   solver.eliminate();
 
   // Solve
-  VectorValues actual = solver.solve();
+  const VectorValues& actual = solver.solve();
 
   // Reference elimination and solve
   GaussianBayesTree expectedBT = *chain.eliminateMultifrontal(chainOrdering);
@@ -152,7 +152,7 @@ TEST(MultifrontalSolver, BalancedSmoother) {
 
   // Eliminate and solve
   solver.eliminate();
-  VectorValues actual = solver.solve();
+  const VectorValues& actual = solver.solve();
 
   GaussianBayesTree expectedBT = *smoother.eliminateMultifrontal(ordering);
   VectorValues expected = expectedBT.optimize();
@@ -161,7 +161,7 @@ TEST(MultifrontalSolver, BalancedSmoother) {
   // Eliminate and solve after loading new values
   solver.load(smoother);
   solver.eliminate();
-  VectorValues actual2 = solver.solve();
+  const VectorValues& actual2 = solver.solve();
   EXPECT(assert_equal(expected, actual2, 1e-9));
 }
 

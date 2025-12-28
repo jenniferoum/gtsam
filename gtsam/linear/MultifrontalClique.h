@@ -61,26 +61,30 @@ class GTSAM_EXPORT MultifrontalClique {
 
   /// @name Setup (non-const)
   /// @{
-  
+
   /// Set the parent clique.
   /// @param parent Weak pointer to the parent clique.
   void setParent(const std::weak_ptr<MultifrontalClique>& parent);
-  
+
   /// Add a child clique.
   /// @param child Shared pointer to the child clique.
   void addChild(const shared_ptr& child);
-  
+
   /// Compute parent indices for all children after separators are finalized.
   void assignParentIndicesForChildren();
-  
+  /// Cache pointers to frontal and separator update vectors.
+  void cacheValuePointers(VectorValues* delta);
+
   /// Calculate separator keys from children's frontals.
   void calculateSeparatorKeys();
-  
+
   /// Pre-allocate matrices for this clique.
   /// @param blockDims Block dimensions (excluding RHS).
-  /// @param verticalBlockMatrixRows Number of rows for the vertical block matrix.
-  void initializeMatrices(const std::vector<size_t>& blockDims, size_t verticalBlockMatrixRows);
-  
+  /// @param verticalBlockMatrixRows Number of rows for the vertical block
+  /// matrix.
+  void initializeMatrices(const std::vector<size_t>& blockDims,
+                          size_t verticalBlockMatrixRows);
+
   /// Load factor values into the pre-allocated Ab matrix.
   /// @param graph The factor graph with updated values.
   void fillAb(const GaussianFactorGraph& graph);
@@ -88,48 +92,46 @@ class GTSAM_EXPORT MultifrontalClique {
 
   /// @name Read-only accessors
   /// @{
-  
+
   /// Get the frontal keys for this clique.
   const KeyVector& frontals() const;
-  
+
   /// Get the separator keys for this clique.
   const KeyVector& separatorKeys() const;
-  
+
   /// Get the children of this clique.
   const std::vector<shared_ptr>& children() const;
-  
+
   /// Get the parent of this clique.
   const std::weak_ptr<MultifrontalClique>& parent() const;
-  
+
   /// Get the primary key of this clique (first frontal).
   Key key() const;
-  
+
   /// Get the number of factors in this clique.
   size_t factorCount() const;
-  
+
   /// Get the vertical block matrix Ab.
   const VerticalBlockMatrix& Ab() const { return Ab_; }
-  
+
   /// Get the symmetric block matrix (mutable).
   SymmetricBlockMatrix& sbm() { return sbm_; }
-  
+
   /// Get the symmetric block matrix (const).
   const SymmetricBlockMatrix& sbm() const { return sbm_; }
-  
+
   /// Get the parent indices for scatter operations.
   const std::vector<size_t>& parentIndices() const { return parentIndices_; }
   /// @}
 
   /// @name Solve (non-const)
   /// @{
-  
+
   /// Eliminate this clique and propagate to its parent.
   void eliminateClique();
 
   /// Solve for the variables in this clique and update the solution vector.
-  /// @param dims Variable dimensions.
-  /// @param x Solution vector to update.
-  void solveClique(const std::map<Key, size_t>& dims, VectorValues* x) const;
+  void solveClique() const;
   /// @}
 
   /// Compute block dimensions from variable dimensions (excluding RHS).
@@ -141,12 +143,12 @@ class GTSAM_EXPORT MultifrontalClique {
   /// @param graph The factor graph.
   /// @return Total number of rows.
   size_t countRows(const GaussianFactorGraph& graph) const;
-  
+
   /// Compute parent scatter indices for this clique.
   /// @param parent The parent clique.
   /// @return Parent indices for scatter operations.
   std::vector<size_t> parentIndicesFor(const MultifrontalClique& parent) const;
-  
+
   /// Print this clique.
   /// @param s Optional string prefix.
   /// @param keyFormatter Key formatter for printing.
@@ -169,6 +171,8 @@ class GTSAM_EXPORT MultifrontalClique {
   SymbolicJunctionTree::sharedNode cluster_;
   KeyVector separatorKeys_;
   std::vector<size_t> parentIndices_;
+  std::vector<Vector*> frontalPtrs_;
+  std::vector<const Vector*> separatorPtrs_;
 };
 
 std::ostream& operator<<(std::ostream& os, const MultifrontalClique& clique);

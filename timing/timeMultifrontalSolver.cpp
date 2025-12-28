@@ -28,28 +28,40 @@ using namespace std;
 using namespace gtsam;
 using namespace example;
 
+/// Run standard GTSAM multifrontal elimination and optimization.
+static void runStandardSolver(const GaussianFactorGraph& smoother,
+                              const Ordering& ordering, size_t iterations) {
+  for (size_t i = 0; i < iterations; ++i) {
+    GaussianBayesTree bayesTree = *smoother.eliminateMultifrontal(ordering);
+    VectorValues solution = bayesTree.optimize();
+  }
+}
+
+/// Run new MultifrontalSolver elimination and optimization.
+static void runMultifrontalSolver(const GaussianFactorGraph& smoother,
+                                  const Ordering& ordering, size_t iterations) {
+  MultifrontalSolver solver(smoother, ordering);
+  for (size_t i = 0; i < iterations; ++i) {
+    solver.load(smoother);
+    solver.eliminate();
+    const VectorValues& solution = solver.solve();
+    (void)solution;
+  }
+}
+
 int main() {
   const size_t T = 500;
   GaussianFactorGraph smoother = createSmoother(T);
   const Ordering ordering = Ordering::Metis(smoother);
-
   const size_t iterations = 1000;
 
   auto start = std::chrono::high_resolution_clock::now();
-  for (size_t i = 0; i < iterations; ++i) {
-    GaussianBayesTree bt = *smoother.eliminateMultifrontal(ordering);
-    VectorValues x = bt.optimize();
-  }
+  runStandardSolver(smoother, ordering, iterations);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> t_standard = end - start;
 
-  MultifrontalSolver solver(smoother, ordering);
   start = std::chrono::high_resolution_clock::now();
-  for (size_t i = 0; i < iterations; ++i) {
-    solver.load(smoother);
-    solver.eliminate();
-    VectorValues x = solver.solve();
-  }
+  runMultifrontalSolver(smoother, ordering, iterations);
   end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> t_imperative = end - start;
 

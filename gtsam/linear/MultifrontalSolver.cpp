@@ -42,11 +42,14 @@ std::map<Key, size_t> computeDims(const GaussianFactorGraph& graph) {
   std::map<Key, size_t> dims;
   for (const auto& factor : graph) {
     if (!factor) continue;
-    if (auto jacobianFactor = std::dynamic_pointer_cast<JacobianFactor>(factor)) {
-      for (auto it = jacobianFactor->begin(); it != jacobianFactor->end(); ++it) {
+    if (auto jacobianFactor =
+            std::dynamic_pointer_cast<JacobianFactor>(factor)) {
+      for (auto it = jacobianFactor->begin(); it != jacobianFactor->end();
+           ++it) {
         dims[*it] = jacobianFactor->getDim(it);
       }
-    } else if (auto hessianFactor = std::dynamic_pointer_cast<HessianFactor>(factor)) {
+    } else if (auto hessianFactor =
+                   std::dynamic_pointer_cast<HessianFactor>(factor)) {
       throw std::runtime_error(
           "MultifrontalSolver: HessianFactors not supported.");
     }
@@ -72,6 +75,9 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
                                        const Ordering& ordering) {
   // 0. Pre-compute variable dimensions
   dims_ = computeDims(graph);
+  for (Key key : ordering) {
+    solution_.insert(key, Vector::Zero(dims_.at(key)));
+  }
 
   // 1. Convert to SymbolicFactorGraph to build the elimination tree
   SymbolicFactorGraph symbolicGraph = buildSymbolicGraph(graph);
@@ -100,6 +106,7 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
     }
 
     clique->calculateSeparatorKeys();
+    clique->cacheValuePointers(&solution_);
 
     // Initialize matrices
     std::vector<size_t> blockDims = clique->blockDims(dims_);
@@ -140,12 +147,11 @@ void MultifrontalSolver::eliminate() {
 }
 
 /* ************************************************************************* */
-VectorValues MultifrontalSolver::solve() const {
-  VectorValues x;
+const VectorValues& MultifrontalSolver::solve() const {
   for (const auto& clique : cliques_) {
-    clique->solveClique(dims_, &x);
+    clique->solveClique();
   }
-  return x;
+  return solution_;
 }
 
 /* ************************************************************************* */
