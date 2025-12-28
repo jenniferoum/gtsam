@@ -11,7 +11,7 @@
 
 /**
  * @file MultifrontalSolver.h
- * @brief
+ * @brief Imperative-style multifrontal solver for Gaussian factor graphs.
  * @author Frank Dellaert
  * @date   December 2025
  */
@@ -53,6 +53,8 @@ class GTSAM_EXPORT MultifrontalSolver {
   /**
    * Construct the solver from a factor graph and an ordering.
    * This builds the symbolic junction tree and pre-allocates all matrices.
+   * @param graph The factor graph to solve.
+   * @param ordering The variable ordering to use for elimination.
    */
   MultifrontalSolver(const GaussianFactorGraph& graph,
                      const Ordering& ordering);

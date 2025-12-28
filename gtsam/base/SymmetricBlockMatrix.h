@@ -134,6 +134,10 @@ namespace gtsam {
     Matrix block(DenseIndex I, DenseIndex J) const;
 
     /// Get a block view (anywhere in the matrix) without allocating a copy.
+    /// This method returns a const reference to the block for efficient read access.
+    /// @param I The row block index.
+    /// @param J The column block index.
+    /// @return A const block view into the matrix.
     constBlock blockView(DenseIndex I, DenseIndex J) const {
       return block_(I, J);
     }

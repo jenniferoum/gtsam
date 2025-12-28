@@ -11,7 +11,7 @@
 
 /**
  * @file MultifrontalSolver.cpp
- * @brief
+ * @brief Implementation of imperative-style multifrontal solver.
  * @author Frank Dellaert
  * @date   December 2025
  */
@@ -38,15 +38,15 @@ namespace gtsam {
 namespace {
 
 // Compute variable dimensions from the GaussianFactorGraph
-std::map<Key, size_t> ComputeDims(const GaussianFactorGraph& graph) {
+std::map<Key, size_t> computeDims(const GaussianFactorGraph& graph) {
   std::map<Key, size_t> dims;
   for (const auto& factor : graph) {
     if (!factor) continue;
-    if (auto jf = std::dynamic_pointer_cast<JacobianFactor>(factor)) {
-      for (auto it = jf->begin(); it != jf->end(); ++it) {
-        dims[*it] = jf->getDim(it);
+    if (auto jacobianFactor = std::dynamic_pointer_cast<JacobianFactor>(factor)) {
+      for (auto it = jacobianFactor->begin(); it != jacobianFactor->end(); ++it) {
+        dims[*it] = jacobianFactor->getDim(it);
       }
-    } else if (auto hf = std::dynamic_pointer_cast<HessianFactor>(factor)) {
+    } else if (auto hessianFactor = std::dynamic_pointer_cast<HessianFactor>(factor)) {
       throw std::runtime_error(
           "MultifrontalSolver: HessianFactors not supported.");
     }
@@ -55,7 +55,7 @@ std::map<Key, size_t> ComputeDims(const GaussianFactorGraph& graph) {
 }
 
 // Build SymbolicFactorGraph from GaussianFactorGraph
-SymbolicFactorGraph BuildSymbolicGraph(const GaussianFactorGraph& graph) {
+SymbolicFactorGraph buildSymbolicGraph(const GaussianFactorGraph& graph) {
   SymbolicFactorGraph symbolicGraph;
   symbolicGraph.reserve(graph.size());
   for (size_t i = 0; i < graph.size(); ++i) {
@@ -71,10 +71,10 @@ SymbolicFactorGraph BuildSymbolicGraph(const GaussianFactorGraph& graph) {
 MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
                                        const Ordering& ordering) {
   // 0. Pre-compute variable dimensions
-  dims_ = ComputeDims(graph);
+  dims_ = computeDims(graph);
 
   // 1. Convert to SymbolicFactorGraph to build the elimination tree
-  SymbolicFactorGraph symbolicGraph = BuildSymbolicGraph(graph);
+  SymbolicFactorGraph symbolicGraph = buildSymbolicGraph(graph);
 
   // 2. Build SymbolicEliminationTree and then SymbolicJunctionTree
   SymbolicEliminationTree eliminationTree(symbolicGraph, ordering);
@@ -90,28 +90,27 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
 
     // Create Clique
     auto clique = std::make_shared<MultifrontalClique>(cluster);
-    auto& c = *clique;
-    c.setParent(parent);
+    clique->setParent(parent);
     cliques_.push_back(clique);
 
     // Process children
     for (const auto& childCluster : cluster->children) {
       auto childClique = buildRecursive(childCluster, clique);
-      c.addChild(childClique);
+      clique->addChild(childClique);
     }
 
-    c.calculateSeparatorKeys();
+    clique->calculateSeparatorKeys();
 
     // Initialize matrices
-    std::vector<size_t> blockDims = c.blockDims(dims_);
-    size_t vbmRows = c.countRows(graph);
-    c.initializeMatrices(blockDims, vbmRows);
+    std::vector<size_t> blockDims = clique->blockDims(dims_);
+    size_t vbmRows = clique->countRows(graph);
+    clique->initializeMatrices(blockDims, vbmRows);
 
     // Initial load
-    c.fillAb(graph);
+    clique->fillAb(graph);
 
     // Pre-compute parent mapping after separators are finalized.
-    c.assignParentIndicesForChildren();
+    clique->assignParentIndicesForChildren();
 
     postOrderCliques_.push_back(clique);
     return clique;

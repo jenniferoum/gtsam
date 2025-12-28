@@ -11,7 +11,7 @@
 
 /**
  * @file MultifrontalClique.cpp
- * @brief  Imperative multifrontal clique data structure
+ * @brief Implementation of imperative multifrontal clique data structure.
  * @author Frank Dellaert
  * @date   December 2025
  */
@@ -134,9 +134,9 @@ size_t MultifrontalClique::countRows(const GaussianFactorGraph& graph) const {
     auto indexed =
         std::dynamic_pointer_cast<internal::IndexedSymbolicFactor>(factor);
     if (!indexed) continue;
-    if (auto jf =
+    if (auto jacobianFactor =
             std::dynamic_pointer_cast<JacobianFactor>(graph[indexed->index_])) {
-      vbmRows += jf->rows();
+      vbmRows += jacobianFactor->rows();
     }
   }
   return vbmRows;
@@ -166,9 +166,9 @@ std::vector<size_t> MultifrontalClique::parentIndicesFor(
 }
 
 void MultifrontalClique::initializeMatrices(
-    const std::vector<size_t>& blockDims, size_t vbmRows) {
+    const std::vector<size_t>& blockDims, size_t verticalBlockMatrixRows) {
   sbm_ = SymmetricBlockMatrix(blockDims, true);
-  Ab_ = VerticalBlockMatrix(blockDims, vbmRows, true);
+  Ab_ = VerticalBlockMatrix(blockDims, verticalBlockMatrixRows, true);
   Ab_.matrix().setZero();
 }
 
@@ -183,10 +183,10 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
     auto indexed =
         std::dynamic_pointer_cast<internal::IndexedSymbolicFactor>(factor);
     if (!indexed) continue;
-    auto jf = std::dynamic_pointer_cast<JacobianFactor>(graph[indexed->index_]);
-    if (!jf) continue;
+    auto jacobianFactor = std::dynamic_pointer_cast<JacobianFactor>(graph[indexed->index_]);
+    if (!jacobianFactor) continue;
 
-    for (auto it = jf->begin(); it != jf->end(); ++it) {
+    for (auto it = jacobianFactor->begin(); it != jacobianFactor->end(); ++it) {
       Key k = *it;
       auto fIt = std::find(frontals().begin(), frontals().end(), k);
       size_t blockIdx = 0;
@@ -200,11 +200,11 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
         } else
           continue;
       }
-      Ab_(blockIdx).middleRows(rowOffset, jf->rows()) = jf->getA(it);
+      Ab_(blockIdx).middleRows(rowOffset, jacobianFactor->rows()) = jacobianFactor->getA(it);
     }
     size_t rhsBlockIdx = Ab_.nBlocks() - 1;  // RHS block is appended by VBM.
-    Ab_(rhsBlockIdx).middleRows(rowOffset, jf->rows()) = jf->getb();
-    rowOffset += jf->rows();
+    Ab_(rhsBlockIdx).middleRows(rowOffset, jacobianFactor->rows()) = jacobianFactor->getb();
+    rowOffset += jacobianFactor->rows();
   }
 }
 
@@ -251,7 +251,7 @@ void MultifrontalClique::solveClique(const std::map<Key, size_t>& dims,
   // Eliminate separator contributions: b -= S * x_sep.
   if (nSeparators > 0) {
     const Vector& xSep =
-        buildSeparatorVector(separatorKeys_, dims, *x, &xSepScratch_);
+        buildSeparatorVector(separatorKeys_, dims, *x, &separatorScratch_);
     rhsScratch_.noalias() -=
         sbm_.aboveDiagonalRange(0, nFrontals, nFrontals,
                                 nFrontals + nSeparators) *
