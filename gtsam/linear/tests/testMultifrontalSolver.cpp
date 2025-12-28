@@ -11,7 +11,7 @@
 
 /**
  * @file testMultifrontalSolver.cpp
- * @brief
+ * @brief Unit tests for MultifrontalSolver.
  * @author Frank Dellaert
  * @date   December 2025
  */
@@ -59,20 +59,20 @@ TEST(MultifrontalSolver, Constructor) {
 
   // Root should have 1 child {x2, x1}
   EXPECT_LONGS_EQUAL(1, root->children().size());
-  auto c1 = root->children()[0];
+  auto childClique = root->children()[0];
 
-  // Verify matrices in leaf (c1)
-  EXPECT_LONGS_EQUAL(4, c1->sbm().nBlocks());
-  EXPECT_LONGS_EQUAL(2, c1->Ab().rows());
-  EXPECT_LONGS_EQUAL(4, c1->Ab().nBlocks());
+  // Verify matrices in leaf (childClique)
+  EXPECT_LONGS_EQUAL(4, childClique->sbm().nBlocks());
+  EXPECT_LONGS_EQUAL(2, childClique->Ab().rows());
+  EXPECT_LONGS_EQUAL(4, childClique->Ab().nBlocks());
 
-  // Verify initial load for c1
+  // Verify initial load for childClique
   // Block 0 (x2):
-  Matrix A0 = c1->Ab()(0);  // 2x1
+  Matrix A0 = childClique->Ab()(0);  // 2x1
   EXPECT(assert_equal((Matrix(2, 1) << 1., 1.).finished(), A0));
 
   // Block 3 (RHS):
-  Matrix Ab = c1->Ab()(3);  // 2x1
+  Matrix Ab = childClique->Ab()(3);  // 2x1
   EXPECT(assert_equal((Matrix(2, 1) << 1., 1.).finished(), Ab));
 }
 
@@ -83,23 +83,23 @@ TEST(MultifrontalSolver, Load) {
   // Create a new graph with doubled values
   GaussianFactorGraph chain2;
   for (const auto& factor : chain) {
-    auto jf = std::dynamic_pointer_cast<JacobianFactor>(factor);
+    auto jacobianFactor = std::dynamic_pointer_cast<JacobianFactor>(factor);
     std::map<Key, Matrix> terms;
-    for (auto it = jf->begin(); it != jf->end(); ++it) {
-      terms[*it] = jf->getA(it) * 2.0;
+    for (auto it = jacobianFactor->begin(); it != jacobianFactor->end(); ++it) {
+      terms[*it] = jacobianFactor->getA(it) * 2.0;
     }
-    chain2.push_back(std::make_shared<JacobianFactor>(terms, jf->getb() * 2.0,
-                                                      jf->get_model()));
+    chain2.push_back(std::make_shared<JacobianFactor>(terms, jacobianFactor->getb() * 2.0,
+                                                      jacobianFactor->get_model()));
   }
 
   solver.load(chain2);
 
-  // Verify values in c1
+  // Verify values in childClique
   auto root = solver.roots()[0];
-  auto c1 = root->children()[0];
+  auto childClique = root->children()[0];
 
   // Block 0 (x2) should now be 2.0
-  Matrix A0 = c1->Ab()(0);
+  Matrix A0 = childClique->Ab()(0);
   EXPECT(assert_equal((Matrix(2, 1) << 2., 2.).finished(), A0));
 }
 

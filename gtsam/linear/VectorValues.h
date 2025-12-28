@@ -208,7 +208,14 @@ namespace gtsam {
      *  inserted are already used. */
     VectorValues& insert(const VectorValues& values);
 
-    /** Insert values from a concatenated vector using an explicit key order and dims. */
+    /** Insert values from a concatenated vector using an explicit key order and dims.
+     * This method splits the concatenated vector according to the dimensions
+     * specified in dims and inserts each segment with the corresponding key from keys.
+     * @param values The concatenated vector to insert.
+     * @param keys The keys in order corresponding to segments in values.
+     * @param dims The dimensions map specifying the size of each key's vector.
+     * @return Reference to this VectorValues for chaining.
+     * @throws invalid_argument if any key already exists or if dimensions don't match. */
     VectorValues& insert(const Vector& values, const KeyVector& keys,
                          const Dims& dims);
 
