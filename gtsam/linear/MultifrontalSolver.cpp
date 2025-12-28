@@ -90,28 +90,27 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
 
     // Create Clique
     auto clique = std::make_shared<MultifrontalClique>(cluster);
-    auto& currentClique = *clique;
-    currentClique.setParent(parent);
+    clique->setParent(parent);
     cliques_.push_back(clique);
 
     // Process children
     for (const auto& childCluster : cluster->children) {
       auto childClique = buildRecursive(childCluster, clique);
-      currentClique.addChild(childClique);
+      clique->addChild(childClique);
     }
 
-    currentClique.calculateSeparatorKeys();
+    clique->calculateSeparatorKeys();
 
     // Initialize matrices
-    std::vector<size_t> blockDims = currentClique.blockDims(dims_);
-    size_t vbmRows = currentClique.countRows(graph);
-    currentClique.initializeMatrices(blockDims, vbmRows);
+    std::vector<size_t> blockDims = clique->blockDims(dims_);
+    size_t vbmRows = clique->countRows(graph);
+    clique->initializeMatrices(blockDims, vbmRows);
 
     // Initial load
-    currentClique.fillAb(graph);
+    clique->fillAb(graph);
 
     // Pre-compute parent mapping after separators are finalized.
-    currentClique.assignParentIndicesForChildren();
+    clique->assignParentIndicesForChildren();
 
     postOrderCliques_.push_back(clique);
     return clique;

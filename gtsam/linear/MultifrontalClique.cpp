@@ -242,27 +242,27 @@ void MultifrontalClique::solveClique(const std::map<Key, size_t>& dims,
   for (Key key : frontals()) {
     frontalDim += dims.at(key);
   }
-  if (static_cast<size_t>(rightHandSideScratch_.size()) != frontalDim) {
-    rightHandSideScratch_.resize(frontalDim);
+  if (static_cast<size_t>(rhsScratch_.size()) != frontalDim) {
+    rhsScratch_.resize(frontalDim);
   }
-  rightHandSideScratch_.noalias() =
+  rhsScratch_.noalias() =
       sbm_.aboveDiagonalRange(0, nFrontals, rhsBlock, rhsBlock + 1);
 
   // Eliminate separator contributions: b -= S * x_sep.
   if (nSeparators > 0) {
     const Vector& xSep =
-        buildSeparatorVector(separatorKeys_, dims, *x, &separatorSolutionScratch_);
-    rightHandSideScratch_.noalias() -=
+        buildSeparatorVector(separatorKeys_, dims, *x, &separatorScratch_);
+    rhsScratch_.noalias() -=
         sbm_.aboveDiagonalRange(0, nFrontals, nFrontals,
                                 nFrontals + nSeparators) *
         xSep;
   }
 
   // Solve the contiguous frontal system in one triangular solve.
-  sbm_.triangularView(0, nFrontals).solveInPlace(rightHandSideScratch_);
+  sbm_.triangularView(0, nFrontals).solveInPlace(rhsScratch_);
 
   // Write solved frontal blocks back into the global solution.
-  x->insert(rightHandSideScratch_, frontals(), dims);
+  x->insert(rhsScratch_, frontals(), dims);
   sbm_.blockStart() = oldStart;
 }
 

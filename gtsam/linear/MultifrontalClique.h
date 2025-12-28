@@ -163,8 +163,8 @@ class GTSAM_EXPORT MultifrontalClique {
 
   VerticalBlockMatrix Ab_;
   mutable SymmetricBlockMatrix sbm_;
-  mutable Vector rightHandSideScratch_;
-  mutable Vector separatorSolutionScratch_;
+  mutable Vector rhsScratch_;
+  mutable Vector separatorScratch_;
 
   SymbolicJunctionTree::sharedNode cluster_;
   KeyVector separatorKeys_;
