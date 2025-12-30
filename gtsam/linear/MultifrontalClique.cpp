@@ -22,7 +22,6 @@
 #include <algorithm>
 #include <cassert>
 #include <iostream>
-#include <set>
 #include <stdexcept>
 
 namespace gtsam {
@@ -224,15 +223,20 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
 void MultifrontalClique::eliminate() {
   // Update SBM with the local factors, Ab^T * Ab
   sbm_.selfadjointView().rankUpdate(Ab_.matrix().transpose());
+
+  for (const auto& child : children_) {
+    if (!child) continue;
+    child->updateParent(*this);
+  }
   
   // Form normal equations and factor the frontal block (Schur complement step).
   sbm_.choleskyPartial(frontals().size());
+}
 
-  auto parent = parent_.lock();
-  if (!parent) return;
+void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
   // Expose only the separator+RHS view when contributing to the parent.
   sbm_.blockStart() = frontals().size();
-  parent->updateWith(sbm_, parentIndices_);
+  parent.updateWith(sbm_, parentIndices_);
   sbm_.blockStart() = 0;
 }
 

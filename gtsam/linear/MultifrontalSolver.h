@@ -44,11 +44,23 @@ class GTSAM_EXPORT MultifrontalSolver {
   using CliquePtr = std::shared_ptr<MultifrontalClique>;
 
  private:
+  struct CliqueTraversalNode {
+    CliquePtr clique;
+    std::vector<std::shared_ptr<CliqueTraversalNode>> children;
+    int problemSizeValue = 0;
+    int problemSize() const { return problemSizeValue; }
+  };
+
   std::vector<CliquePtr> roots_;
   std::vector<CliquePtr> cliques_;           // All cliques
-  std::vector<CliquePtr> postOrderCliques_;  // For elimination
   std::map<Key, size_t> dims_;               // Variable dimensions
+  std::vector<std::shared_ptr<CliqueTraversalNode>> traversalRoots_;
   mutable VectorValues solution_;
+
+  static size_t frontalDimForClique(const CliquePtr& clique,
+                                    const std::map<Key, size_t>& dims);
+  static std::shared_ptr<CliqueTraversalNode> buildTraversalNode(
+      const CliquePtr& clique, const std::map<Key, size_t>& dims);
 
  public:
   /**

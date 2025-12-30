@@ -41,6 +41,7 @@ static void runStandardSolver(const GaussianFactorGraph& smoother,
 static void runMultifrontalSolver(const GaussianFactorGraph& smoother,
                                   const Ordering& ordering, size_t iterations) {
   const size_t mergeFrontalsBelow = 10;
+  std::cout << "\nMerging frontals below size " << mergeFrontalsBelow << "\n";
   MultifrontalSolver solver(smoother, ordering, mergeFrontalsBelow);
   for (size_t i = 0; i < iterations; ++i) {
     solver.load(smoother);

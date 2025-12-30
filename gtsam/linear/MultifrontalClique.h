@@ -160,11 +160,16 @@ class GTSAM_EXPORT MultifrontalClique {
    * Eliminate this clique and propagate its separator contribution upward.
    *
    * Computes the local normal equations (SBM) from the stacked Jacobian (Ab),
-   * performs partial Cholesky on the frontal blocks, and then updates the
-   * parent's SBM using only the separator view (plus RHS) of this clique.
-   * Requires parent indices to be precomputed.
+   * incorporates child separator contributions, and performs partial Cholesky
+   * on the frontal blocks. Requires parent indices to be precomputed.
    */
   void eliminate();
+
+  /**
+   * Apply this clique's separator contribution into the parent clique.
+   * @param parent Parent clique to update.
+   */
+  void updateParent(MultifrontalClique& parent) const;
 
   /**
    * Update this clique using a child's contribution.

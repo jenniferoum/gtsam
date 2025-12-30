@@ -17,21 +17,19 @@
  */
 
 #include <gtsam/inference/Key.h>
-#include <gtsam/inference/Symbol.h>
 #include <gtsam/linear/GaussianFactor.h>
 #include <gtsam/linear/JacobianFactor.h>
 #include <gtsam/linear/MultifrontalClique.h>
 #include <gtsam/linear/MultifrontalSolver.h>
+#include <gtsam/base/types.h>
 #include <gtsam/symbolic/SymbolicEliminationTree.h>
 #include <gtsam/symbolic/SymbolicFactorGraph.h>
+#include <gtsam/base/treeTraversal-inst.h>
 
-#include <algorithm>
 #include <functional>
 #include <iostream>
 #include <ostream>
-#include <set>
 #include <stdexcept>
-#include <utility>
 
 namespace gtsam {
 
@@ -127,7 +125,7 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
     }
   }
 
-  // 3. Recursive function to build Clique hierarchy
+  // 3. Recursive function to build Clique hierarchy (independent of traversal).
   std::function<CliquePtr(const SymbolicJunctionTree::sharedNode&,
                           std::weak_ptr<MultifrontalClique>)>
       buildRecursive =
@@ -160,7 +158,6 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
     // Pre-compute parent mapping after separators are finalized.
     clique->assignParentIndicesForChildren();
 
-    postOrderCliques_.push_back(clique);
     return clique;
   };
 
@@ -171,6 +168,41 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
           buildRecursive(rootCluster, std::weak_ptr<MultifrontalClique>()));
     }
   }
+
+  // Build a lightweight traversal forest for DepthFirstForestParallel.
+  traversalRoots_.clear();
+  traversalRoots_.reserve(roots_.size());
+  for (const auto& root : roots_) {
+    auto node = buildTraversalNode(root, dims_);
+    if (node) traversalRoots_.push_back(node);
+  }
+}
+
+size_t MultifrontalSolver::frontalDimForClique(
+    const CliquePtr& clique, const std::map<Key, size_t>& dims) {
+  size_t dim = 0;
+  for (Key key : clique->frontals()) {
+    auto it = dims.find(key);
+    if (it != dims.end()) dim += it->second;
+  }
+  return dim;
+}
+
+std::shared_ptr<MultifrontalSolver::CliqueTraversalNode>
+MultifrontalSolver::buildTraversalNode(
+    const CliquePtr& clique, const std::map<Key, size_t>& dims) {
+  if (!clique) return nullptr;
+  auto node = std::make_shared<CliqueTraversalNode>();
+  node->clique = clique;
+  // Use frontal dimension as the traversal "problem size" for scheduling cutoff.
+  node->problemSizeValue =
+      static_cast<int>(frontalDimForClique(clique, dims));
+  node->children.reserve(clique->children().size());
+  for (const auto& child : clique->children()) {
+    auto childNode = buildTraversalNode(child, dims);
+    if (childNode) node->children.push_back(childNode);
+  }
+  return node;
 }
 
 /* ************************************************************************* */
@@ -182,9 +214,39 @@ void MultifrontalSolver::load(const GaussianFactorGraph& graph) {
 
 /* ************************************************************************* */
 void MultifrontalSolver::eliminate() {
-  for (auto& clique : postOrderCliques_) {
-    clique->eliminate();
-  }
+  // Parallel elimination uses the same traversal as legacy GTSAM (TBB optional).
+  struct EliminateTraversalData {};
+  struct EliminatePreVisitor {
+    EliminateTraversalData operator()(
+        const std::shared_ptr<CliqueTraversalNode>&,
+        const EliminateTraversalData&) const {
+      return EliminateTraversalData();
+    }
+  };
+  struct EliminatePostVisitor {
+    void operator()(const std::shared_ptr<CliqueTraversalNode>& node,
+                    EliminateTraversalData&) const {
+      if (node && node->clique) node->clique->eliminate();
+    }
+  };
+  struct CliqueForestView {
+    using Node = CliqueTraversalNode;
+    explicit CliqueForestView(
+        const std::vector<std::shared_ptr<CliqueTraversalNode>>& roots)
+        : roots_(roots) {}
+    const std::vector<std::shared_ptr<CliqueTraversalNode>>& roots() const {
+      return roots_;
+    }
+    const std::vector<std::shared_ptr<CliqueTraversalNode>>& roots_;
+  };
+
+  CliqueForestView forest(traversalRoots_);
+  EliminateTraversalData rootData;
+  EliminatePreVisitor visitorPre;
+  EliminatePostVisitor visitorPost;
+  TbbOpenMPMixedScope threadLimiter;
+  treeTraversal::DepthFirstForestParallel(
+      forest, rootData, visitorPre, visitorPost, 10);
 }
 
 /* ************************************************************************* */
@@ -199,7 +261,6 @@ const VectorValues& MultifrontalSolver::solve() const {
 std::ostream& operator<<(std::ostream& os, const MultifrontalSolver& solver) {
   os << "MultifrontalSolver(roots=" << solver.roots_.size()
      << ", cliques=" << solver.cliques_.size()
-     << ", postOrder=" << solver.postOrderCliques_.size()
      << ", dims=" << solver.dims_.size() << ")\n";
 
   std::function<void(const MultifrontalSolver::CliquePtr&, int)> dump =
