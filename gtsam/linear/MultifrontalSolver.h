@@ -41,24 +41,28 @@ class MultifrontalClique;
  */
 class GTSAM_EXPORT MultifrontalSolver {
  public:
+  /// Shared pointer to a MultifrontalClique.
   using CliquePtr = std::shared_ptr<MultifrontalClique>;
 
  private:
+  /// Node structure for clique traversal in the elimination tree.
   struct CliqueTraversalNode {
-    CliquePtr clique;
-    std::vector<std::shared_ptr<CliqueTraversalNode>> children;
-    int problemSizeValue = 0;
+    CliquePtr clique;  ///< Pointer to the associated clique.
+    std::vector<std::shared_ptr<CliqueTraversalNode>>
+        children;              ///< Child traversal nodes.
+    int problemSizeValue = 0;  ///< Cached problem size for this node.
+    /// Get the problem size for this node.
     int problemSize() const { return problemSizeValue; }
   };
 
-  std::vector<CliquePtr> roots_;
-  std::vector<CliquePtr> cliques_;           // All cliques
-  std::map<Key, size_t> dims_;               // Variable dimensions
-  std::vector<std::shared_ptr<CliqueTraversalNode>> traversalRoots_;
-  mutable VectorValues solution_;
+  std::vector<CliquePtr> roots_;    ///< Roots of the elimination tree.
+  std::vector<CliquePtr> cliques_;  ///< All cliques in the solver.
+  std::map<Key, size_t> dims_;      ///< Map from variable key to dimension.
+  std::vector<std::shared_ptr<CliqueTraversalNode>>
+      traversalRoots_;             ///< Roots of the traversal tree.
+  mutable VectorValues solution_;  ///< Cached solution vector.
 
-  static size_t frontalDimForClique(const CliquePtr& clique,
-                                    const std::map<Key, size_t>& dims);
+  /// Build a traversal node for the clique tree.
   static std::shared_ptr<CliqueTraversalNode> buildTraversalNode(
       const CliquePtr& clique, const std::map<Key, size_t>& dims);
 
@@ -68,12 +72,14 @@ class GTSAM_EXPORT MultifrontalSolver {
    * This builds the symbolic junction tree and pre-allocates all matrices.
    * @param graph The factor graph to solve.
    * @param ordering The variable ordering to use for elimination.
-   * @param mergeFrontalsBelow Merge children whose frontal dimension is below
-   * this threshold into the parent (0 disables merging).
+   * @param mergeDimCap Merge a child if its frontal dimension plus the
+   * parent's total dimension is below this threshold (0 disables merging).
+   * @param reportStream Optional stream to report clique structure stats
+   * (frontals, separators, total dims, and children).
    */
-  MultifrontalSolver(const GaussianFactorGraph& graph,
-                     const Ordering& ordering,
-                     size_t mergeFrontalsBelow = 0);
+  MultifrontalSolver(const GaussianFactorGraph& graph, const Ordering& ordering,
+                     size_t mergeDimCap = 0,
+                     std::ostream* reportStream = nullptr);
 
   /**
    * Load new numerical values from the factor graph.
@@ -96,12 +102,14 @@ class GTSAM_EXPORT MultifrontalSolver {
    */
   const VectorValues& solve() const;
 
-  // Accessors for testing
+  /// Accessor for the roots of the elimination tree.
   const std::vector<CliquePtr>& roots() const { return roots_; }
 
+  /// Print the solver state.
   void print(const std::string& s = "",
              const KeyFormatter& keyFormatter = DefaultKeyFormatter) const;
 
+  /// Output stream operator for MultifrontalSolver.
   friend std::ostream& operator<<(std::ostream& os,
                                   const MultifrontalSolver& solver);
 };

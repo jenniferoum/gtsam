@@ -40,6 +40,22 @@ const GaussianFactorGraph chain = {
     std::make_shared<JacobianFactor>(x4, I_1x1, (Vector(1) << 1.).finished(),
                                      chainNoise)};
 const Ordering chainOrdering{x2, x1, x3, x4};
+
+size_t countCliques(const MultifrontalSolver& solver) {
+  size_t count = 0;
+  std::function<void(const MultifrontalSolver::CliquePtr&)> visit =
+      [&](const MultifrontalSolver::CliquePtr& clique) {
+        if (!clique) return;
+        count += 1;
+        for (const auto& child : clique->children()) {
+          visit(child);
+        }
+      };
+  for (const auto& root : solver.roots()) {
+    visit(root);
+  }
+  return count;
+}
 }  // namespace
 
 /* ************************************************************************* */
@@ -116,6 +132,15 @@ TEST(MultifrontalSolver, Eliminate) {
   VectorValues expected = expectedBT.optimize();
 
   EXPECT(assert_equal(expected, actual, 1e-9));
+}
+
+/* ************************************************************************* */
+TEST(MultifrontalSolver, MergeDimCap) {
+  MultifrontalSolver solverNoMerge(chain, chainOrdering, 0);
+  EXPECT_LONGS_EQUAL(2, countCliques(solverNoMerge));
+
+  MultifrontalSolver solverMerge(chain, chainOrdering, 1000);
+  EXPECT_LONGS_EQUAL(1, countCliques(solverMerge));
 }
 
 /* ************************************************************************* */

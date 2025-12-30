@@ -67,26 +67,39 @@ SfmData preamble(int argc, char* argv[]) {
 }
 
 // Build graph using conventional GeneralSFMFactor
-inline NonlinearFactorGraph buildGeneralSfmGraph(const SfmData& db) {
+inline NonlinearFactorGraph buildGeneralSfmGraph(
+    const SfmData& db, std::optional<double> priorStddev = std::nullopt) {
   using Camera = PinholeCamera<Cal3Bundler>;
   using SfmFactor = GeneralSFMFactor<Camera, Point3>;
 
   NonlinearFactorGraph graph;
+  std::vector<bool> hasCameraMeasurement(db.numberCameras(), false);
   for (size_t j = 0; j < db.numberTracks(); j++) {
-    for (const SfmMeasurement& m : db.tracks[j].measurements) {
-      size_t i = m.first;
-      Point2 z = m.second;
+    auto& measurements = db.tracks[j].measurements;
+    if (measurements.size() < 2) continue;
+    for (const SfmMeasurement& measurement : measurements) {
+      size_t i = measurement.first;
+      Point2 z = measurement.second;
       graph.emplace_shared<SfmFactor>(z, gNoiseModel, C(i), P(j));
+      hasCameraMeasurement[i] = true;
     }
   }
-  /// Add a weak prior on the first camera pose using the SfmData db
-  auto priorNoise = noiseModel::Isotropic::Sigma(9, 1.0);
-  graph.addPrior<Camera>(C(0), db.cameras[0], priorNoise);
 
-  /// Add a weak prior on the first point using the SfmData db
-  auto pointPriorNoise = noiseModel::Isotropic::Sigma(3, 1.0);
-  graph.addPrior<Point3>(P(0), db.tracks[0].p, pointPriorNoise);
-  
+  if (priorStddev) {
+    /// Add a weak prior on all cameras
+    auto priorNoise = noiseModel::Isotropic::Sigma(9, *priorStddev);
+    for (size_t i = 0; i < hasCameraMeasurement.size(); ++i) {
+      if (!hasCameraMeasurement[i]) continue;
+      graph.addPrior<Camera>(C(i), db.cameras[i], priorNoise);
+    }
+
+    /// Add a weak prior on all points
+    auto pointPriorNoise = noiseModel::Isotropic::Sigma(3, *priorStddev);
+    for (size_t j = 0; j < db.numberTracks(); ++j) {
+      graph.addPrior<Point3>(P(j), db.tracks[j].p, pointPriorNoise);
+    }
+  }
+
   return graph;
 }
 

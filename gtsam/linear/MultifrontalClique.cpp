@@ -97,6 +97,25 @@ size_t MultifrontalClique::factorCount() const {
   return cluster_->factors.size();
 }
 
+size_t MultifrontalClique::frontalDim(const std::map<Key, size_t>& dims) const {
+  size_t dim = 0;
+  for (Key key : frontals()) {
+    auto it = dims.find(key);
+    if (it != dims.end()) dim += it->second;
+  }
+  return dim;
+}
+
+size_t MultifrontalClique::separatorDim(
+    const std::map<Key, size_t>& dims) const {
+  size_t dim = 0;
+  for (Key key : separatorKeys_) {
+    auto it = dims.find(key);
+    if (it != dims.end()) dim += it->second;
+  }
+  return dim;
+}
+
 void MultifrontalClique::calculateSeparatorKeys() {
   // Separator keys are computed from local factor keys and child separators.
   KeySet allKeys;
@@ -228,7 +247,7 @@ void MultifrontalClique::eliminate() {
     if (!child) continue;
     child->updateParent(*this);
   }
-  
+
   // Form normal equations and factor the frontal block (Schur complement step).
   sbm_.choleskyPartial(frontals().size());
 }
@@ -236,24 +255,20 @@ void MultifrontalClique::eliminate() {
 void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
   // Expose only the separator+RHS view when contributing to the parent.
   sbm_.blockStart() = frontals().size();
-  parent.updateWith(sbm_, parentIndices_);
-  sbm_.blockStart() = 0;
-}
-
-void MultifrontalClique::updateWith(const SymmetricBlockMatrix& separator,
-                                    const std::vector<size_t>& indices) {
-  const size_t numBlocks = indices.size();
-  assert(separator.nBlocks() == numBlocks + 1);
-  const size_t rhsBlock = sbm_.nBlocks() - 1;
+  const size_t numBlocks = parentIndices_.size();
+  assert(sbm_.nBlocks() == numBlocks + 1);
+  const size_t rhsBlock = parent.sbm_.nBlocks() - 1;
 
   for (size_t i = 0; i <= numBlocks; ++i) {
-    const size_t p_i = (i < numBlocks) ? indices[i] : rhsBlock;
-    sbm_.updateDiagonalBlock(p_i, separator.diagonalBlock(i));
+    const size_t p_i = (i < numBlocks) ? parentIndices_[i] : rhsBlock;
+    parent.sbm_.updateDiagonalBlock(p_i, sbm_.diagonalBlock(i));
     for (size_t j = i + 1; j <= numBlocks; ++j) {
-      const size_t p_j = (j < numBlocks) ? indices[j] : rhsBlock;
-      sbm_.updateOffDiagonalBlock(p_i, p_j, separator.aboveDiagonalBlock(i, j));
+      const size_t p_j = (j < numBlocks) ? parentIndices_[j] : rhsBlock;
+      parent.sbm_.updateOffDiagonalBlock(p_i, p_j,
+                                         sbm_.aboveDiagonalBlock(i, j));
     }
   }
+  sbm_.blockStart() = 0;
 }
 
 void MultifrontalClique::solve() const {

@@ -112,6 +112,12 @@ class GTSAM_EXPORT MultifrontalClique {
   /// Get the number of factors in this clique.
   size_t factorCount() const;
 
+  /// Sum frontal variable dimensions for this clique.
+  size_t frontalDim(const std::map<Key, size_t>& dims) const;
+
+  /// Sum separator variable dimensions for this clique.
+  size_t separatorDim(const std::map<Key, size_t>& dims) const;
+
   /// Get the vertical block matrix Ab.
   const VerticalBlockMatrix& Ab() const { return Ab_; }
 
@@ -120,7 +126,6 @@ class GTSAM_EXPORT MultifrontalClique {
 
   /// Get the symmetric block matrix (const).
   const SymmetricBlockMatrix& sbm() const { return sbm_; }
-
 
   /**
    * Compute block dimensions from variable dimensions (excluding RHS).
@@ -170,16 +175,6 @@ class GTSAM_EXPORT MultifrontalClique {
    * @param parent Parent clique to update.
    */
   void updateParent(MultifrontalClique& parent) const;
-
-  /**
-   * Update this clique using a child's contribution.
-   * @param separator Child clique's SBM restricted to its separator blocks,
-   * with the RHS block appended as the last block.
-   * @param indices Mapping from the child's separator blocks into this
-   * parent's SBM block indices (RHS is implicit).
-   */
-  void updateWith(const SymmetricBlockMatrix& separator,
-                  const std::vector<size_t>& indices);
 
   /**
    * Solve for this clique's frontal variables and write them back to the

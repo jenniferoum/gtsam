@@ -16,24 +16,68 @@
  * @date   December 2025
  */
 
+#include <gtsam/base/treeTraversal-inst.h>
+#include <gtsam/base/types.h>
 #include <gtsam/inference/Key.h>
 #include <gtsam/linear/GaussianFactor.h>
 #include <gtsam/linear/JacobianFactor.h>
 #include <gtsam/linear/MultifrontalClique.h>
 #include <gtsam/linear/MultifrontalSolver.h>
-#include <gtsam/base/types.h>
 #include <gtsam/symbolic/SymbolicEliminationTree.h>
 #include <gtsam/symbolic/SymbolicFactorGraph.h>
-#include <gtsam/base/treeTraversal-inst.h>
 
+#include <algorithm>
 #include <functional>
 #include <iostream>
 #include <ostream>
 #include <stdexcept>
+#include <string>
 
 namespace gtsam {
 
 namespace {
+
+struct StructureStats {
+  size_t count = 0;
+  size_t maxFrontals = 0;
+  size_t maxSeparators = 0;
+  size_t maxTotal = 0;
+  size_t maxChildren = 0;
+  size_t sumFrontals = 0;
+  size_t sumSeparators = 0;
+  size_t sumTotal = 0;
+  size_t sumChildren = 0;
+
+  void update(size_t frontalDim, size_t separatorDim, size_t childCount) {
+    const size_t totalDim = frontalDim + separatorDim;
+    count += 1;
+    maxFrontals = std::max(maxFrontals, frontalDim);
+    maxSeparators = std::max(maxSeparators, separatorDim);
+    maxTotal = std::max(maxTotal, totalDim);
+    maxChildren = std::max(maxChildren, childCount);
+    sumFrontals += frontalDim;
+    sumSeparators += separatorDim;
+    sumTotal += totalDim;
+    sumChildren += childCount;
+  }
+
+  void report(const std::string& name, std::ostream* os) {
+    auto avg = [this](size_t sum) {
+      return count ? static_cast<double>(sum) / count : 0.0;
+    };
+    const double avgF = avg(sumFrontals);
+    const double avgS = avg(sumSeparators);
+    const double avgT = avg(sumTotal);
+    const double avgC = avg(sumChildren);
+
+    *os << name << "\n";
+    *os << "  cliques:    " << count << "\n";
+    *os << "  frontals:   max=" << maxFrontals << " avg=" << avgF << "\n";
+    *os << "  separators: max=" << maxSeparators << " avg=" << avgS << "\n";
+    *os << "  total dim:  max=" << maxTotal << " avg=" << avgT << "\n";
+    *os << "  children:   max=" << maxChildren << " avg=" << avgC << "\n";
+  }
+};
 
 // Compute variable dimensions from the GaussianFactorGraph
 std::map<Key, size_t> computeDims(const GaussianFactorGraph& graph) {
@@ -66,8 +110,10 @@ SymbolicFactorGraph buildSymbolicGraph(const GaussianFactorGraph& graph) {
   return symbolicGraph;
 }
 
-size_t frontalDimForCluster(const SymbolicJunctionTree::sharedNode& cluster,
-                            const std::map<Key, size_t>& dims) {
+// Sum the dimensions of frontal variables in a symbolic cluster.
+size_t frontalDimForSymbolicCluster(
+    const SymbolicJunctionTree::sharedNode& cluster,
+    const std::map<Key, size_t>& dims) {
   size_t dim = 0;
   for (Key key : cluster->orderedFrontalKeys) {
     auto it = dims.find(key);
@@ -76,21 +122,91 @@ size_t frontalDimForCluster(const SymbolicJunctionTree::sharedNode& cluster,
   return dim;
 }
 
+KeySet separatorKeysForSymbolicCluster(
+    const SymbolicJunctionTree::sharedNode& cluster,
+    std::map<const SymbolicJunctionTree::Node*, KeySet>* cache) {
+  if (!cluster) return KeySet();
+  if (cache) {
+    auto* raw = cluster.get();
+    auto it = cache->find(raw);
+    if (it != cache->end()) return it->second;
+  }
+
+  KeySet keys;
+  for (const auto& factor : cluster->factors) {
+    if (!factor) continue;
+    keys.insert(factor->begin(), factor->end());
+  }
+  for (const auto& child : cluster->children) {
+    KeySet childSeparators = separatorKeysForSymbolicCluster(child, cache);
+    keys.insert(childSeparators.begin(), childSeparators.end());
+  }
+  for (Key key : cluster->orderedFrontalKeys) {
+    keys.erase(key);
+  }
+
+  if (cache) {
+    auto result = cache->emplace(cluster.get(), std::move(keys));
+    return result.first->second;
+  }
+  return keys;
+}
+
+size_t separatorDimForSymbolicCluster(
+    const SymbolicJunctionTree::sharedNode& cluster,
+    const std::map<Key, size_t>& dims,
+    std::map<const SymbolicJunctionTree::Node*, KeySet>* cache) {
+  size_t dim = 0;
+  const KeySet separatorKeys = separatorKeysForSymbolicCluster(cluster, cache);
+  for (Key key : separatorKeys) {
+    auto it = dims.find(key);
+    if (it != dims.end()) dim += it->second;
+  }
+  return dim;
+}
+
+size_t totalDimForSymbolicCluster(
+    const SymbolicJunctionTree::sharedNode& cluster,
+    const std::map<Key, size_t>& dims,
+    std::map<const SymbolicJunctionTree::Node*, KeySet>* cache) {
+  return frontalDimForSymbolicCluster(cluster, dims) +
+         separatorDimForSymbolicCluster(cluster, dims, cache);
+}
+
+void accumulateSymbolicStats(
+    const SymbolicJunctionTree::sharedNode& cluster,
+    const std::map<Key, size_t>& dims,
+    std::map<const SymbolicJunctionTree::Node*, KeySet>* cache,
+    StructureStats* stats) {
+  if (!cluster) return;
+  const size_t frontalDim = frontalDimForSymbolicCluster(cluster, dims);
+  const size_t separatorDim =
+      separatorDimForSymbolicCluster(cluster, dims, cache);
+  stats->update(frontalDim, separatorDim, cluster->children.size());
+  for (const auto& child : cluster->children) {
+    accumulateSymbolicStats(child, dims, cache, stats);
+  }
+}
+
+// Bottom-up merge of child clusters whose merged total dimension stays below
+// a threshold.
 void mergeSmallClusters(const SymbolicJunctionTree::sharedNode& cluster,
-                        const std::map<Key, size_t>& dims,
-                        size_t mergeFrontalsBelow) {
+                        const std::map<Key, size_t>& dims, size_t mergeDimCap) {
   if (!cluster) return;
   for (const auto& child : cluster->children) {
-    mergeSmallClusters(child, dims, mergeFrontalsBelow);
+    mergeSmallClusters(child, dims, mergeDimCap);
   }
   if (cluster->children.empty()) return;
 
+  const size_t parentTotalDim =
+      totalDimForSymbolicCluster(cluster, dims, nullptr);
   std::vector<bool> merge(cluster->children.size(), false);
   bool any = false;
   for (size_t i = 0; i < cluster->children.size(); ++i) {
     const auto& child = cluster->children[i];
     if (!child) continue;
-    if (frontalDimForCluster(child, dims) < mergeFrontalsBelow) {
+    const size_t childFrontalDim = frontalDimForSymbolicCluster(child, dims);
+    if (childFrontalDim + parentTotalDim < mergeDimCap) {
       merge[i] = true;
       any = true;
     }
@@ -105,7 +221,8 @@ void mergeSmallClusters(const SymbolicJunctionTree::sharedNode& cluster,
 /* ************************************************************************* */
 MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
                                        const Ordering& ordering,
-                                       size_t mergeFrontalsBelow) {
+                                       size_t mergeDimCap,
+                                       std::ostream* reportStream) {
   // 0. Pre-compute variable dimensions
   dims_ = computeDims(graph);
   for (Key key : ordering) {
@@ -119,9 +236,26 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
   SymbolicEliminationTree eliminationTree(symbolicGraph, ordering);
   SymbolicJunctionTree junctionTree(eliminationTree);
 
-  if (mergeFrontalsBelow > 0) {
+  if (reportStream) {
+    StructureStats stats;
+    std::map<const SymbolicJunctionTree::Node*, KeySet> separatorCache;
     for (const auto& rootCluster : junctionTree.roots()) {
-      mergeSmallClusters(rootCluster, dims_, mergeFrontalsBelow);
+      accumulateSymbolicStats(rootCluster, dims_, &separatorCache, &stats);
+    }
+    stats.report("Symbolic cluster structure", reportStream);
+  }
+
+  if (mergeDimCap > 0) {
+    for (const auto& rootCluster : junctionTree.roots()) {
+      mergeSmallClusters(rootCluster, dims_, mergeDimCap);
+    }
+    if (reportStream) {
+      StructureStats stats;
+      std::map<const SymbolicJunctionTree::Node*, KeySet> separatorCache;
+      for (const auto& rootCluster : junctionTree.roots()) {
+        accumulateSymbolicStats(rootCluster, dims_, &separatorCache, &stats);
+      }
+      stats.report("Clique structure after merge", reportStream);
     }
   }
 
@@ -178,25 +312,16 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
   }
 }
 
-size_t MultifrontalSolver::frontalDimForClique(
-    const CliquePtr& clique, const std::map<Key, size_t>& dims) {
-  size_t dim = 0;
-  for (Key key : clique->frontals()) {
-    auto it = dims.find(key);
-    if (it != dims.end()) dim += it->second;
-  }
-  return dim;
-}
-
+/* ************************************************************************* */
 std::shared_ptr<MultifrontalSolver::CliqueTraversalNode>
-MultifrontalSolver::buildTraversalNode(
-    const CliquePtr& clique, const std::map<Key, size_t>& dims) {
+MultifrontalSolver::buildTraversalNode(const CliquePtr& clique,
+                                       const std::map<Key, size_t>& dims) {
   if (!clique) return nullptr;
   auto node = std::make_shared<CliqueTraversalNode>();
   node->clique = clique;
-  // Use frontal dimension as the traversal "problem size" for scheduling cutoff.
-  node->problemSizeValue =
-      static_cast<int>(frontalDimForClique(clique, dims));
+  // Use frontal dimension as the traversal "problem size" for scheduling
+  // cutoff.
+  node->problemSizeValue = static_cast<int>(clique->frontalDim(dims));
   node->children.reserve(clique->children().size());
   for (const auto& child : clique->children()) {
     auto childNode = buildTraversalNode(child, dims);
@@ -214,7 +339,8 @@ void MultifrontalSolver::load(const GaussianFactorGraph& graph) {
 
 /* ************************************************************************* */
 void MultifrontalSolver::eliminate() {
-  // Parallel elimination uses the same traversal as legacy GTSAM (TBB optional).
+  // Parallel elimination uses the same traversal as legacy GTSAM (TBB
+  // optional).
   struct EliminateTraversalData {};
   struct EliminatePreVisitor {
     EliminateTraversalData operator()(
@@ -245,8 +371,8 @@ void MultifrontalSolver::eliminate() {
   EliminatePreVisitor visitorPre;
   EliminatePostVisitor visitorPost;
   TbbOpenMPMixedScope threadLimiter;
-  treeTraversal::DepthFirstForestParallel(
-      forest, rootData, visitorPre, visitorPost, 10);
+  treeTraversal::DepthFirstForestParallel(forest, rootData, visitorPre,
+                                          visitorPost, 10);
 }
 
 /* ************************************************************************* */
