@@ -70,7 +70,7 @@ class GTSAM_EXPORT MultifrontalSolver {
   /**
    * Construct the solver from a factor graph and an ordering.
    * This builds the symbolic junction tree and pre-allocates all matrices.
-   * @param graph The factor graph to solve.
+   * @param graph The factor graph to updateSolution.
    * @param ordering The variable ordering to use for elimination.
    * @param mergeDimCap Merge a child if its frontal dimension plus the
    * parent's total dimension is below this threshold (0 disables merging).
@@ -93,14 +93,14 @@ class GTSAM_EXPORT MultifrontalSolver {
    * Eliminate the graph using Cholesky factorization.
    * This operates in-place on the pre-allocated matrices.
    */
-  void eliminate();
+  void eliminateInPlace();
 
   /**
    * Solve for the update vector.
    *
    * @return Reference to the internally cached solution vector.
    */
-  const VectorValues& solve() const;
+  const VectorValues& updateSolution() const;
 
   /// Accessor for the roots of the elimination tree.
   const std::vector<CliquePtr>& roots() const { return roots_; }

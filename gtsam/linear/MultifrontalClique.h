@@ -168,7 +168,7 @@ class GTSAM_EXPORT MultifrontalClique {
    * incorporates child separator contributions, and performs partial Cholesky
    * on the frontal blocks. Requires parent indices to be precomputed.
    */
-  void eliminate();
+  void eliminateInPlace();
 
   /**
    * Apply this clique's separator contribution into the parent clique.
@@ -183,7 +183,7 @@ class GTSAM_EXPORT MultifrontalClique {
    * Uses block back-substitution using the upper triangular-part of the
    * Cholesky-stored SBM, solving the triangular system for the frontal blocks.
    */
-  void solve() const;
+  void updateSolution() const;
   /// @}
 
  private:

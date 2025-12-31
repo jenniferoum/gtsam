@@ -120,7 +120,7 @@ void MultifrontalClique::calculateSeparatorKeys() {
   // Separator keys are computed from local factor keys and child separators.
   KeySet allKeys;
   for (const auto& factor : cluster_->factors) {
-    if (!factor) continue;
+    assert(factor);
     allKeys.insert(factor->begin(), factor->end());
   }
   for (const auto& child : children_) {
@@ -161,9 +161,9 @@ std::vector<size_t> MultifrontalClique::blockDims(
 size_t MultifrontalClique::countRows(const GaussianFactorGraph& graph) const {
   size_t vbmRows = 0;
   for (const auto& factor : cluster_->factors) {
+    assert(factor);
     auto indexed =
-        std::dynamic_pointer_cast<internal::IndexedSymbolicFactor>(factor);
-    if (!indexed) continue;
+        std::static_pointer_cast<internal::IndexedSymbolicFactor>(factor);
     if (auto jacobianFactor =
             std::dynamic_pointer_cast<JacobianFactor>(graph[indexed->index_])) {
       vbmRows += jacobianFactor->rows();
@@ -208,9 +208,9 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
   // initializeMatrices and then kept consistent across loads.
   size_t rowOffset = 0;
   for (const auto& factor : cluster_->factors) {
+    assert(factor);
     auto indexed =
-        std::dynamic_pointer_cast<internal::IndexedSymbolicFactor>(factor);
-    if (!indexed) continue;
+        std::static_pointer_cast<internal::IndexedSymbolicFactor>(factor);
     auto jacobianFactor =
         std::dynamic_pointer_cast<JacobianFactor>(graph[indexed->index_]);
     if (!jacobianFactor) continue;
@@ -239,7 +239,7 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
   }
 }
 
-void MultifrontalClique::eliminate() {
+void MultifrontalClique::eliminateInPlace() {
   // Update SBM with the local factors, Ab^T * Ab
   sbm_.selfadjointView().rankUpdate(Ab_.matrix().transpose());
 
@@ -271,7 +271,7 @@ void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
   sbm_.blockStart() = 0;
 }
 
-void MultifrontalClique::solve() const {
+void MultifrontalClique::updateSolution() const {
   // Solve with block back-substitution on the Cholesky-stored SBM, avoiding
   // materializing an explicit R matrix or split representation.
   const size_t nFrontals = frontalPtrs_.size();

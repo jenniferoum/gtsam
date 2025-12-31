@@ -122,12 +122,12 @@ TEST(MultifrontalSolver, Load) {
 /* ************************************************************************* */
 TEST(MultifrontalSolver, Eliminate) {
   MultifrontalSolver solver(chain, chainOrdering);
-  solver.eliminate();
+  solver.eliminateInPlace();
 
   // Solve
-  const VectorValues& actual = solver.solve();
+  const VectorValues& actual = solver.updateSolution();
 
-  // Reference elimination and solve
+  // Reference elimination and updateSolution
   GaussianBayesTree expectedBT = *chain.eliminateMultifrontal(chainOrdering);
   VectorValues expected = expectedBT.optimize();
 
@@ -175,18 +175,18 @@ TEST(MultifrontalSolver, BalancedSmoother) {
   EXPECT(cX1 != nullptr);
   EXPECT_LONGS_EQUAL(3, cX1->sbm().nBlocks());
 
-  // Eliminate and solve
-  solver.eliminate();
-  const VectorValues& actual = solver.solve();
+  // Eliminate and updateSolution
+  solver.eliminateInPlace();
+  const VectorValues& actual = solver.updateSolution();
 
   GaussianBayesTree expectedBT = *smoother.eliminateMultifrontal(ordering);
   VectorValues expected = expectedBT.optimize();
   EXPECT(assert_equal(expected, actual, 1e-9));
 
-  // Eliminate and solve after loading new values
+  // Eliminate and updateSolution after loading new values
   solver.load(smoother);
-  solver.eliminate();
-  const VectorValues& actual2 = solver.solve();
+  solver.eliminateInPlace();
+  const VectorValues& actual2 = solver.updateSolution();
   EXPECT(assert_equal(expected, actual2, 1e-9));
 }
 

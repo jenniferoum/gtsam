@@ -27,6 +27,7 @@
 #include <gtsam/symbolic/SymbolicFactorGraph.h>
 
 #include <algorithm>
+#include <cassert>
 #include <functional>
 #include <iostream>
 #include <ostream>
@@ -134,7 +135,7 @@ KeySet separatorKeysForSymbolicCluster(
 
   KeySet keys;
   for (const auto& factor : cluster->factors) {
-    if (!factor) continue;
+    assert(factor);
     keys.insert(factor->begin(), factor->end());
   }
   for (const auto& child : cluster->children) {
@@ -236,27 +237,23 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
   SymbolicEliminationTree eliminationTree(symbolicGraph, ordering);
   SymbolicJunctionTree junctionTree(eliminationTree);
 
-  if (reportStream) {
+  const auto reportStructure = [&](const std::string& name) {
+    if (!reportStream) return;
     StructureStats stats;
     std::map<const SymbolicJunctionTree::Node*, KeySet> separatorCache;
     for (const auto& rootCluster : junctionTree.roots()) {
       accumulateSymbolicStats(rootCluster, dims_, &separatorCache, &stats);
     }
-    stats.report("Symbolic cluster structure", reportStream);
-  }
+    stats.report(name, reportStream);
+  };
+
+  reportStructure("Symbolic cluster structure");
 
   if (mergeDimCap > 0) {
     for (const auto& rootCluster : junctionTree.roots()) {
       mergeSmallClusters(rootCluster, dims_, mergeDimCap);
     }
-    if (reportStream) {
-      StructureStats stats;
-      std::map<const SymbolicJunctionTree::Node*, KeySet> separatorCache;
-      for (const auto& rootCluster : junctionTree.roots()) {
-        accumulateSymbolicStats(rootCluster, dims_, &separatorCache, &stats);
-      }
-      stats.report("Clique structure after merge", reportStream);
-    }
+    reportStructure("Clique structure after merge");
   }
 
   // 3. Recursive function to build Clique hierarchy (independent of traversal).
@@ -338,7 +335,7 @@ void MultifrontalSolver::load(const GaussianFactorGraph& graph) {
 }
 
 /* ************************************************************************* */
-void MultifrontalSolver::eliminate() {
+void MultifrontalSolver::eliminateInPlace() {
   // Parallel elimination uses the same traversal as legacy GTSAM (TBB
   // optional).
   struct EliminateTraversalData {};
@@ -352,7 +349,7 @@ void MultifrontalSolver::eliminate() {
   struct EliminatePostVisitor {
     void operator()(const std::shared_ptr<CliqueTraversalNode>& node,
                     EliminateTraversalData&) const {
-      if (node && node->clique) node->clique->eliminate();
+      if (node && node->clique) node->clique->eliminateInPlace();
     }
   };
   struct CliqueForestView {
@@ -376,9 +373,9 @@ void MultifrontalSolver::eliminate() {
 }
 
 /* ************************************************************************* */
-const VectorValues& MultifrontalSolver::solve() const {
+const VectorValues& MultifrontalSolver::updateSolution() const {
   for (const auto& clique : cliques_) {
-    clique->solve();
+    clique->updateSolution();
   }
   return solution_;
 }

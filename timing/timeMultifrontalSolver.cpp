@@ -53,8 +53,8 @@ static void runMultifrontalSolver(MultifrontalSolver& solver,
                                   size_t iterations) {
   for (size_t i = 0; i < iterations; ++i) {
     solver.load(smoother);
-    solver.eliminate();
-    const VectorValues& solution = solver.solve();
+    solver.eliminateInPlace();
+    const VectorValues& solution = solver.updateSolution();
     (void)solution;
   }
 }
