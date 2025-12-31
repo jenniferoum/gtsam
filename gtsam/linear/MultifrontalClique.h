@@ -74,11 +74,8 @@ class GTSAM_EXPORT MultifrontalClique {
   /// @param child Shared pointer to the child clique.
   void addChild(const shared_ptr& child);
 
-  /// Compute parent indices for all children after separators are finalized.
-  void assignParentIndicesForChildren();
-
   /// Compute separator keys, cache dimensions, and cache value pointers.
-  void finalize(const std::map<Key, size_t>& dims, VectorValues* delta);
+  void finalize(const std::map<Key, size_t>& dims, VectorValues* solution);
 
   /// Pre-allocate matrices for this clique.
   /// @param blockDims Block dimensions (excluding RHS).
@@ -182,7 +179,7 @@ class GTSAM_EXPORT MultifrontalClique {
   void calculateSeparatorKeys();
 
   /// Cache pointers to frontal and separator update vectors.
-  void cacheValuePointers(VectorValues* delta);
+  void cacheSolutionPointers(VectorValues* delta);
 
   void setParentIndices(const std::vector<size_t>& indices) {
     parentIndices_ = indices;

@@ -54,7 +54,7 @@ class GTSAM_EXPORT MultifrontalSolver {
   /**
    * Construct the solver from a factor graph and an ordering.
    * This builds the symbolic junction tree and pre-allocates all matrices.
-   * @param graph The factor graph to updateSolution.
+   * @param graph The factor graph to solve.
    * @param ordering The variable ordering to use for elimination.
    * @param mergeDimCap Merge a child if its frontal dimension plus the
    * parent's total dimension is below this threshold (0 disables merging).
@@ -88,6 +88,9 @@ class GTSAM_EXPORT MultifrontalSolver {
 
   /// Accessor for the roots of the elimination tree.
   const std::vector<CliquePtr>& roots() const { return roots_; }
+
+  /// Get the total number of cliques in the solver.
+  size_t cliqueCount() const { return cliques_.size(); }
 
   /// Print the solver state.
   void print(const std::string& s = "",

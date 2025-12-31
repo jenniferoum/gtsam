@@ -41,21 +41,6 @@ const GaussianFactorGraph chain = {
                                      chainNoise)};
 const Ordering chainOrdering{x2, x1, x3, x4};
 
-size_t countCliques(const MultifrontalSolver& solver) {
-  size_t count = 0;
-  std::function<void(const MultifrontalSolver::CliquePtr&)> visit =
-      [&](const MultifrontalSolver::CliquePtr& clique) {
-        if (!clique) return;
-        count += 1;
-        for (const auto& child : clique->children) {
-          visit(child);
-        }
-      };
-  for (const auto& root : solver.roots()) {
-    visit(root);
-  }
-  return count;
-}
 }  // namespace
 
 /* ************************************************************************* */
@@ -127,7 +112,7 @@ TEST(MultifrontalSolver, Eliminate) {
   // Solve
   const VectorValues& actual = solver.updateSolution();
 
-  // Reference elimination and updateSolution
+  // Reference elimination and solve
   GaussianBayesTree expectedBT = *chain.eliminateMultifrontal(chainOrdering);
   VectorValues expected = expectedBT.optimize();
 
@@ -137,10 +122,10 @@ TEST(MultifrontalSolver, Eliminate) {
 /* ************************************************************************* */
 TEST(MultifrontalSolver, MergeDimCap) {
   MultifrontalSolver solverNoMerge(chain, chainOrdering, 0);
-  EXPECT_LONGS_EQUAL(2, countCliques(solverNoMerge));
+  EXPECT_LONGS_EQUAL(2, solverNoMerge.cliqueCount());
 
   MultifrontalSolver solverMerge(chain, chainOrdering, 1000);
-  EXPECT_LONGS_EQUAL(1, countCliques(solverMerge));
+  EXPECT_LONGS_EQUAL(1, solverMerge.cliqueCount());
 }
 
 /* ************************************************************************* */
@@ -175,7 +160,7 @@ TEST(MultifrontalSolver, BalancedSmoother) {
   EXPECT(cX1 != nullptr);
   EXPECT_LONGS_EQUAL(3, cX1->sbm().nBlocks());
 
-  // Eliminate and updateSolution
+  // Eliminate and solve
   solver.eliminateInPlace();
   const VectorValues& actual = solver.updateSolution();
 
@@ -183,7 +168,7 @@ TEST(MultifrontalSolver, BalancedSmoother) {
   VectorValues expected = expectedBT.optimize();
   EXPECT(assert_equal(expected, actual, 1e-9));
 
-  // Eliminate and updateSolution after loading new values
+  // Eliminate and solve after loading new values
   solver.load(smoother);
   solver.eliminateInPlace();
   const VectorValues& actual2 = solver.updateSolution();

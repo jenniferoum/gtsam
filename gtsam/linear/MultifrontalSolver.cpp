@@ -284,9 +284,6 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
     // Initial load
     clique->fillAb(graph);
 
-    // Pre-compute parent mapping after separators are finalized.
-    clique->assignParentIndicesForChildren();
-
     return clique;
   };
 

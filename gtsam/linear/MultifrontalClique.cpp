@@ -71,19 +71,12 @@ const KeyVector& MultifrontalClique::frontals() const {
   return cluster_->orderedFrontalKeys;
 }
 
-void MultifrontalClique::assignParentIndicesForChildren() {
-  for (const auto& child : children) {
-    if (!child) continue;
-    child->setParentIndices(child->parentIndicesFor(*this));
-  }
-}
-
 size_t MultifrontalClique::factorCount() const {
   return cluster_->factors.size();
 }
 
 void MultifrontalClique::finalize(const std::map<Key, size_t>& dims,
-                                  VectorValues* values) {
+                                  VectorValues* solution) {
   calculateSeparatorKeys();
 
   size_t dim = 0;
@@ -100,7 +93,13 @@ void MultifrontalClique::finalize(const std::map<Key, size_t>& dims,
   }
   separatorDim = dim;
 
-  cacheValuePointers(values);
+  cacheSolutionPointers(solution);
+
+  /// Compute parent indices for all children
+  for (const auto& child : children) {
+    if (!child) continue;
+    child->setParentIndices(child->parentIndicesFor(*this));
+  }
 }
 
 void MultifrontalClique::calculateSeparatorKeys() {
@@ -120,16 +119,16 @@ void MultifrontalClique::calculateSeparatorKeys() {
   separatorKeys_.assign(allKeys.begin(), allKeys.end());
 }
 
-void MultifrontalClique::cacheValuePointers(VectorValues* values) {
+void MultifrontalClique::cacheSolutionPointers(VectorValues* solution) {
   frontalPtrs_.clear();
   separatorPtrs_.clear();
   frontalPtrs_.reserve(frontals().size());
   separatorPtrs_.reserve(separatorKeys_.size());
   for (Key key : frontals()) {
-    frontalPtrs_.push_back(&values->at(key));
+    frontalPtrs_.push_back(&solution->at(key));
   }
   for (Key key : separatorKeys_) {
-    separatorPtrs_.push_back(&values->at(key));
+    separatorPtrs_.push_back(&solution->at(key));
   }
 }
 
