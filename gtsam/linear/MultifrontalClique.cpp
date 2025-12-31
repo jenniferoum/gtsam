@@ -49,22 +49,18 @@ Vector& buildSeparatorVector(const std::vector<const Vector*>& separatorPtrs,
 }  // namespace
 
 MultifrontalClique::MultifrontalClique(
-    const SymbolicJunctionTree::sharedNode& cluster) {
+    const SymbolicJunctionTree::sharedNode& cluster,
+    const std::weak_ptr<MultifrontalClique>& parent) {
   if (!cluster) {
     throw std::runtime_error("MultifrontalSolver: null cluster.");
   }
   cluster_ = cluster;
+  this->parent = parent;
   const auto& frontals = cluster_->orderedFrontalKeys;
   if (frontals.empty()) {
     throw std::runtime_error(
         "MultifrontalSolver: cluster has no frontal keys.");
   }
-  key_ = frontals.front();
-}
-
-void MultifrontalClique::setParent(
-    const std::weak_ptr<MultifrontalClique>& parent) {
-  parent_ = parent;
 }
 
 void MultifrontalClique::addChild(const shared_ptr& child) {
@@ -75,10 +71,6 @@ const KeyVector& MultifrontalClique::frontals() const {
   return cluster_->orderedFrontalKeys;
 }
 
-const std::weak_ptr<MultifrontalClique>& MultifrontalClique::parent() const {
-  return parent_;
-}
-
 void MultifrontalClique::assignParentIndicesForChildren() {
   for (const auto& child : children) {
     if (!child) continue;
@@ -86,29 +78,29 @@ void MultifrontalClique::assignParentIndicesForChildren() {
   }
 }
 
-Key MultifrontalClique::key() const { return key_; }
-
 size_t MultifrontalClique::factorCount() const {
   return cluster_->factors.size();
 }
 
-size_t MultifrontalClique::frontalDim(const std::map<Key, size_t>& dims) const {
+void MultifrontalClique::finalize(const std::map<Key, size_t>& dims,
+                                  VectorValues* values) {
+  calculateSeparatorKeys();
+
   size_t dim = 0;
   for (Key key : frontals()) {
     auto it = dims.find(key);
     if (it != dims.end()) dim += it->second;
   }
-  return dim;
-}
+  frontalDim = dim;
 
-size_t MultifrontalClique::separatorDim(
-    const std::map<Key, size_t>& dims) const {
-  size_t dim = 0;
+  dim = 0;
   for (Key key : separatorKeys_) {
     auto it = dims.find(key);
     if (it != dims.end()) dim += it->second;
   }
-  return dim;
+  separatorDim = dim;
+
+  cacheValuePointers(values);
 }
 
 void MultifrontalClique::calculateSeparatorKeys() {
@@ -308,7 +300,7 @@ void MultifrontalClique::updateSolution() const {
 void MultifrontalClique::print(const std::string& s,
                                const KeyFormatter& keyFormatter) const {
   if (!s.empty()) std::cout << s;
-  std::cout << "Clique(key=" << keyFormatter(key_) << ", frontals=[";
+  std::cout << "Clique(frontals=[";
   for (size_t i = 0; i < frontals().size(); ++i) {
     std::cout << keyFormatter(frontals()[i]);
     if (i + 1 < frontals().size()) std::cout << ", ";
@@ -354,7 +346,7 @@ std::ostream& operator<<(std::ostream& os, const MultifrontalClique& clique) {
     os << "]";
   };
 
-  os << "Clique(key=" << formatter(clique.key()) << ", frontals=";
+  os << "Clique(frontals=";
   printKeys(clique.frontals());
   os << ", separators=";
   printKeys(clique.separatorKeys());

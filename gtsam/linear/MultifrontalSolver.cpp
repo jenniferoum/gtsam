@@ -265,9 +265,7 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
     if (!cluster) return nullptr;
 
     // Create Clique
-    auto clique = std::make_shared<MultifrontalClique>(cluster);
-    clique->setParent(parent);
-    cliques_.push_back(clique);
+    auto clique = std::make_shared<MultifrontalClique>(cluster, parent);
 
     // Process children
     for (const auto& childCluster : cluster->children) {
@@ -275,9 +273,8 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
       clique->addChild(childClique);
     }
 
-    clique->setProblemSize(static_cast<int>(clique->frontalDim(dims_)));
-    clique->calculateSeparatorKeys();
-    clique->cacheValuePointers(&solution_);
+    clique->finalize(dims_, &solution_);
+    cliques_.push_back(clique);
 
     // Initialize matrices
     std::vector<size_t> blockDims = clique->blockDims(dims_);

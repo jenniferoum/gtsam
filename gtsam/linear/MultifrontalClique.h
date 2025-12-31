@@ -56,19 +56,19 @@ class GTSAM_EXPORT MultifrontalClique {
   using shared_ptr = std::shared_ptr<MultifrontalClique>;
   using Children = std::vector<shared_ptr>;
 
-  /// Child cliques used for traversal.
-  Children children;
+  std::weak_ptr<MultifrontalClique> parent;  ///< Parent clique.
+  Children children;        ///< Child cliques used for traversal.
+  size_t frontalDim = 0;    ///< Frontal dimension.
+  size_t separatorDim = 0;  ///< Separator dimension.
 
   /// Construct a clique from a symbolic junction tree node.
   /// @param cluster The symbolic junction tree node.
-  explicit MultifrontalClique(const SymbolicJunctionTree::sharedNode& cluster);
+  /// @param parent Weak pointer to the parent clique.
+  explicit MultifrontalClique(const SymbolicJunctionTree::sharedNode& cluster,
+                              const std::weak_ptr<MultifrontalClique>& parent);
 
   /// @name Setup (non-const)
   /// @{
-
-  /// Set the parent clique.
-  /// @param parent Weak pointer to the parent clique.
-  void setParent(const std::weak_ptr<MultifrontalClique>& parent);
 
   /// Add a child clique.
   /// @param child Shared pointer to the child clique.
@@ -77,11 +77,8 @@ class GTSAM_EXPORT MultifrontalClique {
   /// Compute parent indices for all children after separators are finalized.
   void assignParentIndicesForChildren();
 
-  /// Cache pointers to frontal and separator update vectors.
-  void cacheValuePointers(VectorValues* delta);
-
-  /// Calculate separator keys from children's frontals.
-  void calculateSeparatorKeys();
+  /// Compute separator keys, cache dimensions, and cache value pointers.
+  void finalize(const std::map<Key, size_t>& dims, VectorValues* delta);
 
   /// Pre-allocate matrices for this clique.
   /// @param blockDims Block dimensions (excluding RHS).
@@ -104,26 +101,13 @@ class GTSAM_EXPORT MultifrontalClique {
   /// Get the separator keys for this clique.
   const KeyVector& separatorKeys() const;
 
-  /// Get the parent of this clique.
-  const std::weak_ptr<MultifrontalClique>& parent() const;
-
-  /// Get the primary key of this clique (first frontal).
-  Key key() const;
-
   /// Get the cached problem size for traversal scheduling.
-  int problemSize() const { return problemSizeValue_; }
-
-  /// Set the cached problem size for traversal scheduling.
-  void setProblemSize(int problemSize) { problemSizeValue_ = problemSize; }
+  int problemSize() const {
+    return static_cast<int>(frontalDim + separatorDim);
+  }
 
   /// Get the number of factors in this clique.
   size_t factorCount() const;
-
-  /// Sum frontal variable dimensions for this clique.
-  size_t frontalDim(const std::map<Key, size_t>& dims) const;
-
-  /// Sum separator variable dimensions for this clique.
-  size_t separatorDim(const std::map<Key, size_t>& dims) const;
 
   /// Get the vertical block matrix Ab.
   const VerticalBlockMatrix& Ab() const { return Ab_; }
@@ -194,13 +178,15 @@ class GTSAM_EXPORT MultifrontalClique {
   /// @}
 
  private:
+  /// Calculate separator keys from children's frontals.
+  void calculateSeparatorKeys();
+
+  /// Cache pointers to frontal and separator update vectors.
+  void cacheValuePointers(VectorValues* delta);
+
   void setParentIndices(const std::vector<size_t>& indices) {
     parentIndices_ = indices;
   }
-  Key key_;
-  std::weak_ptr<MultifrontalClique> parent_;
-  int problemSizeValue_ = 0;
-
   VerticalBlockMatrix Ab_;
   mutable SymmetricBlockMatrix sbm_;
   mutable Vector rhsScratch_;
