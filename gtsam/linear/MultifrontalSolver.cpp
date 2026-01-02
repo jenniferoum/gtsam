@@ -19,6 +19,7 @@
 #include <gtsam/base/treeTraversal-inst.h>
 #include <gtsam/base/types.h>
 #include <gtsam/inference/Key.h>
+#include <gtsam/linear/GaussianBayesTree.h>
 #include <gtsam/linear/GaussianFactor.h>
 #include <gtsam/linear/HessianFactor.h>
 #include <gtsam/linear/JacobianFactor.h>
@@ -26,6 +27,7 @@
 #include <gtsam/linear/MultifrontalSolver.h>
 #include <gtsam/symbolic/SymbolicEliminationTree.h>
 #include <gtsam/symbolic/SymbolicFactorGraph.h>
+#include <gtsam/symbolic/SymbolicJunctionTree.h>
 
 #include <algorithm>
 #include <cassert>
@@ -219,6 +221,84 @@ void mergeSmallClusters(const SymbolicJunctionTree::sharedNode& cluster,
   }
 }
 
+void reportStructure(const SymbolicJunctionTree& junctionTree,
+                     const std::map<Key, size_t>& dims, const std::string& name,
+                     std::ostream* reportStream) {
+  if (!reportStream) return;
+  // Accumulate stats using cached separator keys.
+  StructureStats stats;
+  std::map<const SymbolicJunctionTree::Node*, KeySet> separatorCache;
+  for (const auto& rootCluster : junctionTree.roots()) {
+    accumulateSymbolicStats(rootCluster, dims, &separatorCache, &stats);
+  }
+  stats.report(name, reportStream);
+}
+
+KeyVector keyVectorFromKeySet(const KeySet& keys) {
+  KeyVector result;
+  result.reserve(keys.size());
+  for (Key key : keys) result.push_back(key);
+  return result;
+}
+
+std::vector<size_t> factorIndicesForSymbolicCluster(
+    const SymbolicJunctionTree::sharedNode& cluster) {
+  std::vector<size_t> indices;
+  indices.reserve(cluster->factors.size());
+  for (const auto& factor : cluster->factors) {
+    assert(factor);
+    auto indexed =
+        std::static_pointer_cast<internal::IndexedSymbolicFactor>(factor);
+    indices.push_back(indexed->index_);
+  }
+  return indices;
+}
+
+struct BuiltClique {
+  MultifrontalSolver::CliquePtr clique;
+  KeyVector separatorKeys;
+};
+
+// Build cliques from a symbolic junction tree and wire parent/child metadata.
+struct CliqueBuilder {
+  const std::map<Key, size_t>& dims;
+  const GaussianFactorGraph& graph;
+  VectorValues* solution;
+  std::vector<MultifrontalSolver::CliquePtr>* cliques;
+  std::map<const SymbolicJunctionTree::Node*, KeySet> separatorCache;
+
+  BuiltClique build(const SymbolicJunctionTree::sharedNode& cluster,
+                    std::weak_ptr<MultifrontalClique> parent) {
+    if (!cluster) return {nullptr, KeyVector()};
+
+    // Gather symbolic metadata for this clique.
+    const KeyVector& frontals = cluster->orderedFrontalKeys;
+    KeyVector separatorKeys = keyVectorFromKeySet(
+        separatorKeysForSymbolicCluster(cluster, &separatorCache));
+
+    // Create the clique node and cache static structure.
+    auto clique = std::make_shared<MultifrontalClique>(
+        factorIndicesForSymbolicCluster(cluster), parent, frontals,
+        separatorKeys, dims, graph, solution);
+
+    // Build children and collect separator keys.
+    std::vector<MultifrontalClique::ChildInfo> childInfos;
+    childInfos.reserve(cluster->children.size());
+    for (const auto& childCluster : cluster->children) {
+      BuiltClique child = build(childCluster, clique);
+      if (child.clique) {
+        childInfos.push_back(MultifrontalClique::ChildInfo{
+            child.clique, std::move(child.separatorKeys)});
+      }
+    }
+
+    // Finalize children metadata and register clique.
+    clique->finalize(std::move(childInfos));
+    cliques->push_back(clique);
+    return {clique, std::move(separatorKeys)};
+  }
+};
+
 }  // namespace
 
 /* ************************************************************************* */
@@ -226,76 +306,44 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
                                        const Ordering& ordering,
                                        size_t mergeDimCap,
                                        std::ostream* reportStream) {
-  // 0. Pre-compute variable dimensions
+  // Pre-compute variable dimensions
   dims_ = computeDims(graph);
   for (Key key : ordering) {
     solution_.insert(key, Vector::Zero(dims_.at(key)));
   }
 
-  // 1. Convert to SymbolicFactorGraph to build the elimination tree
+  // Convert to SymbolicFactorGraph to build the elimination tree
   SymbolicFactorGraph symbolicGraph = buildSymbolicGraph(graph);
 
-  // 2. Build SymbolicEliminationTree and then SymbolicJunctionTree
+  // Build SymbolicEliminationTree and then SymbolicJunctionTree
   SymbolicEliminationTree eliminationTree(symbolicGraph, ordering);
   SymbolicJunctionTree junctionTree(eliminationTree);
 
-  const auto reportStructure = [&](const std::string& name) {
-    if (!reportStream) return;
-    StructureStats stats;
-    std::map<const SymbolicJunctionTree::Node*, KeySet> separatorCache;
-    for (const auto& rootCluster : junctionTree.roots()) {
-      accumulateSymbolicStats(rootCluster, dims_, &separatorCache, &stats);
-    }
-    stats.report(name, reportStream);
-  };
+  // Report the symbolic structure before any merge.
+  reportStructure(junctionTree, dims_, "Symbolic cluster structure",
+                  reportStream);
 
-  reportStructure("Symbolic cluster structure");
-
+  // If applicable, merge small child cliques bottom-up.
   if (mergeDimCap > 0) {
     for (const auto& rootCluster : junctionTree.roots()) {
       mergeSmallClusters(rootCluster, dims_, mergeDimCap);
     }
-    reportStructure("Clique structure after merge");
+    reportStructure(junctionTree, dims_, "Clique structure after merge",
+                    reportStream);
   }
 
-  // 3. Recursive function to build Clique hierarchy (independent of traversal).
-  std::function<CliquePtr(const SymbolicJunctionTree::sharedNode&,
-                          std::weak_ptr<MultifrontalClique>)>
-      buildRecursive =
-          [&](const SymbolicJunctionTree::sharedNode& cluster,
-              std::weak_ptr<MultifrontalClique> parent) -> CliquePtr {
-    if (!cluster) return nullptr;
-
-    // Create Clique
-    auto clique = std::make_shared<MultifrontalClique>(cluster, parent);
-
-    // Process children
-    for (const auto& childCluster : cluster->children) {
-      auto childClique = buildRecursive(childCluster, clique);
-      clique->addChild(childClique);
-    }
-
-    clique->finalize(dims_, &solution_);
-    cliques_.push_back(clique);
-
-    // Initialize matrices
-    std::vector<size_t> blockDims = clique->blockDims(dims_);
-    size_t vbmRows = clique->countRows(graph);
-    clique->initializeMatrices(blockDims, vbmRows);
-
-    // Initial load
-    clique->fillAb(graph);
-
-    return clique;
-  };
-
-  // 4. Start traversal from roots
+  // Build the actual MultifrontalClique structure.
+  CliqueBuilder builder{dims_, graph, &solution_, &cliques_, {}};
   for (const auto& rootCluster : junctionTree.roots()) {
     if (rootCluster) {
       roots_.push_back(
-          buildRecursive(rootCluster, std::weak_ptr<MultifrontalClique>()));
+          builder.build(rootCluster, std::weak_ptr<MultifrontalClique>())
+              .clique);
     }
   }
+
+  // Load initial numerical values after the structure is built.
+  load(graph);
 }
 
 /* ************************************************************************* */
@@ -317,6 +365,29 @@ void MultifrontalSolver::eliminateInPlace() {
   EliminatePostVisitor visitorPost;
   TbbOpenMPMixedScope threadLimiter;
   treeTraversal::PostOrderForestParallel(*this, visitorPost, 10);
+}
+
+/* ************************************************************************* */
+GaussianBayesTree MultifrontalSolver::computeBayesTree() const {
+  GaussianBayesTree bayesTree;
+  using Clique = GaussianBayesTreeClique;
+  using BayesCliquePtr = GaussianBayesTree::sharedClique;
+
+  std::function<void(const CliquePtr&, const BayesCliquePtr&)> buildClique =
+      [&](const CliquePtr& clique, const BayesCliquePtr& parent) {
+        if (!clique) return;
+        auto conditional = clique->conditional();
+        auto bayesClique = std::make_shared<Clique>(conditional);
+        bayesTree.addClique(bayesClique, parent);
+        for (const auto& child : clique->children) {
+          buildClique(child, bayesClique);
+        }
+      };
+
+  for (const auto& root : roots_) {
+    buildClique(root, BayesCliquePtr());
+  }
+  return bayesTree;
 }
 
 /* ************************************************************************* */
