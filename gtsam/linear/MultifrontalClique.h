@@ -177,6 +177,9 @@ class GTSAM_EXPORT MultifrontalClique {
   void cacheSolutionPointers(VectorValues* delta, const KeyVector& frontals,
                              const KeyVector& separatorKeys);
 
+  /// Linear lookup for block index in small cliques.
+  DenseIndex blockIndex(Key key) const;
+
   /// Compute block dimensions from variable dimensions (excluding RHS).
   std::vector<size_t> blockDims(const std::map<Key, size_t>& dims,
                                 const KeyVector& frontals,
@@ -209,10 +212,10 @@ class GTSAM_EXPORT MultifrontalClique {
       separatorScratch_;  ///< Cached separator stack for back-substitution.
 
   std::vector<size_t> factorIndices_;
-  std::map<Key, size_t> blockIndex_;  ///< Key->block index for fast Ab fills.
+  KeyVector orderedKeys_;  ///< Keys ordered by block index (frontals+seps).
   const std::unordered_set<Key>* fixedKeys_ = nullptr;
   std::vector<DenseIndex>
-      parentIndices_;  ///< Parent block indices for separators and RHS.
+      parentIndices_;  ///< Parent block indices for separators + RHS.
   std::vector<Vector*> frontalPtrs_;  ///< Pointers into solution frontals.
   std::vector<const Vector*>
       separatorPtrs_;  ///< Pointers into solution separator.
