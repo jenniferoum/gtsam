@@ -51,8 +51,6 @@ class IndexedSymbolicFactor : public SymbolicFactor {
       : SymbolicFactor(), index_(index) {
     keys_ = keys;
   }
-  IndexedSymbolicFactor(const GaussianFactor& factor, size_t index)
-      : SymbolicFactor(factor), index_(index) {}
 };
 
 /// Sum variable dimensions for a key range, skipping unknown keys.
@@ -77,7 +75,7 @@ class GTSAM_EXPORT MultifrontalClique {
   using Children = std::vector<shared_ptr>;
   struct ChildInfo {
     shared_ptr clique;
-    KeyVector separatorKeys;
+    KeySet separatorKeys;
   };
 
   std::weak_ptr<MultifrontalClique> parent;  ///< Parent clique.
@@ -97,7 +95,7 @@ class GTSAM_EXPORT MultifrontalClique {
   explicit MultifrontalClique(std::vector<size_t> factorIndices,
                               const std::weak_ptr<MultifrontalClique>& parent,
                               const KeyVector& frontals,
-                              const KeyVector& separatorKeys,
+                              const KeySet& separatorKeys,
                               const KeyDimMap& dims,
                               const GaussianFactorGraph& graph,
                               VectorValues* solution,
@@ -189,7 +187,7 @@ class GTSAM_EXPORT MultifrontalClique {
  private:
   /// Cache pointers to frontal and separator update vectors.
   void cacheSolutionPointers(VectorValues* delta, const KeyVector& frontals,
-                             const KeyVector& separatorKeys);
+                             const KeySet& separatorKeys);
 
   /// Linear lookup for block index in small cliques.
   DenseIndex blockIndex(Key key) const;
@@ -197,7 +195,7 @@ class GTSAM_EXPORT MultifrontalClique {
   /// Compute block dimensions from variable dimensions (excluding RHS).
   std::vector<size_t> blockDims(const KeyDimMap& dims,
                                 const KeyVector& frontals,
-                                const KeyVector& separatorKeys) const;
+                                const KeySet& separatorKeys) const;
 
   /**
    * Pre-allocate matrices for this clique.

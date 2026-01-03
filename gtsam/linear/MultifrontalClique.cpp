@@ -81,7 +81,7 @@ bool validateFactorKeys(const GaussianFactorGraph& graph,
 MultifrontalClique::MultifrontalClique(
     std::vector<size_t> factorIndices,
     const std::weak_ptr<MultifrontalClique>& parent, const KeyVector& frontals,
-    const KeyVector& separatorKeys, const KeyDimMap& dims,
+    const KeySet& separatorKeys, const KeyDimMap& dims,
     const GaussianFactorGraph& graph, VectorValues* solution,
     const std::unordered_set<Key>* fixedKeys) {
   factorIndices_ = std::move(factorIndices);
@@ -146,7 +146,7 @@ DenseIndex MultifrontalClique::blockIndex(Key key) const {
 
 void MultifrontalClique::cacheSolutionPointers(VectorValues* solution,
                                                const KeyVector& frontals,
-                                               const KeyVector& separatorKeys) {
+                                               const KeySet& separatorKeys) {
   frontalPtrs_.clear();
   separatorPtrs_.clear();
   frontalPtrs_.reserve(frontals.size());
@@ -161,7 +161,7 @@ void MultifrontalClique::cacheSolutionPointers(VectorValues* solution,
 
 std::vector<size_t> MultifrontalClique::blockDims(
     const KeyDimMap& dims, const KeyVector& frontals,
-    const KeyVector& separatorKeys) const {
+    const KeySet& separatorKeys) const {
   std::vector<size_t> blockDims;
   blockDims.reserve(frontals.size() + separatorKeys.size());
   for (Key k : frontals) blockDims.push_back(dims.at(k));

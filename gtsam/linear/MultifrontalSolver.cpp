@@ -238,12 +238,7 @@ void reportStructure(const SymbolicJunctionTree& junctionTree,
   stats.report(name, reportStream);
 }
 
-KeyVector keyVectorFromKeySet(const KeySet& keys) {
-  KeyVector result;
-  result.reserve(keys.size());
-  for (Key key : keys) result.push_back(key);
-  return result;
-}
+
 
 std::vector<size_t> factorIndicesForSymbolicCluster(
     const SymbolicJunctionTree::sharedNode& cluster) {
@@ -260,7 +255,7 @@ std::vector<size_t> factorIndicesForSymbolicCluster(
 
 struct BuiltClique {
   MultifrontalSolver::CliquePtr clique;
-  KeyVector separatorKeys;
+  KeySet separatorKeys;
 };
 
 // Build cliques from a symbolic junction tree and wire parent/child metadata.
@@ -274,12 +269,11 @@ struct CliqueBuilder {
 
   BuiltClique build(const SymbolicJunctionTree::sharedNode& cluster,
                     std::weak_ptr<MultifrontalClique> parent) {
-    if (!cluster) return {nullptr, KeyVector()};
+    if (!cluster) return {nullptr, KeySet()};
 
     // Gather symbolic metadata for this clique.
     const KeyVector& frontals = cluster->orderedFrontalKeys;
-    KeyVector separatorKeys =
-        keyVectorFromKeySet(cluster->separatorKeys(&separatorCache));
+    const KeySet& separatorKeys = cluster->separatorKeys(&separatorCache);
 
     // Create the clique node and cache static structure.
     auto clique = std::make_shared<MultifrontalClique>(
