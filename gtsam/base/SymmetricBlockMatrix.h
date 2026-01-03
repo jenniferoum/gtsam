@@ -247,20 +247,9 @@ namespace gtsam {
     }
 
     /// Update this matrix with blocks from another block matrix using a mapping.
-    template <typename INDEX_CONTAINER>
+    /// Entries with index -1 are skipped.
     void updateFromMappedBlocks(const SymmetricBlockMatrix& other,
-                                const INDEX_CONTAINER& blockIndices) {
-      assert(static_cast<DenseIndex>(blockIndices.size()) == other.nBlocks());
-      const DenseIndex nBlocks = other.nBlocks();
-      for (DenseIndex i = 0; i < nBlocks; ++i) {
-        const DenseIndex I = static_cast<DenseIndex>(blockIndices[i]);
-        updateDiagonalBlock(I, other.diagonalBlock(i));
-        for (DenseIndex j = i + 1; j < nBlocks; ++j) {
-          const DenseIndex J = static_cast<DenseIndex>(blockIndices[j]);
-          updateOffDiagonalBlock(I, J, other.aboveDiagonalBlock(i, j));
-        }
-      }
-    }
+                                const std::vector<DenseIndex>& blockIndices);
 
     /// @}
     /// @name Accessing the full matrix.

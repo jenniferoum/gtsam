@@ -107,6 +107,26 @@ VerticalBlockMatrix SymmetricBlockMatrix::split(DenseIndex nFrontals) {
 }
 
 /* ************************************************************************* */
+void SymmetricBlockMatrix::updateFromMappedBlocks(
+    const SymmetricBlockMatrix& other,
+    const std::vector<DenseIndex>& blockIndices) {
+  assert(static_cast<DenseIndex>(blockIndices.size()) == other.nBlocks());
+  const DenseIndex nBlocks = other.nBlocks();
+  for (DenseIndex i = 0; i < nBlocks; ++i) {
+    const DenseIndex I = blockIndices[i];
+    if (I < 0) continue;
+    assert(I < nBlocks());
+    updateDiagonalBlock(I, other.diagonalBlock(i));
+    for (DenseIndex j = i + 1; j < nBlocks; ++j) {
+      const DenseIndex J = blockIndices[j];
+      if (J < 0) continue;
+      assert(J < nBlocks());
+      updateOffDiagonalBlock(I, J, other.aboveDiagonalBlock(i, j));
+    }
+  }
+}
+
+/* ************************************************************************* */
 
 } //\ namespace gtsam
 

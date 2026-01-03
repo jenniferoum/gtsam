@@ -159,7 +159,7 @@ TEST(SymmetricBlockMatrix, expressions)
 TEST(SymmetricBlockMatrix, UpdateFromMappedBlocks)
 {
   const std::vector<size_t> destDims{1, 3, 2};
-  const std::vector<size_t> mapping{1, 2, 0};
+  const std::vector<DenseIndex> mapping{1, 2, 0};
 
   SymmetricBlockMatrix actual(destDims);
   actual.setZero();
