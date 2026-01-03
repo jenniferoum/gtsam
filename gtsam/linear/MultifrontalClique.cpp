@@ -20,7 +20,6 @@
 #include <gtsam/linear/HessianFactor.h>
 #include <gtsam/linear/JacobianFactor.h>
 #include <gtsam/linear/MultifrontalClique.h>
-#include <gtsam/linear/NoiseModel.h>
 
 #include <algorithm>
 #include <cassert>
@@ -30,9 +29,6 @@
 namespace gtsam {
 
 namespace {
-
-constexpr double kConstraintSigmaTol = 1e-12;
-constexpr double kConstraintFeasibleTol = 1e-9;
 
 KeyVector orderedKeysFromBlockIndex(const std::map<Key, size_t>& blockIndex) {
   const size_t totalKeys = blockIndex.size();
@@ -55,29 +51,6 @@ void printKeyRange(std::ostream& os, const KeyVector& keys, size_t start,
   os << "]";
 }
 
-// Mark frontal variables that are fixed by the given constrained factor.
-void markFixedFrontals(const JacobianFactor& factor,
-                       const std::map<Key, size_t>& blockIndex,
-                       std::unordered_set<size_t>* fixedFrontals) {
-  if (factor.size() != 1) {
-    throw std::runtime_error(
-        "MultifrontalSolver: only unary constrained factors are supported.");
-  }
-  const auto model = factor.get_model();
-  const Vector sigmas = model->sigmas();
-  if (!(sigmas.array().abs() <= kConstraintSigmaTol).all()) {
-    throw std::runtime_error(
-        "MultifrontalSolver: only fully constrained factors are supported.");
-  }
-  if (factor.getb().array().abs().maxCoeff() > kConstraintFeasibleTol) {
-    throw std::runtime_error(
-        "MultifrontalSolver: constrained factor is not feasible.");
-  }
-  const Key key = *factor.begin();
-  const size_t blockIndexValue = blockIndex.at(key);
-  fixedFrontals->insert(blockIndexValue);
-}
-
 // Build a stacked separator vector x_sep in the provided scratch buffer.
 Vector& buildSeparatorVector(const std::vector<const Vector*>& separatorPtrs,
                              Vector* scratch) {
@@ -89,15 +62,36 @@ Vector& buildSeparatorVector(const std::vector<const Vector*>& separatorPtrs,
   return *scratch;
 }
 
+#ifndef NDEBUG
+bool validateFactorKeys(const GaussianFactorGraph& graph,
+                        const std::vector<size_t>& factorIndices,
+                        const std::map<Key, size_t>& blockIndex,
+                        const std::unordered_set<Key>* fixedKeys) {
+  for (size_t index : factorIndices) {
+    assert(index < graph.size());
+    const GaussianFactor::shared_ptr& gf = graph[index];
+    if (!gf) continue;
+    for (Key key : gf->keys()) {
+      if (blockIndex.find(key) != blockIndex.end()) continue;
+      if (fixedKeys && fixedKeys->count(key)) continue;
+      return false;
+    }
+  }
+  return true;
+}
+#endif
+
 }  // namespace
 
 MultifrontalClique::MultifrontalClique(
     std::vector<size_t> factorIndices,
     const std::weak_ptr<MultifrontalClique>& parent, const KeyVector& frontals,
     const KeyVector& separatorKeys, const std::map<Key, size_t>& dims,
-    const GaussianFactorGraph& graph, VectorValues* solution) {
+    const GaussianFactorGraph& graph, VectorValues* solution,
+    const std::unordered_set<Key>* fixedKeys) {
   factorIndices_ = std::move(factorIndices);
   this->parent = parent;
+  fixedKeys_ = fixedKeys;
 
   if (frontals.empty()) {
     throw std::runtime_error(
@@ -136,12 +130,11 @@ MultifrontalClique::MultifrontalClique(
   // Cache pointers into the solution for fast back-substitution.
   cacheSolutionPointers(solution, frontals, separatorKeys);
 
-  // Pre-allocate matrices and cache constraints once per structure.
+  // Pre-allocate matrices once per structure.
   std::vector<size_t> blockDims =
       this->blockDims(dims, frontals, separatorKeys);
   size_t vbmRows = countRows(graph);
   initializeMatrices(blockDims, vbmRows);
-  cacheConstraintInfo(graph);
 }
 
 void MultifrontalClique::finalize(std::vector<ChildInfo> children) {
@@ -154,7 +147,7 @@ void MultifrontalClique::finalize(std::vector<ChildInfo> children) {
   // Compute parent indices for all children.
   for (const auto& child : children) {
     if (!child.clique) continue;
-    std::vector<size_t> indices;
+    std::vector<DenseIndex> indices;
     indices.reserve(child.separatorKeys.size() + 1);
     for (Key key : child.separatorKeys) {
       auto it = blockIndex_.find(key);
@@ -162,27 +155,10 @@ void MultifrontalClique::finalize(std::vector<ChildInfo> children) {
         throw std::runtime_error(
             "MultifrontalSolver: separator key not found in parent clique");
       }
-      indices.push_back(it->second);
+      indices.push_back(static_cast<DenseIndex>(it->second));
     }
-    indices.push_back(blockIndex_.size());
+    indices.push_back(static_cast<DenseIndex>(blockIndex_.size()));
     child.clique->setParentIndices(indices);
-  }
-}
-
-void MultifrontalClique::cacheConstraintInfo(const GaussianFactorGraph& graph) {
-  fixedFrontals_.clear();
-
-  for (size_t index : factorIndices_) {
-    assert(index < graph.size());
-    const GaussianFactor::shared_ptr& gf = graph[index];
-    if (!gf) continue;
-    if (auto jacobianFactor = std::dynamic_pointer_cast<JacobianFactor>(gf)) {
-      if (auto model = jacobianFactor->get_model()) {
-        if (model->isConstrained()) {
-          markFixedFrontals(*jacobianFactor, blockIndex_, &fixedFrontals_);
-        }
-      }
-    }
   }
 }
 
@@ -237,6 +213,7 @@ size_t MultifrontalClique::addJacobianFactor(
   const size_t rhsBlockIdx = Ab_.nBlocks() - 1;
   for (auto it = jacobianFactor.begin(); it != jacobianFactor.end(); ++it) {
     Key k = *it;
+    if (fixedKeys_ && fixedKeys_->count(k)) continue;
     const size_t blockIdx = blockIndex_.at(k);
     Ab_(blockIdx).middleRows(rowOffset, rows) = jacobianFactor.getA(it);
   }
@@ -252,19 +229,24 @@ size_t MultifrontalClique::addJacobianFactor(
 
 void MultifrontalClique::addHessianFactor(const HessianFactor& hessianFactor) {
   const SymmetricBlockMatrix& info = hessianFactor.info();
-  const size_t factorBlocks = hessianFactor.size();
+  const DenseIndex factorBlocks = static_cast<DenseIndex>(hessianFactor.size());
+  const DenseIndex rhsBlock = static_cast<DenseIndex>(sbm_.nBlocks() - 1);
 
-  std::vector<DenseIndex> blockIndices(factorBlocks + 1);
-  size_t slot = 0;
+  std::vector<DenseIndex> blockIndices(factorBlocks + 1, -1);
+  DenseIndex slot = 0;
   for (auto it = hessianFactor.begin(); it != hessianFactor.end();
        ++it, ++slot) {
-    blockIndices[slot] = static_cast<DenseIndex>(blockIndex_.at(*it));
+    const Key key = *it;
+    if (fixedKeys_ && fixedKeys_->count(key)) continue;
+    blockIndices[slot] = static_cast<DenseIndex>(blockIndex_.at(key));
   }
-  blockIndices[factorBlocks] = static_cast<DenseIndex>(sbm_.nBlocks() - 1);
+  blockIndices[factorBlocks] = rhsBlock;
+
   sbm_.updateFromMappedBlocks(info, blockIndices);
 }
 
 void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
+  assert(validateFactorKeys(graph, factorIndices_, blockIndex_, fixedKeys_));
   sbm_.setZero();  // Easily half of the cost !
 
   size_t rowOffset = 0;
@@ -290,22 +272,6 @@ void MultifrontalClique::eliminateInPlace() {
     child->updateParent(*this);
   }
 
-  if (!fixedFrontals_.empty()) {
-    const DenseIndex nBlocks = sbm_.nBlocks();
-    for (size_t fixedBlock : fixedFrontals_) {
-      const DenseIndex i = static_cast<DenseIndex>(fixedBlock);
-      const DenseIndex dimI = sbm_.getDim(i);
-      // Enforce hard constraints by clamping the frontal block to identity
-      // and zeroing cross-terms, so the variable is fixed at zero in the solve.
-      sbm_.setDiagonalBlock(i, Matrix::Identity(dimI, dimI));
-      for (DenseIndex j = 0; j < nBlocks; ++j) {
-        if (j == i) continue;
-        const DenseIndex dimJ = sbm_.getDim(j);
-        sbm_.setOffDiagonalBlock(i, j, Matrix::Zero(dimI, dimJ));
-      }
-    }
-  }
-
   // Form normal equations and factor the frontal block (Schur complement step).
   sbm_.choleskyPartial(numFrontals());
 }
@@ -323,19 +289,8 @@ std::shared_ptr<GaussianConditional> MultifrontalClique::conditional() const {
   SymmetricBlockMatrix& sbm = sbm_;
   VerticalBlockMatrix Ab = sbm.split(numFrontals());
   sbm.blockStart() = 0;  // Split sets it to numFrontals(), reset to 0.
-  SharedDiagonal model;  // defaults to empty
-  if (!fixedFrontals_.empty()) {
-    // Create a mixed sigmas model to represent constrained variables.
-    Vector sigmas = Vector::Ones(frontalDim);
-    for (size_t block : fixedFrontals_) {
-      const DenseIndex start = Ab.offset(static_cast<DenseIndex>(block));
-      const DenseIndex end = Ab.offset(static_cast<DenseIndex>(block + 1));
-      sigmas.segment(start, end - start).setZero();
-    }
-    model = noiseModel::Constrained::MixedSigmas(sigmas);
-  }
   return std::make_shared<GaussianConditional>(keys, numFrontals(),
-                                               std::move(Ab), model);
+                                               std::move(Ab));
 }
 
 // Solve with block back-substitution on the Cholesky-stored SBM.

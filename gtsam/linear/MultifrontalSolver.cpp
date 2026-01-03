@@ -20,11 +20,13 @@
 #include <gtsam/base/types.h>
 #include <gtsam/inference/Key.h>
 #include <gtsam/linear/GaussianBayesTree.h>
+#include <gtsam/linear/GaussianConditional.h>
 #include <gtsam/linear/GaussianFactor.h>
 #include <gtsam/linear/HessianFactor.h>
 #include <gtsam/linear/JacobianFactor.h>
 #include <gtsam/linear/MultifrontalClique.h>
 #include <gtsam/linear/MultifrontalSolver.h>
+#include <gtsam/linear/NoiseModel.h>
 #include <gtsam/symbolic/SymbolicEliminationTree.h>
 #include <gtsam/symbolic/SymbolicFactorGraph.h>
 #include <gtsam/symbolic/SymbolicJunctionTree.h>
@@ -83,6 +85,36 @@ struct StructureStats {
   }
 };
 
+constexpr double kConstraintSigmaTol = 1e-12;
+constexpr double kConstraintFeasibleTol = 1e-9;
+
+std::unordered_set<Key> collectFixedKeys(const GaussianFactorGraph& graph) {
+  std::unordered_set<Key> fixedKeys;
+  for (const auto& factor : graph) {
+    if (!factor) continue;
+    auto jacobianFactor = std::dynamic_pointer_cast<JacobianFactor>(factor);
+    if (!jacobianFactor) continue;
+    auto model = jacobianFactor->get_model();
+    if (!model || !model->isConstrained()) continue;
+    if (jacobianFactor->size() != 1) {
+      throw std::runtime_error(
+          "MultifrontalSolver: only unary constrained factors are supported.");
+    }
+    const Vector sigmas = model->sigmas();
+    if (!(sigmas.array().abs() <= kConstraintSigmaTol).all()) {
+      throw std::runtime_error(
+          "MultifrontalSolver: only fully constrained factors are supported.");
+    }
+    if (jacobianFactor->getb().array().abs().maxCoeff() >
+        kConstraintFeasibleTol) {
+      throw std::runtime_error(
+          "MultifrontalSolver: constrained factor is not feasible.");
+    }
+    fixedKeys.insert(*jacobianFactor->begin());
+  }
+  return fixedKeys;
+}
+
 // Compute variable dimensions from the GaussianFactorGraph
 std::map<Key, size_t> computeDims(const GaussianFactorGraph& graph) {
   std::map<Key, size_t> dims;
@@ -105,12 +137,22 @@ std::map<Key, size_t> computeDims(const GaussianFactorGraph& graph) {
 }
 
 // Build SymbolicFactorGraph from GaussianFactorGraph
-SymbolicFactorGraph buildSymbolicGraph(const GaussianFactorGraph& graph) {
+SymbolicFactorGraph buildSymbolicGraph(
+    const GaussianFactorGraph& graph,
+    const std::unordered_set<Key>& fixedKeys) {
   SymbolicFactorGraph symbolicGraph;
   symbolicGraph.reserve(graph.size());
   for (size_t i = 0; i < graph.size(); ++i) {
     if (!graph[i]) continue;
-    symbolicGraph.emplace_shared<internal::IndexedSymbolicFactor>(*graph[i], i);
+    KeyVector keys;
+    keys.reserve(graph[i]->size());
+    for (Key key : graph[i]->keys()) {
+      if (!fixedKeys.count(key)) {
+        keys.push_back(key);
+      }
+    }
+    if (keys.empty()) continue;
+    symbolicGraph.emplace_shared<internal::IndexedSymbolicFactor>(keys, i);
   }
   return symbolicGraph;
 }
@@ -149,11 +191,10 @@ size_t totalDimForSymbolicCluster(
          separatorDimForSymbolicCluster(cluster, dims, cache);
 }
 
-void accumulateSymbolicStats(
-    const SymbolicJunctionTree::sharedNode& cluster,
-    const std::map<Key, size_t>& dims,
-    SymbolicJunctionTree::Cluster::KeySetMap* cache,
-    StructureStats* stats) {
+void accumulateSymbolicStats(const SymbolicJunctionTree::sharedNode& cluster,
+                             const std::map<Key, size_t>& dims,
+                             SymbolicJunctionTree::Cluster::KeySetMap* cache,
+                             StructureStats* stats) {
   if (!cluster) return;
   const size_t frontalDim = frontalDimForSymbolicCluster(cluster, dims);
   const size_t separatorDim =
@@ -237,6 +278,7 @@ struct CliqueBuilder {
   VectorValues* solution;
   std::vector<MultifrontalSolver::CliquePtr>* cliques;
   SymbolicJunctionTree::Cluster::KeySetMap separatorCache;
+  const std::unordered_set<Key>* fixedKeys;
 
   BuiltClique build(const SymbolicJunctionTree::sharedNode& cluster,
                     std::weak_ptr<MultifrontalClique> parent) {
@@ -244,13 +286,13 @@ struct CliqueBuilder {
 
     // Gather symbolic metadata for this clique.
     const KeyVector& frontals = cluster->orderedFrontalKeys;
-    KeyVector separatorKeys = keyVectorFromKeySet(
-        cluster->separatorKeys(&separatorCache));
+    KeyVector separatorKeys =
+        keyVectorFromKeySet(cluster->separatorKeys(&separatorCache));
 
     // Create the clique node and cache static structure.
     auto clique = std::make_shared<MultifrontalClique>(
         factorIndicesForSymbolicCluster(cluster), parent, frontals,
-        separatorKeys, dims, graph, solution);
+        separatorKeys, dims, graph, solution, fixedKeys);
 
     // Build children and collect separator keys.
     std::vector<MultifrontalClique::ChildInfo> childInfos;
@@ -279,15 +321,26 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
                                        std::ostream* reportStream) {
   // Pre-compute variable dimensions
   dims_ = computeDims(graph);
+  fixedKeys_ = collectFixedKeys(graph);
+  Ordering reducedOrdering;
+  reducedOrdering.reserve(ordering.size());
   for (Key key : ordering) {
     solution_.insert(key, Vector::Zero(dims_.at(key)));
+    if (!fixedKeys_.count(key)) {
+      reducedOrdering.push_back(key);
+    }
+  }
+  for (Key key : fixedKeys_) {
+    if (!solution_.exists(key)) {
+      solution_.insert(key, Vector::Zero(dims_.at(key)));
+    }
   }
 
   // Convert to SymbolicFactorGraph to build the elimination tree
-  SymbolicFactorGraph symbolicGraph = buildSymbolicGraph(graph);
+  SymbolicFactorGraph symbolicGraph = buildSymbolicGraph(graph, fixedKeys_);
 
   // Build SymbolicEliminationTree and then SymbolicJunctionTree
-  SymbolicEliminationTree eliminationTree(symbolicGraph, ordering);
+  SymbolicEliminationTree eliminationTree(symbolicGraph, reducedOrdering);
   SymbolicJunctionTree junctionTree(eliminationTree);
 
   // Report the symbolic structure before any merge.
@@ -304,7 +357,7 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
   }
 
   // Build the actual MultifrontalClique structure.
-  CliqueBuilder builder{dims_, graph, &solution_, &cliques_, {}};
+  CliqueBuilder builder{dims_, graph, &solution_, &cliques_, {}, &fixedKeys_};
   for (const auto& rootCluster : junctionTree.roots()) {
     if (rootCluster) {
       roots_.push_back(
@@ -358,6 +411,24 @@ GaussianBayesTree MultifrontalSolver::computeBayesTree() const {
   for (const auto& root : roots_) {
     buildClique(root, BayesCliquePtr());
   }
+
+  if (!fixedKeys_.empty()) {
+    for (Key key : fixedKeys_) {
+      auto dimIt = dims_.find(key);
+      if (dimIt == dims_.end()) {
+        throw std::runtime_error(
+            "MultifrontalSolver: fixed key has unknown dimension.");
+      }
+      const size_t dim = dimIt->second;
+      Vector d = Vector::Zero(dim);
+      Matrix R = Matrix::Identity(dim, dim);
+      auto model = noiseModel::Constrained::All(dim);
+      auto conditional =
+          std::make_shared<GaussianConditional>(key, d, R, model);
+      auto bayesClique = std::make_shared<Clique>(conditional);
+      bayesTree.addClique(bayesClique, BayesCliquePtr());
+    }
+  }
   return bayesTree;
 }
 
@@ -365,6 +436,9 @@ GaussianBayesTree MultifrontalSolver::computeBayesTree() const {
 const VectorValues& MultifrontalSolver::updateSolution() const {
   for (const auto& clique : cliques_) {
     clique->updateSolution();
+  }
+  for (Key key : fixedKeys_) {
+    solution_.at(key).setZero();
   }
   return solution_;
 }

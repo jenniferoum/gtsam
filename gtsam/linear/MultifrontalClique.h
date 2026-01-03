@@ -44,6 +44,10 @@ namespace internal {
 class IndexedSymbolicFactor : public SymbolicFactor {
  public:
   size_t index_;
+  IndexedSymbolicFactor(const KeyVector& keys, size_t index)
+      : SymbolicFactor(), index_(index) {
+    keys_ = keys;
+  }
   IndexedSymbolicFactor(const GaussianFactor& factor, size_t index)
       : SymbolicFactor(factor), index_(index) {}
 };
@@ -75,13 +79,15 @@ class GTSAM_EXPORT MultifrontalClique {
   /// @param dims Key->dimension map.
   /// @param graph Factor graph for sizing and constraints.
   /// @param solution Solution storage for cached pointers.
+  /// @param fixedKeys Keys fixed to zero by constraints (may be null).
   explicit MultifrontalClique(std::vector<size_t> factorIndices,
                               const std::weak_ptr<MultifrontalClique>& parent,
                               const KeyVector& frontals,
                               const KeyVector& separatorKeys,
                               const std::map<Key, size_t>& dims,
                               const GaussianFactorGraph& graph,
-                              VectorValues* solution);
+                              VectorValues* solution,
+                              const std::unordered_set<Key>* fixedKeys);
 
   /// @name Setup (non-const)
   /// @{
@@ -171,9 +177,6 @@ class GTSAM_EXPORT MultifrontalClique {
   void cacheSolutionPointers(VectorValues* delta, const KeyVector& frontals,
                              const KeyVector& separatorKeys);
 
-  /// Cache constraint metadata (fixed frontals, constrained factors).
-  void cacheConstraintInfo(const GaussianFactorGraph& graph);
-
   /// Compute block dimensions from variable dimensions (excluding RHS).
   std::vector<size_t> blockDims(const std::map<Key, size_t>& dims,
                                 const KeyVector& frontals,
@@ -196,7 +199,7 @@ class GTSAM_EXPORT MultifrontalClique {
   /// Add a Hessian factor's contributions into the sbm_ matrix.
   void addHessianFactor(const HessianFactor& factor);
 
-  void setParentIndices(const std::vector<size_t>& indices) {
+  void setParentIndices(const std::vector<DenseIndex>& indices) {
     parentIndices_ = indices;
   }
   VerticalBlockMatrix Ab_;
@@ -207,9 +210,8 @@ class GTSAM_EXPORT MultifrontalClique {
 
   std::vector<size_t> factorIndices_;
   std::map<Key, size_t> blockIndex_;  ///< Key->block index for fast Ab fills.
-  std::unordered_set<size_t>
-      fixedFrontals_;  ///< Frontal block indices fixed by constraints.
-  std::vector<size_t>
+  const std::unordered_set<Key>* fixedKeys_ = nullptr;
+  std::vector<DenseIndex>
       parentIndices_;  ///< Parent block indices for separators and RHS.
   std::vector<Vector*> frontalPtrs_;  ///< Pointers into solution frontals.
   std::vector<const Vector*>

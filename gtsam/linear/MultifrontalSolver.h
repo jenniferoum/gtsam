@@ -26,6 +26,7 @@
 #include <iosfwd>
 #include <map>
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 namespace gtsam {
@@ -48,10 +49,11 @@ class GTSAM_EXPORT MultifrontalSolver {
   using Node = MultifrontalClique;
 
  private:
-  std::vector<CliquePtr> roots_;    ///< Roots of the elimination tree.
-  std::vector<CliquePtr> cliques_;  ///< All cliques in the solver.
-  std::map<Key, size_t> dims_;      ///< Map from variable key to dimension.
-  mutable VectorValues solution_;   ///< Cached solution vector.
+  std::vector<CliquePtr> roots_;       ///< Roots of the elimination tree.
+  std::vector<CliquePtr> cliques_;     ///< All cliques in the solver.
+  std::map<Key, size_t> dims_;         ///< Map from variable key to dimension.
+  mutable VectorValues solution_;      ///< Cached solution vector.
+  std::unordered_set<Key> fixedKeys_;  ///< Keys fixed by constrained factors.
 
  public:
   /**
