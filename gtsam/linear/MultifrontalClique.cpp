@@ -229,8 +229,8 @@ void MultifrontalClique::initializeMatrices(
   Ab_.matrix().setZero();
 }
 
-void MultifrontalClique::addJacobianFactor(const JacobianFactor& jacobianFactor,
-                                           size_t rowOffset) {
+size_t MultifrontalClique::addJacobianFactor(
+    const JacobianFactor& jacobianFactor, size_t rowOffset) {
   // We only overwrite the fixed sparsity pattern, so Ab must be zeroed once in
   // initializeMatrices and then kept consistent across loads.
   const size_t rows = jacobianFactor.rows();
@@ -247,6 +247,7 @@ void MultifrontalClique::addJacobianFactor(const JacobianFactor& jacobianFactor,
       model->WhitenInPlace(Ab_.matrix().middleRows(rowOffset, rows));
     }
   }
+  return rows;
 }
 
 void MultifrontalClique::addHessianFactor(const HessianFactor& hessianFactor) {
@@ -264,7 +265,7 @@ void MultifrontalClique::addHessianFactor(const HessianFactor& hessianFactor) {
 }
 
 void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
-  sbm_.setZero();
+  sbm_.setZero();  // Easily half of the cost !
 
   size_t rowOffset = 0;
   for (size_t index : factorIndices_) {
@@ -272,8 +273,7 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
     const GaussianFactor::shared_ptr& gf = graph[index];
     if (!gf) continue;
     if (auto jacobianFactor = std::dynamic_pointer_cast<JacobianFactor>(gf)) {
-      addJacobianFactor(*jacobianFactor, rowOffset);
-      rowOffset += jacobianFactor->rows();
+      rowOffset += addJacobianFactor(*jacobianFactor, rowOffset);
     } else if (auto hessianFactor =
                    std::dynamic_pointer_cast<HessianFactor>(gf)) {
       addHessianFactor(*hessianFactor);

@@ -179,15 +179,19 @@ class GTSAM_EXPORT MultifrontalClique {
                                 const KeyVector& frontals,
                                 const KeyVector& separatorKeys) const;
 
-  /// Pre-allocate matrices for this clique.
-  /// @param blockDims Block dimensions (excluding RHS).
-  /// @param verticalBlockMatrixRows Number of rows for the vertical block
-  /// matrix.
+  /**
+   * Pre-allocate matrices for this clique.
+   * @param blockDims Block dimensions (excluding RHS).
+   * @param totalNumRows Number of rows for the vertical block matrix.
+   */
   void initializeMatrices(const std::vector<size_t>& blockDims,
-                          size_t verticalBlockMatrixRows);
+                          size_t totalNumRows);
 
-  /// Add a Jacobian factor's contributions into the Ab matrix.
-  void addJacobianFactor(const JacobianFactor& factor, size_t rowOffset);
+  /**
+   * Add a Jacobian factor's contributions into the Ab matrix.
+   * @return Number of rows added.
+   */
+  size_t addJacobianFactor(const JacobianFactor& factor, size_t rowOffset);
 
   /// Add a Hessian factor's contributions into the sbm_ matrix.
   void addHessianFactor(const HessianFactor& factor);
