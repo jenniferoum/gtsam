@@ -59,14 +59,16 @@ static void runMultifrontalSolver(MultifrontalSolver& solver,
   }
 }
 
+namespace {
+const std::string bal135 = findExampleDataFile("dubrovnik-135-90642-pre.txt");
+}
+
 void runBAL135Benchmark() {
   const size_t iterations = 1;
-  const std::string filename =
-      findExampleDataFile("dubrovnik-135-90642-pre.txt");
-  cout << "\nSingle MFS test: " << filename << " (iterations=" << iterations
+  cout << "\nSingle MFS test: " << bal135 << " (iterations=" << iterations
        << ")" << std::endl;
 
-  const SfmData db = SfmData::FromBalFile(filename);
+  const SfmData db = SfmData::FromBalFile(bal135);
   const NonlinearFactorGraph graph = buildGeneralSfmGraph(db, 0.1);
   const Values initial = buildGeneralSfmInitial(db);
   const GaussianFactorGraph linear = *graph.linearize(initial);
@@ -78,13 +80,14 @@ void runBAL135Benchmark() {
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> t_imperative = end - start;
   cout << "  MultifrontalSolver: " << t_imperative.count() << " s" << std::endl;
+  tictoc_print();
 }
 
 void runBALBenchmark() {
-  const size_t bal_iterations = 5;
+  const size_t bal_iterations = 2;
   const string bal16 = findExampleDataFile("dubrovnik-16-22106-pre");
   const string bal88 = findExampleDataFile("dubrovnik-88-64298-pre");
-  for (const auto& filename : {bal16, bal88}) {
+  for (const auto& filename : {bal16, bal88, bal135}) {
     cout << "\nProcessing BAL file: " << filename << std::endl;
     const SfmData db = SfmData::FromBalFile(filename);
     const NonlinearFactorGraph graph = buildGeneralSfmGraph(db, 0.1);
@@ -96,8 +99,8 @@ void runBALBenchmark() {
       cout << "\nBAL Benchmark (" << label << ", iterations=" << bal_iterations
            << "):" << std::endl;
 
-      auto start = std::chrono::high_resolution_clock::now();
       MultifrontalSolver solver(linear, ordering, kMergeDimCap, nullptr);
+      auto start = std::chrono::high_resolution_clock::now();
       runMultifrontalSolver(solver, linear, bal_iterations);
       auto end = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double> t_imperative = end - start;
@@ -118,7 +121,7 @@ void runBALBenchmark() {
 }
 void runChainBenchmark() {
   const std::vector<size_t> T_values = {10, 50, 100, 500, 1000, 5000};
-  const size_t iterations = 1000;
+  const size_t iterations = 500;
 
   for (size_t T : T_values) {
     cout << "\nBenchmark (T=" << T << ", iterations=" << iterations
@@ -148,8 +151,8 @@ void runChainBenchmark() {
 int main() {
   cout << "Merging dim cap " << kMergeDimCap << std::endl;
 
-  runBAL135Benchmark();
-  // runBALBenchmark();
-  // runChainBenchmark();
+  // runBAL135Benchmark();
+  runBALBenchmark();
+  runChainBenchmark();
   return 0;
 }

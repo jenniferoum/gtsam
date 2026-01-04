@@ -338,6 +338,7 @@ TEST(MultifrontalSolver, BalancedSmoother) {
   const Ordering ordering{X(1), X(3), X(5), X(7), X(2), X(6), X(4)};
 
   MultifrontalSolver solver(smoother, ordering);
+  solver.load(smoother);
 
   // Verify roots
   EXPECT(solver.roots().size() == 1);
@@ -366,7 +367,6 @@ TEST(MultifrontalSolver, BalancedSmoother) {
   EXPECT_LONGS_EQUAL(3, minBlocks);
 
   // Eliminate and solve
-  solver.load(smoother);
   solver.eliminateInPlace();
   const VectorValues& actual = solver.updateSolution();
 

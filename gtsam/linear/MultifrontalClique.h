@@ -188,6 +188,8 @@ class GTSAM_EXPORT MultifrontalClique {
                                   const MultifrontalClique& clique);
 
  private:
+  enum class SolveMode { Cholesky, QrLeaf };
+
   /// Cache pointers to frontal and separator update vectors.
   void cacheSolutionPointers(VectorValues* delta, const KeyVector& frontals,
                              const KeySet& separatorKeys);
@@ -208,6 +210,14 @@ class GTSAM_EXPORT MultifrontalClique {
   void initializeMatrices(const std::vector<size_t>& blockDims,
                           size_t totalNumRows);
 
+  /// Allocate the symmetric block matrix if needed.
+  void allocateSbm();
+
+  /// Allocate the separator-only SBM used for QR leaf updates.
+  void allocateSeparatorSbm();
+
+  bool useQr() const { return solveMode_ == SolveMode::QrLeaf; }
+
   /**
    * Add a Jacobian factor's contributions into the Ab matrix.
    * @return Number of rows added.
@@ -220,22 +230,35 @@ class GTSAM_EXPORT MultifrontalClique {
   void setParentIndices(const std::vector<DenseIndex>& indices) {
     parentIndices_ = indices;
   }
-  VerticalBlockMatrix Ab_;
-  mutable SymmetricBlockMatrix sbm_;
-  VerticalBlockMatrix RSd_;    ///< Cached [R S d] from the last elimination.
-  mutable Vector rhsScratch_;  ///< Cached RHS workspace for back-substitution.
-  mutable Vector
-      separatorScratch_;  ///< Cached separator stack for back-substitution.
-
+  // Build-time metadata.
   std::vector<size_t> factorIndices_;
   KeyVector orderedKeys_;  ///< Keys ordered by block index (frontals+seps).
   const std::unordered_set<Key>* fixedKeys_ = nullptr;
+  std::vector<size_t> blockDims_;
+  std::vector<size_t> separatorBlockDims_;
   std::vector<DenseIndex>
       parentIndices_;  ///< Parent block indices for separators + RHS.
   std::vector<Vector*> frontalPtrs_;  ///< Pointers into solution frontals.
   std::vector<const Vector*>
       separatorPtrs_;  ///< Pointers into solution separator.
+
+  // Load-time state.
+  VerticalBlockMatrix Ab_;
   std::vector<HessianFactor::shared_ptr> hessianFactors_;  ///< Hessian factors.
+  SolveMode solveMode_ = SolveMode::Cholesky;
+
+  // Elimination-time state.
+  mutable SymmetricBlockMatrix sbm_;
+  mutable SymmetricBlockMatrix
+      separatorSbm_;         ///< Cached separator update for QR.
+  VerticalBlockMatrix RSd_;  ///< Cached [R S d] from elimination.
+
+  // Solve-time scratch space.
+  mutable Vector rhsScratch_;  ///< Cached RHS workspace for back-substitution.
+  mutable Vector
+      separatorScratch_;  ///< Cached separator stack for back-substitution.
+
+  static constexpr double kQrAspectRatio = 2.0;
 };
 
 std::ostream& operator<<(std::ostream& os, const MultifrontalClique& clique);

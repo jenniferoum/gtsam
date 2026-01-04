@@ -16,6 +16,7 @@
  * @date   December 2025
  */
 
+#include <gtsam/base/Matrix.h>
 #include <gtsam/base/timing.h>
 #include <gtsam/linear/GaussianConditional.h>
 #include <gtsam/linear/HessianFactor.h>
@@ -111,9 +112,8 @@ MultifrontalClique::MultifrontalClique(
   cacheSolutionPointers(solution, frontals, separatorKeys);
 
   // Pre-allocate matrices once per structure.
-  std::vector<size_t> blockDims =
-      this->blockDims(dims, frontals, separatorKeys);
-  initializeMatrices(blockDims, vbmRows);
+  blockDims_ = this->blockDims(dims, frontals, separatorKeys);
+  initializeMatrices(blockDims_, vbmRows);
 }
 
 void MultifrontalClique::finalize(std::vector<ChildInfo> children) {
@@ -135,6 +135,8 @@ void MultifrontalClique::finalize(std::vector<ChildInfo> children) {
     indices.push_back(static_cast<DenseIndex>(orderedKeys_.size()));
     child.clique->setParentIndices(indices);
   }
+
+  // Allocation is deferred until load.
 }
 
 DenseIndex MultifrontalClique::blockIndex(Key key) const {
@@ -170,10 +172,21 @@ std::vector<size_t> MultifrontalClique::blockDims(
 
 void MultifrontalClique::initializeMatrices(
     const std::vector<size_t>& blockDims, size_t verticalBlockMatrixRows) {
-  sbm_ = SymmetricBlockMatrix(blockDims, true);
+  separatorBlockDims_.assign(blockDims.begin() + numFrontals(),
+                             blockDims.end());
   Ab_ = VerticalBlockMatrix(blockDims, verticalBlockMatrixRows, true);
   // Ab's structure is fixed; clear it once and reuse across loads.
   Ab_.matrix().setZero();
+}
+
+void MultifrontalClique::allocateSbm() {
+  if (sbm_.nBlocks() > 0) return;
+  sbm_ = SymmetricBlockMatrix(blockDims_, true);
+}
+
+void MultifrontalClique::allocateSeparatorSbm() {
+  if (separatorSbm_.nBlocks() > 0) return;
+  separatorSbm_ = SymmetricBlockMatrix(separatorBlockDims_, true);
 }
 
 size_t MultifrontalClique::addJacobianFactor(
@@ -235,16 +248,33 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
       hessianFactors_.push_back(hessianFactor);
     }
   }
+
+  // Lock in QR only for leaf cliques with no Hessian factors.
+  const bool isLeaf = children.empty();
+  const bool useQr =
+      isLeaf && hessianFactors_.empty() && (frontalDim > 0) &&
+      (frontalDim + separatorDim > kQrAspectRatio * frontalDim) &&
+      (Ab_.matrix().rows() >= static_cast<DenseIndex>(frontalDim));
+  solveMode_ = useQr ? SolveMode::QrLeaf : SolveMode::Cholesky;
+  if (useQr) {
+    allocateSeparatorSbm();  // QR only needs separator updates for the parent.
+  } else {
+    allocateSbm();
+  }
 }
 
 void MultifrontalClique::prepareForElimination() {
+  // QR leaf cliques skip SBM assembly entirely.
+  if (useQr()) return;
+  assert(sbm_.nBlocks() > 0);
   sbm_.setZero();
   for (const auto& hf : hessianFactors_) {
     addHessianFactor(*hf);
   }
 
-  // Update SBM with the local factors, Ab^T * Ab
-  sbm_.selfadjointView().rankUpdate(Ab_.matrix().transpose());
+  if (Ab_.matrix().rows() > 0) {
+    sbm_.selfadjointView().rankUpdate(Ab_.matrix().transpose());
+  }
 
   for (const auto& child : children) {
     if (!child) continue;
@@ -253,6 +283,16 @@ void MultifrontalClique::prepareForElimination() {
 }
 
 void MultifrontalClique::factorize() {
+  if (useQr()) {
+    const DenseIndex nfRows = static_cast<DenseIndex>(frontalDim);
+    assert(Ab_.matrix().rows() >= nfRows);
+    // Copy Ab_ to preserve its invariant; QR writes in place.
+    Matrix qr = Ab_.matrix();
+    inplace_QR(qr);
+    RSd_ = VerticalBlockMatrix(blockDims_, nfRows, true);
+    RSd_.matrix() = qr.topRows(nfRows);
+    return;
+  }
   sbm_.choleskyPartial(numFrontals());
   RSd_ = sbm_.split(numFrontals());
   sbm_.blockStart() = 0;
@@ -282,7 +322,19 @@ void MultifrontalClique::eliminateInPlace() {
 }
 
 void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
+  if (useQr()) {
+    assert(separatorSbm_.nBlocks() > 0);
+    const DenseIndex nfBlocks = static_cast<DenseIndex>(numFrontals());
+    const DenseIndex totalBlocks = RSd_.nBlocks();
+    const Matrix Sd = RSd_.range(nfBlocks, totalBlocks);
+    // Accumulate separator normal equations (S^T S) for the parent update.
+    separatorSbm_.setZero();
+    separatorSbm_.selfadjointView().rankUpdate(Sd.transpose());
+    parent.sbm_.updateFromMappedBlocks(separatorSbm_, parentIndices_);
+    return;
+  }
   // Expose only the separator+RHS view when contributing to the parent.
+  assert(sbmAllocated_);
   assert(sbm_.blockStart() == 0);
   sbm_.blockStart() = numFrontals();
   assert(sbm_.nBlocks() == parentIndices_.size());
@@ -292,6 +344,7 @@ void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
 
 std::shared_ptr<GaussianConditional> MultifrontalClique::conditional() const {
   assert(RSd_.nBlocks() > 0);
+  // RSd_ is cached at elimination time.
   return std::make_shared<GaussianConditional>(orderedKeys_, numFrontals(),
                                                RSd_);
 }
@@ -299,6 +352,7 @@ std::shared_ptr<GaussianConditional> MultifrontalClique::conditional() const {
 // Solve with block back-substitution on the Cholesky-stored SBM.
 void MultifrontalClique::updateSolution() const {
   assert(RSd_.nBlocks() > 0);
+  // Use cached [R S d] for fast back-substitution.
   const size_t nf = numFrontals();
   const size_t n = RSd_.nBlocks() - 1;  // # frontals + # separators
 
