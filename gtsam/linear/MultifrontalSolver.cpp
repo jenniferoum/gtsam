@@ -309,8 +309,8 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
                                        const Ordering& ordering,
                                        size_t mergeDimCap,
                                        std::ostream* reportStream)
-    : MultifrontalSolver(Precompute(graph, ordering), ordering,
-                         mergeDimCap, reportStream) {}
+    : MultifrontalSolver(Precompute(graph, ordering), ordering, mergeDimCap,
+                         reportStream) {}
 
 /* ************************************************************************* */
 MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
@@ -455,11 +455,16 @@ const VectorValues& MultifrontalSolver::updateSolution() const {
   };
   auto visitorPost = [](const CliquePtr&, int) {};
 
+  // Threshold chosen to balance task overhead vs parallelism. Small cliques
+  // (like points in SFM) are better handled sequentially within larger tasks
+  // to minimize scheduling overhead and maximize cache locality.
+  constexpr int kSolutionParallelThreshold = 4096;
+
   // Cast to non-const because treeTraversal expects a non-const reference,
   // even though we are only calling const methods on the nodes.
   treeTraversal::DepthFirstForestParallel(
       const_cast<MultifrontalSolver&>(*this), rootData, visitorPre, visitorPost,
-      10);
+      kSolutionParallelThreshold);
 
   for (Key key : fixedKeys_) {
     solution_.at(key).setZero();
