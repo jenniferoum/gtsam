@@ -224,9 +224,6 @@ class GTSAM_EXPORT MultifrontalClique {
   /// Allocate the symmetric block matrix if needed.
   void allocateSbm();
 
-  /// Allocate the separator-only SBM used for QR leaf updates.
-  void allocateSeparatorSbm();
-
   /**
    * Add a Jacobian factor's contributions into the Ab matrix.
    * @return Number of rows added.
@@ -244,7 +241,6 @@ class GTSAM_EXPORT MultifrontalClique {
   KeyVector orderedKeys_;  ///< Keys ordered by block index (frontals+seps).
   const std::unordered_set<Key>* fixedKeys_ = nullptr;
   std::vector<size_t> blockDims_;
-  std::vector<size_t> separatorBlockDims_;
   std::vector<DenseIndex>
       parentIndices_;  ///< Parent block indices for separators + RHS.
   std::vector<Vector*> frontalPtrs_;  ///< Pointers into solution frontals.
@@ -258,9 +254,7 @@ class GTSAM_EXPORT MultifrontalClique {
 
   // Elimination-time state.
   mutable SymmetricBlockMatrix sbm_;
-  mutable SymmetricBlockMatrix
-      separatorSbm_;         ///< Cached separator update for QR.
-  VerticalBlockMatrix RSd_;  ///< Cached [R S d] from elimination.
+  mutable VerticalBlockMatrix RSd_;  ///< Cached [R S d] from elimination.
 
   // Solve-time scratch space.
   mutable Vector rhsScratch_;  ///< Cached RHS workspace for back-substitution.

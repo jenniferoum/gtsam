@@ -171,8 +171,6 @@ std::vector<size_t> MultifrontalClique::blockDims(
 
 void MultifrontalClique::initializeMatrices(
     const std::vector<size_t>& blockDims, size_t verticalBlockMatrixRows) {
-  separatorBlockDims_.assign(blockDims.begin() + numFrontals(),
-                             blockDims.end());
   Ab_ = VerticalBlockMatrix(blockDims, verticalBlockMatrixRows, true);
   // Ab's structure is fixed; clear it once and reuse across loads.
   Ab_.matrix().setZero();
@@ -181,11 +179,6 @@ void MultifrontalClique::initializeMatrices(
 void MultifrontalClique::allocateSbm() {
   if (sbm_.nBlocks() > 0) return;
   sbm_ = SymmetricBlockMatrix(blockDims_, true);
-}
-
-void MultifrontalClique::allocateSeparatorSbm() {
-  if (separatorSbm_.nBlocks() > 0) return;
-  separatorSbm_ = SymmetricBlockMatrix(separatorBlockDims_, true);
 }
 
 size_t MultifrontalClique::addJacobianFactor(
@@ -254,9 +247,7 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
       (frontalDim + separatorDim > kQrAspectRatio * frontalDim) &&
       (Ab_.matrix().rows() >= static_cast<DenseIndex>(frontalDim));
   solveMode_ = useQR ? SolveMode::QrLeaf : SolveMode::Cholesky;
-  if (useQR) {
-    allocateSeparatorSbm();  // QR only needs separator updates for the parent.
-  } else {
+  if (!useQR) {
     allocateSbm();
   }
 }
@@ -320,22 +311,20 @@ void MultifrontalClique::eliminateInPlace() {
 
 void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
   if (useQR()) {
-    assert(separatorSbm_.nBlocks() > 0);
+    // Accumulate separator (and RHS) normal equations (S^T S) into the parent.
+    assert(RSd_.nBlocks() > 0 && RSd_.firstBlock() == 0);
+    assert(parent.sbm_.nBlocks() > 0);
     const DenseIndex nfBlocks = static_cast<DenseIndex>(numFrontals());
-    const DenseIndex totalBlocks = RSd_.nBlocks();
-    const Matrix Sd = RSd_.range(nfBlocks, totalBlocks);
-    // Accumulate separator normal equations (S^T S) for the parent update.
-    separatorSbm_.setZero();
-    separatorSbm_.selfadjointView().rankUpdate(Sd.transpose());
-    parent.sbm_.updateFromMappedBlocks(separatorSbm_, parentIndices_);
-    return;
+    RSd_.firstBlock() = nfBlocks;
+    parent.sbm_.updateFromOuterProductBlocks(RSd_, parentIndices_);
+    RSd_.firstBlock() = 0;
+  } else {
+    // Accumulate the S^T S part from this clique's SBM into the parent.
+    assert(sbm_.nBlocks() > 0 && sbm_.blockStart() == 0);
+    sbm_.blockStart() = numFrontals();
+    parent.sbm_.updateFromMappedBlocks(sbm_, parentIndices_);
+    sbm_.blockStart() = 0;
   }
-  // Expose only the separator+RHS view when contributing to the parent.
-  assert(sbm_.nBlocks() > 0 && sbm_.blockStart() == 0);
-  sbm_.blockStart() = numFrontals();
-  assert(sbm_.nBlocks() == parentIndices_.size());
-  parent.sbm_.updateFromMappedBlocks(sbm_, parentIndices_);
-  sbm_.blockStart() = 0;
 }
 
 std::shared_ptr<GaussianConditional> MultifrontalClique::conditional() const {
