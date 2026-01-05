@@ -174,6 +174,8 @@ void MultifrontalClique::initializeMatrices(
   Ab_ = VerticalBlockMatrix(blockDims, verticalBlockMatrixRows, true);
   // Ab's structure is fixed; clear it once and reuse across loads.
   Ab_.matrix().setZero();
+  RSd_ =
+      VerticalBlockMatrix(blockDims, static_cast<DenseIndex>(frontalDim), true);
 }
 
 void MultifrontalClique::allocateSbm() {
@@ -247,9 +249,11 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
       (frontalDim + separatorDim > kQrAspectRatio * frontalDim) &&
       (Ab_.matrix().rows() >= static_cast<DenseIndex>(frontalDim));
   solveMode_ = useQR ? SolveMode::QrLeaf : SolveMode::Cholesky;
-  if (!useQR) {
-    allocateSbm();
-  }
+  RSdReady_ = false;
+  assert((useQR && RSd_.matrix().rows() ==
+                       static_cast<DenseIndex>(Ab_.matrix().rows()) ||
+          RSd_.matrix().rows() == static_cast<DenseIndex>(frontalDim)));
+  allocateSbm();
 }
 
 void MultifrontalClique::prepareForElimination() {
@@ -273,18 +277,17 @@ void MultifrontalClique::prepareForElimination() {
 
 void MultifrontalClique::factorize() {
   if (useQR()) {
-    const DenseIndex nfRows = static_cast<DenseIndex>(frontalDim);
-    assert(Ab_.matrix().rows() >= nfRows);
     // Copy Ab_ to preserve its invariant; QR writes in place.
-    Matrix qr = Ab_.matrix();
-    inplace_QR(qr);
-    RSd_ = VerticalBlockMatrix(blockDims_, nfRows, true);
-    RSd_.matrix() = qr.topRows(nfRows);
-    return;
+    assert(RSd_.matrix().rows() == Ab_.matrix().rows());
+    assert(RSd_.matrix().cols() == Ab_.matrix().cols());
+    RSd_.matrix() = Ab_.matrix();
+    inplace_QR(RSd_.matrix());
+  } else {
+    sbm_.choleskyPartial(numFrontals());
+    sbm_.split(numFrontals(), &RSd_);
+    sbm_.blockStart() = 0;
   }
-  sbm_.choleskyPartial(numFrontals());
-  RSd_ = sbm_.split(numFrontals());
-  sbm_.blockStart() = 0;
+  RSdReady_ = true;
 }
 
 void MultifrontalClique::addIdentityDamping(double lambda) {
@@ -312,7 +315,8 @@ void MultifrontalClique::eliminateInPlace() {
 void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
   if (useQR()) {
     // Accumulate separator (and RHS) normal equations (S^T S) into the parent.
-    assert(RSd_.nBlocks() > 0 && RSd_.firstBlock() == 0);
+    assert(RSdReady_);
+    assert(RSd_.firstBlock() == 0);
     assert(parent.sbm_.nBlocks() > 0);
     const DenseIndex nfBlocks = static_cast<DenseIndex>(numFrontals());
     RSd_.firstBlock() = nfBlocks;
@@ -328,7 +332,7 @@ void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
 }
 
 std::shared_ptr<GaussianConditional> MultifrontalClique::conditional() const {
-  assert(RSd_.nBlocks() > 0);
+  assert(RSdReady_);
   // RSd_ is cached at elimination time.
   return std::make_shared<GaussianConditional>(orderedKeys_, numFrontals(),
                                                RSd_);
@@ -336,7 +340,7 @@ std::shared_ptr<GaussianConditional> MultifrontalClique::conditional() const {
 
 // Solve with block back-substitution on the Cholesky-stored SBM.
 void MultifrontalClique::updateSolution() const {
-  assert(RSd_.nBlocks() > 0);
+  assert(RSdReady_);
   // Use cached [R S d] for fast back-substitution.
   const size_t nf = numFrontals();
   const size_t n = RSd_.nBlocks() - 1;  // # frontals + # separators

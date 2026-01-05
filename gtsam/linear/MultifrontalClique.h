@@ -255,6 +255,7 @@ class GTSAM_EXPORT MultifrontalClique {
   // Elimination-time state.
   mutable SymmetricBlockMatrix sbm_;
   mutable VerticalBlockMatrix RSd_;  ///< Cached [R S d] from elimination.
+  mutable bool RSdReady_ = false;
 
   // Solve-time scratch space.
   mutable Vector rhsScratch_;  ///< Cached RHS workspace for back-substitution.
