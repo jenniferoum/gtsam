@@ -32,6 +32,7 @@
 #include <cassert>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 namespace gtsam {
 
@@ -275,6 +276,47 @@ void MultifrontalClique::prepareForElimination() {
       sbm_.addUpperTriangular(local);
     }
     return;
+  }
+#else
+  constexpr size_t kParallelChildThreshold = 1024;
+  if (children.size() >= kParallelChildThreshold) {
+    size_t numThreads = std::thread::hardware_concurrency();
+    if (numThreads == 0) {
+      numThreads = 1;
+    }
+    numThreads = std::min(numThreads, children.size());
+    if (numThreads > 1) {
+      std::vector<SymmetricBlockMatrix> locals;
+      locals.reserve(numThreads);
+      for (size_t i = 0; i < numThreads; ++i) {
+        locals.emplace_back(blockDims_, true);
+        locals.back().setZero();
+      }
+      std::vector<std::thread> threads;
+      threads.reserve(numThreads);
+      const size_t chunk =
+          (children.size() + numThreads - 1) / numThreads;
+      for (size_t t = 0; t < numThreads; ++t) {
+        const size_t start = t * chunk;
+        const size_t end = std::min(start + chunk, children.size());
+        if (start >= end) break;
+        threads.emplace_back([this, start, end, &locals, t]() {
+          auto& local = locals[t];
+          for (size_t i = start; i < end; ++i) {
+            const auto& child = children[i];
+            if (!child) continue;
+            child->updateParentSbm(local);
+          }
+        });
+      }
+      for (auto& thread : threads) {
+        thread.join();
+      }
+      for (auto& local : locals) {
+        sbm_.addUpperTriangular(local);
+      }
+      return;
+    }
   }
 #endif
   for (const auto& child : children) {
