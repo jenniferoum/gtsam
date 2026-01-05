@@ -264,6 +264,12 @@ namespace gtsam {
     void updateFromMappedBlocks(const SymmetricBlockMatrix& other,
                                 const std::vector<DenseIndex>& blockIndices);
 
+    /// Update this matrix with blockwise outer products from a vertical block matrix.
+    /// Adds S_i^T S_j into block (I,J), using a block mapping; entries with index -1 are skipped.
+    /// The range to use is controlled by other.firstBlock().
+    void updateFromOuterProductBlocks(const VerticalBlockMatrix& other,
+                                      const std::vector<DenseIndex>& blockIndices);
+
     /// @}
     /// @name Accessing the full matrix.
     /// @{
