@@ -17,9 +17,16 @@
  */
 
 #include <gtsam/base/Matrix.h>
+#include <gtsam/config.h>
 #include <gtsam/linear/GaussianConditional.h>
 #include <gtsam/linear/JacobianFactor.h>
 #include <gtsam/linear/MultifrontalClique.h>
+
+#ifdef GTSAM_USE_TBB
+#include <tbb/blocked_range.h>
+#include <tbb/enumerable_thread_specific.h>
+#include <tbb/parallel_for.h>
+#endif
 
 #include <algorithm>
 #include <cassert>
@@ -246,9 +253,33 @@ void MultifrontalClique::prepareForElimination() {
     sbm_.selfadjointView().rankUpdate(Ab_.matrix().transpose());
   }
 
+#ifdef GTSAM_USE_TBB
+  constexpr size_t kParallelChildThreshold = 1024;
+  if (children.size() >= kParallelChildThreshold) {
+    tbb::enumerable_thread_specific<SymmetricBlockMatrix> accumulators(
+        [this]() {
+          SymmetricBlockMatrix local(blockDims_, true);
+          local.setZero();
+          return local;
+        });
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, children.size()),
+                      [&](const tbb::blocked_range<size_t>& range) {
+                        auto& local = accumulators.local();
+                        for (size_t i = range.begin(); i < range.end(); ++i) {
+                          const auto& child = children[i];
+                          if (!child) continue;
+                          child->updateParentSbm(local);
+                        }
+                      });
+    for (auto& local : accumulators) {
+      sbm_.addUpperTriangular(local);
+    }
+    return;
+  }
+#endif
   for (const auto& child : children) {
     if (!child) continue;
-    child->updateParent(*this);
+    child->updateParentSbm(sbm_);
   }
 }
 
@@ -289,7 +320,8 @@ void MultifrontalClique::eliminateInPlace() {
   factorize();
 }
 
-void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
+void MultifrontalClique::updateParentSbm(
+    SymmetricBlockMatrix& parentSbm) const {
   if (useQR()) {
     // Accumulate separator (and RHS) normal equations (S^T S) into the parent.
     assert(RSdReady_);
@@ -297,15 +329,19 @@ void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
     assert(parent.sbm_.nBlocks() > 0);
     const DenseIndex nfBlocks = static_cast<DenseIndex>(numFrontals());
     RSd_.firstBlock() = nfBlocks;
-    parent.sbm_.updateFromOuterProductBlocks(RSd_, parentIndices_);
+    parentSbm.updateFromOuterProductBlocks(RSd_, parentIndices_);
     RSd_.firstBlock() = 0;
   } else {
     // Accumulate the S^T S part from this clique's SBM into the parent.
     assert(sbm_.nBlocks() > 0 && sbm_.blockStart() == 0);
     sbm_.blockStart() = numFrontals();
-    parent.sbm_.updateFromMappedBlocks(sbm_, parentIndices_);
+    parentSbm.updateFromMappedBlocks(sbm_, parentIndices_);
     sbm_.blockStart() = 0;
   }
+}
+
+void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
+  updateParentSbm(parent.sbm_);
 }
 
 std::shared_ptr<GaussianConditional> MultifrontalClique::conditional() const {
