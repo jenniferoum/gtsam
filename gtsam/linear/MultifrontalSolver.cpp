@@ -18,6 +18,7 @@
 
 #include <gtsam/base/treeTraversal-inst.h>
 #include <gtsam/base/types.h>
+#include <gtsam/config.h>
 #include <gtsam/inference/Key.h>
 #include <gtsam/linear/GaussianBayesTree.h>
 #include <gtsam/linear/GaussianConditional.h>
@@ -307,16 +308,20 @@ struct CliqueBuilder {
 /* ************************************************************************* */
 MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
                                        const Ordering& ordering,
-                                       size_t mergeDimCap,
-                                       std::ostream* reportStream)
-    : MultifrontalSolver(Precompute(graph, ordering), ordering, mergeDimCap,
-                         reportStream) {}
+                                       const Parameters& params)
+    : MultifrontalSolver(Precompute(graph, ordering), ordering, params) {}
+
+/* ************************************************************************* */
+MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
+                                       const Ordering& ordering)
+    : MultifrontalSolver(graph, ordering, Parameters{}) {}
+
 
 /* ************************************************************************* */
 MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
                                        const Ordering& ordering,
-                                       size_t mergeDimCap,
-                                       std::ostream* reportStream) {
+                                       const Parameters& params)
+    : TaskMixin<MultifrontalSolver, MultifrontalClique>(), params_(params) {
   dims_ = std::move(data.dims);
   fixedKeys_ = std::move(data.fixedKeys);
 
@@ -332,15 +337,15 @@ MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
 
   // Report the symbolic structure before any merge.
   reportStructure(data.junctionTree, dims_, "Symbolic cluster structure",
-                  reportStream);
+                  params_.reportStream);
 
   // If applicable, merge small child cliques bottom-up.
-  if (mergeDimCap > 0) {
+  if (params_.mergeDimCap > 0) {
     for (const auto& rootCluster : data.junctionTree.roots()) {
-      mergeSmallClusters(rootCluster, dims_, mergeDimCap);
+      mergeSmallClusters(rootCluster, dims_, params_.mergeDimCap);
     }
     reportStructure(data.junctionTree, dims_, "Clique structure after merge",
-                    reportStream);
+                    params_.reportStream);
   }
 
   // Build the actual MultifrontalClique structure.
@@ -355,6 +360,12 @@ MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
 
   // Caller is responsible for loading numerical values via load().
 }
+
+/* ************************************************************************* */
+MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
+                                       const Ordering& ordering)
+    : MultifrontalSolver(std::move(data), ordering, Parameters{}) {}
+
 
 /* ************************************************************************* */
 MultifrontalSolver::PrecomputedData MultifrontalSolver::Precompute(
@@ -395,26 +406,39 @@ void MultifrontalSolver::eliminateInPlace() {
         "eliminating.");
   }
   eliminated_ = false;
+#ifdef GTSAM_USE_TBB
   // Parallel elimination uses PostOrderForestParallel, which will be
   // multi-threaded if GTSAM was compiled with TBB.
   TbbOpenMPMixedScope threadLimiter;
   auto visitorPost = [](const CliquePtr& node) {
     if (node) node->eliminateInPlace();
   };
-  treeTraversal::PostOrderForestParallel(*this, visitorPost, 10);
+  treeTraversal::PostOrderForestParallel(
+      *this, visitorPost, params_.eliminationParallelThreshold);
+#else
+  runBottomUp([](MultifrontalClique& node) { node.eliminateInPlace(); });
+#endif
   eliminated_ = true;
 }
 
 /* ************************************************************************* */
 void MultifrontalSolver::eliminateInPlace(const GaussianFactorGraph& graph) {
   // Combine load + eliminate in one post-order traversal to improve locality.
+#ifdef GTSAM_USE_TBB
   TbbOpenMPMixedScope threadLimiter;
   auto visitorPost = [&graph](const CliquePtr& node) {
     if (!node) return;
     node->fillAb(graph);
     node->eliminateInPlace();
   };
-  treeTraversal::PostOrderForestParallel(*this, visitorPost, 10);
+  treeTraversal::PostOrderForestParallel(
+      *this, visitorPost, params_.eliminationParallelThreshold);
+#else
+  runBottomUp([&graph](MultifrontalClique& node) {
+    node.fillAb(graph);
+    node.eliminateInPlace();
+  });
+#endif
   loaded_ = true;
   eliminated_ = true;
 }
@@ -477,13 +501,11 @@ const VectorValues& MultifrontalSolver::updateSolution() const {
   // Threshold chosen to balance task overhead vs parallelism. Small cliques
   // (like points in SFM) are better handled sequentially within larger tasks
   // to minimize scheduling overhead and maximize cache locality.
-  constexpr int kSolutionParallelThreshold = 4096;
-
   // Cast to non-const because treeTraversal expects a non-const reference,
   // even though we are only calling const methods on the nodes.
   treeTraversal::DepthFirstForestParallel(
       const_cast<MultifrontalSolver&>(*this), rootData, visitorPre, visitorPost,
-      kSolutionParallelThreshold);
+      params_.solutionParallelThreshold);
 
   for (Key key : fixedKeys_) {
     solution_.at(key).setZero();

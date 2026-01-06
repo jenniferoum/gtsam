@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <gtsam/base/PriorityScheduler.h>
 #include <gtsam/inference/Key.h>
 #include <gtsam/inference/Ordering.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
@@ -42,8 +43,17 @@ class MultifrontalClique;
  * provides efficient methods for loading new factors, eliminating the graph,
  * and solving for the update vector.
  */
-class GTSAM_EXPORT MultifrontalSolver {
+class GTSAM_EXPORT MultifrontalSolver
+    : public TaskMixin<MultifrontalSolver, MultifrontalClique> {
  public:
+  /// Tuning parameters for traversal and reporting.
+  struct Parameters {
+    size_t mergeDimCap = 16;                ///< Merge threshold (0 disables).
+    std::ostream* reportStream = nullptr;   ///< Optional structure reporting.
+    int eliminationParallelThreshold = 10;  ///< Post-order task threshold.
+    int solutionParallelThreshold = 4096;   ///< Pre-order task threshold.
+  };
+
   struct PrecomputedData {
     std::map<Key, size_t> dims;         ///< Map from variable key to dimension.
     std::unordered_set<Key> fixedKeys;  ///< Keys fixed by constrained factors.
@@ -63,6 +73,7 @@ class GTSAM_EXPORT MultifrontalSolver {
   std::unordered_set<Key> fixedKeys_;  ///< Keys fixed by constrained factors.
   bool loaded_ = false;                ///< Whether load() has been called.
   bool eliminated_ = false;            ///< Whether eliminateInPlace() ran.
+  Parameters params_;                  ///< Tunable solver parameters.
 
  public:
   /**
@@ -71,28 +82,27 @@ class GTSAM_EXPORT MultifrontalSolver {
    * Call load() before eliminating to populate numerical values.
    * @param graph The factor graph to solve.
    * @param ordering The variable ordering to use for elimination.
-   * @param mergeDimCap Merge a child if its frontal dimension plus the
-   * parent's total dimension is below this threshold (0 disables merging).
-   * @param reportStream Optional stream to report clique structure stats
-   * (frontals, separators, total dims, and children).
+   * @param params Tunable parameters for traversal and reporting.
    */
   MultifrontalSolver(const GaussianFactorGraph& graph, const Ordering& ordering,
-                     size_t mergeDimCap = 0,
-                     std::ostream* reportStream = nullptr);
+                     const Parameters& params);
+
+  /// Construct the solver with default parameters.
+  MultifrontalSolver(const GaussianFactorGraph& graph,
+                     const Ordering& ordering);
 
   /**
    * Construct the solver from precomputed symbolic data.
    * Call load() before eliminating to populate numerical values.
    * @param data Precomputed symbolic structure and sizing data.
    * @param ordering The variable ordering to use for seeding solution storage.
-   * @param mergeDimCap Merge a child if its frontal dimension plus the
-   * parent's total dimension is below this threshold (0 disables merging).
-   * @param reportStream Optional stream to report clique structure stats
-   * (frontals, separators, total dims, and children).
+   * @param params Tunable parameters for traversal and reporting.
    */
   MultifrontalSolver(PrecomputedData data, const Ordering& ordering,
-                     size_t mergeDimCap = 0,
-                     std::ostream* reportStream = nullptr);
+                     const Parameters& params);
+
+  /// Construct the solver with default parameters.
+  MultifrontalSolver(PrecomputedData data, const Ordering& ordering);
 
   /// Precompute symbolic structure and sizing data from a factor graph.
   static PrecomputedData Precompute(const GaussianFactorGraph& graph,

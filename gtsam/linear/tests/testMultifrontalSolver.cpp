@@ -334,10 +334,13 @@ TEST(MultifrontalSolver, HessianFactors) {
 /* ************************************************************************* */
 // Merge threshold changes the clique count.
 TEST(MultifrontalSolver, MergeDimCap) {
-  MultifrontalSolver solverNoMerge(chain, chainOrdering, 0);
+  MultifrontalSolver::Parameters noMergeParams;
+  MultifrontalSolver solverNoMerge(chain, chainOrdering, noMergeParams);
   EXPECT_LONGS_EQUAL(2, solverNoMerge.cliqueCount());
 
-  MultifrontalSolver solverMerge(chain, chainOrdering, 1000);
+  MultifrontalSolver::Parameters mergeParams;
+  mergeParams.mergeDimCap = 1000;
+  MultifrontalSolver solverMerge(chain, chainOrdering, mergeParams);
   EXPECT_LONGS_EQUAL(1, solverMerge.cliqueCount());
 }
 

@@ -71,9 +71,11 @@ void runBAL135Benchmark() {
   const NonlinearFactorGraph graph = buildGeneralSfmGraph(db, 0.1);
   const Values initial = buildGeneralSfmInitial(db);
   const GaussianFactorGraph linear = *graph.linearize(initial);
-  const Ordering ordering = Ordering::Metis(linear);
+  const Ordering ordering = createSchurOrdering(db, false);
 
-  MultifrontalSolver solver(linear, ordering, kMergeDimCap, nullptr);
+  MultifrontalSolver::Parameters params;
+  params.mergeDimCap = kMergeDimCap;
+  MultifrontalSolver solver(linear, ordering, params);
   auto start = std::chrono::high_resolution_clock::now();
   runMultifrontalSolver(solver, linear, iterations);
   auto end = std::chrono::high_resolution_clock::now();
@@ -93,29 +95,29 @@ void runBALBenchmark() {
     const Values initial = buildGeneralSfmInitial(db);
     const GaussianFactorGraph linear = *graph.linearize(initial);
 
-    auto orderings = createOrderings(db, linear);
-    for (const auto& [label, ordering] : orderings) {
-      cout << "\nBAL Benchmark (" << label << ", iterations=" << bal_iterations
-           << "):" << std::endl;
+    const Ordering ordering = createSchurOrdering(db, false);
+    cout << "\nBAL Benchmark (" << filename << ", iterations=" << bal_iterations
+         << "):" << std::endl;
 
-      MultifrontalSolver solver(linear, ordering, kMergeDimCap, nullptr);
-      auto start = std::chrono::high_resolution_clock::now();
-      runMultifrontalSolver(solver, linear, bal_iterations);
-      auto end = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double> t_imperative = end - start;
-      cout << "  MultifrontalSolver: " << t_imperative.count() << " s"
-           << std::endl;
+    MultifrontalSolver::Parameters params;
+    params.mergeDimCap = kMergeDimCap;
+    MultifrontalSolver solver(linear, ordering, params);
+    solver.eliminateInPlace(linear);  // Warm up cache.
+    auto start = std::chrono::high_resolution_clock::now();
+    runMultifrontalSolver(solver, linear, bal_iterations);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> t_imperative = end - start;
+    cout << "  MultifrontalSolver: " << t_imperative.count() << " s"
+         << std::endl;
 
-      start = std::chrono::high_resolution_clock::now();
-      runStandardSolver(linear, ordering, bal_iterations);
-      end = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double> t_standard = end - start;
-      cout << "  Standard GTSAM:     " << t_standard.count() << " s"
-           << std::endl;
+    start = std::chrono::high_resolution_clock::now();
+    runStandardSolver(linear, ordering, bal_iterations);
+    end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> t_standard = end - start;
+    cout << "  Standard GTSAM:     " << t_standard.count() << " s" << std::endl;
 
-      cout << "  Speedup:            "
-           << t_standard.count() / t_imperative.count() << "x" << std::endl;
-    }
+    cout << "  Speedup:            "
+         << t_standard.count() / t_imperative.count() << "x" << std::endl;
   }
 }
 void runChainBenchmark() {
@@ -129,7 +131,10 @@ void runChainBenchmark() {
     const Ordering ordering = Ordering::Metis(smoother);
 
     auto start = std::chrono::high_resolution_clock::now();
-    MultifrontalSolver solver(smoother, ordering, kMergeDimCap, &std::cout);
+    MultifrontalSolver::Parameters params;
+    params.mergeDimCap = kMergeDimCap;
+    params.reportStream = &std::cout;
+    MultifrontalSolver solver(smoother, ordering, params);
     runMultifrontalSolver(solver, smoother, iterations);
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> t_imperative = end - start;
