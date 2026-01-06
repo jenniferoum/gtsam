@@ -237,17 +237,16 @@ class PriorityScheduler {
  *
  * @note The traversal helpers operate on `PriorityScheduler<void>` and rely on
  * node-local state for any computed results.
+ * @note `Forest::roots()` or `Forest::roots` must return a range of
+ * pointer-like `Node` roots.
+ * @note `Node::children()` or `Node::children` must return a range of
+ * pointer-like `Node` children.
  */
 template <typename Forest, typename Node>
 class TaskMixin {
  public:
   /**
    * @brief Run a top-down traversal (root first).
-   *
-   * @note Traversal helpers use a `PriorityScheduler<void>`.
-   * @note `Forest::roots()` must return a range of pointer-like `Node` roots.
-   * @note `Node::children()` must return a range of pointer-like `Node`
-   * children.
    */
   template <typename Fn>
   void runTopDown(Fn fn) {
@@ -255,7 +254,7 @@ class TaskMixin {
     auto state = std::make_shared<TraversalState>();
     std::future<void> done = state->done.get_future();
     Forest& forest = static_cast<Forest&>(*this);
-    const auto& roots = forest.roots();
+    const auto& roots = rootsOf(forest);
     if (roots.empty()) {
       state->done.set_value();
       return;
@@ -271,11 +270,6 @@ class TaskMixin {
 
   /**
    * @brief Run a bottom-up traversal (leaves first).
-   *
-   * @note Traversal helpers use a `PriorityScheduler<void>`.
-   * @note `Forest::roots()` must return a range of pointer-like `Node` roots.
-   * @note `Node::children()` must return a range of pointer-like `Node`
-   * children.
    */
   template <typename Fn>
   void runBottomUp(Fn fn) {
@@ -283,7 +277,7 @@ class TaskMixin {
     auto state = std::make_shared<TraversalState>();
     std::future<void> done = state->done.get_future();
     Forest& forest = static_cast<Forest&>(*this);
-    const auto& roots = forest.roots();
+    const auto& roots = rootsOf(forest);
     if (roots.empty()) {
       state->done.set_value();
       return;
@@ -330,7 +324,7 @@ class TaskMixin {
       try {
         std::invoke(fn, node);
         // Children are scheduled after the node in top-down order.
-        auto&& children = node.children();
+        auto&& children = childrenOf(node);
         for (const auto& child : children) {
           topDownAsync(*child, depth + 1, fn, state);
         }
@@ -349,7 +343,7 @@ class TaskMixin {
   template <typename Fn>
   void bottomUpAsync(Node& node, int depth, const Fn& fn, const StatePtr& state,
                      const std::function<void()>& onDone) {
-    auto&& children = node.children();
+    auto&& children = childrenOf(node);
     if (children.empty()) {
       scheduleBottomUpNode(node, depth, fn, state, onDone);
       return;
@@ -427,6 +421,39 @@ class TaskMixin {
         } catch (...) { /* ignore */
         }
       }
+    }
+  }
+
+  template <typename T, typename = void>
+  struct HasChildrenMethod : std::false_type {};
+
+  template <typename T>
+  struct HasChildrenMethod<T,
+                           std::void_t<decltype(std::declval<T&>().children())>>
+      : std::true_type {};
+
+  template <typename T, typename = void>
+  struct HasRootsMethod : std::false_type {};
+
+  template <typename T>
+  struct HasRootsMethod<T, std::void_t<decltype(std::declval<T&>().roots())>>
+      : std::true_type {};
+
+  template <typename T>
+  static auto& childrenOf(T& node) {
+    if constexpr (HasChildrenMethod<T>::value) {
+      return node.children();
+    } else {
+      return node.children;
+    }
+  }
+
+  template <typename T>
+  static auto& rootsOf(T& forest) {
+    if constexpr (HasRootsMethod<T>::value) {
+      return forest.roots();
+    } else {
+      return forest.roots;
     }
   }
 };
