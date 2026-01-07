@@ -339,8 +339,8 @@ double HessianFactor::error(const VectorValues& c) const {
   // NOTE may not be as efficient
   const Vector x = c.vector(keys());
   const double xtg = x.dot(linearTerm().col(0));
-  auto AtA = informationView();
-  const double xGx = x.transpose() * AtA * x;
+  const auto AtA = informationView();
+  const double xGx = x.dot(AtA * x);
   return 0.5 * (f - 2.0 * xtg + xGx);
 }
 
