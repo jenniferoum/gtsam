@@ -118,6 +118,29 @@ void Similarity3::print(const std::string& s) const {
   std::cout << "t: " << translation().transpose() << " s: " << scale() << std::endl;
 }
 
+Rot3 Similarity3::rotation(OptionalJacobian<3, 7> Hself) const { 
+  if (Hself) {
+    Hself->setZero();
+    Hself->block<3, 3>(0, 0) = I_3x3;
+  }
+  return R_;
+}
+
+Point3 Similarity3::translation(OptionalJacobian<3, 7> Hself) const {
+  if (Hself) {
+    *Hself << Z_3x3, rotation().matrix(), -t_; 
+  }
+  return t_;
+}
+
+double Similarity3::scale(OptionalJacobian<1, 7> Hself) const {
+  if (Hself) {
+    Hself->setZero();
+    (*Hself)(0, 6) = s_; 
+  }
+  return s_;
+}
+
 Similarity3 Similarity3::Identity() {
   return Similarity3();
 }
