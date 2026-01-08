@@ -149,10 +149,7 @@ Pose3 Similarity3::transformFrom(const Pose3& bTi,
   OptionalJacobian<6, 7> Hself, OptionalJacobian<6, 6> H_bTi) const {
 
   // Similarity3 components and their derivatives with respect to the Similarity3.
-  Matrix37 DSimR_dSim, Dt_dSim;
-  Matrix17 Ds_dSim;
-  const double Sim_s = this->scale(Hself ? &Ds_dSim : nullptr);
-  const Point3 Sim_t = this->translation(Hself ? &Dt_dSim : nullptr);
+  Matrix37 DSimR_dSim;
   const Rot3 Sim_R = this->rotation(Hself ? &DSimR_dSim : nullptr);
 
   // Pose3 components and their derivatives with respect to the Pose3.
@@ -164,35 +161,30 @@ Pose3 Similarity3::transformFrom(const Pose3& bTi,
   Matrix3 DR_dSimR, DR_dTR;
   const Rot3 R = Sim_R.compose(TR, Hself ? &DR_dSimR : nullptr, H_bTi ? &DR_dTR : nullptr);
 
-  Matrix3 Dat_dSimR, Dat_dp;
-  const Point3 at = Sim_R.rotate(p, Hself ? &Dat_dSimR : nullptr, H_bTi ? &Dat_dp: nullptr);
-  const Point3 t = Sim_s * (at + Sim_t);
+  Matrix37 Dt_sim;
+  Matrix3 Dt_p;
+  const Point3 t = this->transformFrom(p, Hself ? &Dt_sim : nullptr, H_bTi ? &Dt_p : nullptr);
+
+  Matrix63 Dresult_t; 
+  // Dresult_R is identity subblock of R, so ignoring. 
+  const Pose3 result = Pose3::Create(R, t, nullptr, Hself ? &Dresult_t : nullptr);
 
   if (Hself) {
     Hself->setZero();
-    // Rotation component - this is correct.
+    // Rotation component.
     Hself->block<3, 7>(0, 0) = DR_dSimR * DSimR_dSim;
 
-    // Translation component - this is not correct, needs to be fixed.
-    Hself->block<3, 3>(3, 0) = Sim_s * (Dat_dSimR * DSimR_dSim).block<3, 3>(0, 0);
-    
-    // Part 1
-    const auto ds = (at + Sim_t) * Ds_dSim; // 3x7
-    // part 2
-    const auto dt = Sim_s * Dt_dSim; // 3x7
-    Hself->block<3, 4>(3, 3) = (ds + dt).block<3, 4>(0, 3);
+    // Translation component.
+    Hself->block<3, 7>(3, 0) = (Dresult_t * Dt_sim).block<3, 7>(3, 0);
   }
 
   if (H_bTi) {
     H_bTi->setZero();
-    // Rotation component - this is correct.
+    // Rotation component.
     H_bTi->block<3, 6>(0, 0) = DR_dTR * DTR_dT;
-
-    // H_bTi->block<3, 6>(3, 0) = Sim_s * Dat_dp * Dp_dT; // This does not work, dont know why.
-    H_bTi->block<3, 3>(3, 3) = Sim_s * I_3x3; // This works, dont know why.
-
+    H_bTi->block<3, 6>(3, 0) = (Dresult_t * (Dt_p * Dp_dT)).block<3, 6>(3, 0); 
   }
-  return Pose3(R, t);
+  return result;
 }
 
 Point3 Similarity3::operator*(const Point3& p) const {

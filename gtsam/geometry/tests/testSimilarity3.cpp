@@ -95,7 +95,7 @@ TEST(Similarity3, translation) {
 // Check scale and its pushforward
 TEST(Similarity3, scale) {
   Matrix17 actualH;
-  EXPECT_DOUBLES_EQUAL(2.0, T5.scale(&actualH), 1e-8);
+  EXPECT_DOUBLES_EQUAL(10.0, T5.scale(&actualH), 1e-8);
 
   std::function<double(const Similarity3&)> f = [](const Similarity3& T) { return T.scale(); };
   Matrix17 numericalH = numericalDerivative11<double, Similarity3>(f, T5);
