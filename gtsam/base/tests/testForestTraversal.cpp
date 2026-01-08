@@ -39,9 +39,9 @@ std::shared_ptr<NodeT> createSimpleTree() {
   auto n5 = std::make_shared<NodeT>(5);
   auto n6 = std::make_shared<NodeT>(6);
   auto n7 = std::make_shared<NodeT>(7);
-  n1->children() = {n2, n3, n4};
-  n2->children() = {n5, n6};
-  n6->children() = {n7};
+  n1->children = {n2, n3, n4};
+  n2->children = {n5, n6};
+  n6->children = {n7};
   return n1;
 }
 
@@ -53,17 +53,16 @@ std::shared_ptr<NodeT> createSimpleTree() {
 /// TreeNode specialization for bottom-up test.
 struct TestNode1 : public TreeNode {
   using TreeNode::TreeNode;
-  std::vector<std::shared_ptr<TestNode1>> children_;
+  std::vector<std::shared_ptr<TestNode1>> children;
   size_t subtreeCount{0};
 
-  /// Return child list for traversal.
-  std::vector<std::shared_ptr<TestNode1>>& children() { return children_; }
+  int problemSize() const { return 1; }
 
   /// Bottom-up payload for tests.
   void bottomUpValue() {
     // Each node stores 1 plus the sum of its children's results.
     size_t sum = 1;
-    for (const auto& child : children()) {
+    for (const auto& child : children) {
       sum += child->subtreeCount;
     }
     subtreeCount = sum;
@@ -72,6 +71,7 @@ struct TestNode1 : public TreeNode {
 
 /// Forest wrapper for bottom-up traversal.
 struct TestForest1 : public ForestTraversal<TestForest1, TestNode1> {
+  using Node = TestNode1;
   std::vector<std::shared_ptr<TestNode1>> roots_;
 
   const std::vector<std::shared_ptr<TestNode1>>& roots() const {
@@ -105,12 +105,11 @@ TEST(ForestTraversal, BottomUpCounting) {
 /// TreeNode specialization for top-down test.
 struct TestNode2 : public TreeNode {
   using TreeNode::TreeNode;
-  std::vector<std::shared_ptr<TestNode2>> children_;
+  std::vector<std::shared_ptr<TestNode2>> children;
   bool visited{false};
   size_t subtreeCount{0};
 
-  /// Return child list for traversal.
-  std::vector<std::shared_ptr<TestNode2>>& children() { return children_; }
+  int problemSize() const { return 1; }
 
   /// Top-down payload for tests.
   void topDownTouch() { visited = true; }
@@ -119,7 +118,7 @@ struct TestNode2 : public TreeNode {
   void bottomUpVisitedCount() {
     // Each node stores 1 if visited plus the sum of its children.
     size_t sum = visited ? 1 : 0;
-    for (const auto& child : children()) {
+    for (const auto& child : children) {
       sum += child->subtreeCount;
     }
     subtreeCount = sum;
@@ -128,6 +127,7 @@ struct TestNode2 : public TreeNode {
 
 /// Forest wrapper for top-down traversal.
 struct TestForest2 : public ForestTraversal<TestForest2, TestNode2> {
+  using Node = TestNode2;
   std::vector<std::shared_ptr<TestNode2>> roots_;
 
   const std::vector<std::shared_ptr<TestNode2>>& roots() const {

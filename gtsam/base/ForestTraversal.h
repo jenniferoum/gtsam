@@ -8,12 +8,12 @@
 
 /**
  * @file ForestTraversal.h
- * @brief Priority-based forest traversal helpers.
+ * @brief Forest traversal helpers with optional TBB acceleration.
  *
  * @details
- * This header defines a mixin that provides depth-based top-down and bottom-up
- * traversals over a forest. Priorities are derived from recursion depth and
- * executed via an internal PriorityScheduler.
+ * Provides top-down and bottom-up traversal helpers that either enqueue work
+ * on an internal `PriorityScheduler` (for builds without TBB) or call the
+ * `treeTraversal` parallel helpers when `GTSAM_USE_TBB` is enabled.
  *
  * @note `Forest::roots()` or `Forest::roots` must return a range of
  * pointer-like `Node` roots.
@@ -26,7 +26,14 @@
 
 #pragma once
 
+#include <gtsam/config.h>
+#ifdef GTSAM_USE_TBB
+#include <gtsam/base/treeTraversal-inst.h>
+#include <gtsam/base/types.h>
+#include <tbb/global_control.h>
+#else
 #include <gtsam/base/PriorityScheduler.h>
+#endif
 
 #include <atomic>
 #include <exception>
@@ -44,73 +51,92 @@ namespace gtsam {
  * helpers on a forest owner.
  *
  * @details
- * This helper hides explicit priority management by assigning priorities based
- * on recursion depth. It is intended for method-style use in recursive solvers.
- * Tasks are scheduled on the provided scheduler and synchronized with
- * continuations to avoid blocking worker threads. Bottom-up continuations can
- * run inline when called from a worker to reduce queue traffic.
- *
- * @note The traversal helpers operate on `PriorityScheduler<void>` and rely on
- * node-local state for any computed results.
+ * When TBB is present, the traversal delegates directly to
+ * `treeTraversal::DepthFirstForestParallel` and
+ * `treeTraversal::PostOrderForestParallel` with the configured parallel
+ * thresholds. Otherwise it falls back to the priority-queued implementation
+ * that mirrors `TaskMixin`.
  */
 template <typename Forest, typename Node>
 class ForestTraversal {
  public:
+  /// Construct a helper with a fixed thread budget (used by TBB when enabled).
+  explicit ForestTraversal(
+      size_t numThreads = std::thread::hardware_concurrency())
+      : threadCount_(numThreads == 0 ? 1 : numThreads)
+#ifndef GTSAM_USE_TBB
+        ,
+        scheduler_(threadCount_)
+#endif
+  {
+  }
+
   /// Run a top-down traversal (root first).
   template <typename Fn>
-  void runTopDown(Fn fn) {
-    // Run a top-down traversal with continuations.
-    auto state = std::make_shared<TraversalState>();
-    std::future<void> done = state->done.get_future();
-    Forest& forest = static_cast<Forest&>(*this);
-    const auto& roots = rootsOf(forest);
-    if (roots.empty()) {
-      state->done.set_value();
-      return;
-    }
-    // Hold completion until all roots are scheduled.
-    state->pending.fetch_add(1, std::memory_order_relaxed);
-    for (const auto& root : roots) {
-      topDownAsync(*root, 0, fn, state);
-    }
-    finishTraversal(state);
-    done.get();
+  void runTopDown(Fn fn, int parallelThreshold = 10) {
+#ifdef GTSAM_USE_TBB
+    runTopDownTreeTraversal(fn, parallelThreshold);
+#else
+    runTopDownPriorityScheduler(fn);
+#endif
   }
 
   /// Run a bottom-up traversal (leaves first).
   template <typename Fn>
-  void runBottomUp(Fn fn) {
-    // Run a bottom-up traversal with continuations.
-    auto state = std::make_shared<TraversalState>();
-    std::future<void> done = state->done.get_future();
-    Forest& forest = static_cast<Forest&>(*this);
-    const auto& roots = rootsOf(forest);
-    if (roots.empty()) {
-      state->done.set_value();
-      return;
-    }
-    // Hold completion until all roots are scheduled.
-    state->pending.fetch_add(1, std::memory_order_relaxed);
-    for (const auto& root : roots) {
-      bottomUpAsync(*root, 0, fn, state, [] {});
-    }
-    finishTraversal(state);
-    done.get();
+  void runBottomUp(Fn fn, int parallelThreshold = 10) {
+#ifdef GTSAM_USE_TBB
+    runBottomUpTreeTraversal(fn, parallelThreshold);
+#else
+    runBottomUpPriorityScheduler(fn);
+#endif
   }
 
- protected:
-  /// Construct the mixin with a fixed-size scheduler.
-  explicit ForestTraversal(
-      size_t numThreads = std::thread::hardware_concurrency())
-      : scheduler_(numThreads) {}
-
-  /// Priority for top-down traversal (root first).
-  int topDownPriority(int depth) const { return depth; }
-
-  /// Priority for bottom-up traversal (leaves first).
-  int bottomUpPriority(int depth) const { return -depth; }
-
  private:
+  size_t threadCount_;
+
+#ifdef GTSAM_USE_TBB
+  using SharedNode = std::shared_ptr<Node>;
+
+  template <typename Fn>
+  void runTopDownTreeTraversal(Fn fn, int parallelThreshold) {
+    tbb::global_control control(tbb::global_control::max_allowed_parallelism,
+                                static_cast<int>(threadCount_));
+    TbbOpenMPMixedScope threadLimiter;
+
+    struct VisitorPre {
+      Fn* fn;
+      int operator()(const SharedNode& node, int&) const {
+        if (node) std::invoke(*fn, *node);
+        return 0;
+      }
+    };
+
+    int rootData = 0;
+    VisitorPre visitor{&fn};
+    auto visitorPost = [](const SharedNode&, int) {};
+    treeTraversal::DepthFirstForestParallel(static_cast<Forest&>(*this),
+                                            rootData, visitor, visitorPost,
+                                            parallelThreshold);
+  }
+
+  template <typename Fn>
+  void runBottomUpTreeTraversal(Fn fn, int parallelThreshold) {
+    tbb::global_control control(tbb::global_control::max_allowed_parallelism,
+                                static_cast<int>(threadCount_));
+    TbbOpenMPMixedScope threadLimiter;
+
+    struct VisitorPost {
+      Fn* fn;
+      void operator()(const SharedNode& node) const {
+        if (node) std::invoke(*fn, *node);
+      }
+    };
+
+    VisitorPost visitor{&fn};
+    treeTraversal::PostOrderForestParallel(static_cast<Forest&>(*this), visitor,
+                                           parallelThreshold);
+  }
+#else
   PriorityScheduler<void> scheduler_;
 
   /// Shared traversal state across scheduled tasks.
@@ -123,14 +149,48 @@ class ForestTraversal {
   };
   using StatePtr = std::shared_ptr<TraversalState>;
 
-  /// Schedule top-down work for a node and its children.
+  template <typename Fn>
+  void runTopDownPriorityScheduler(Fn fn) {
+    auto state = std::make_shared<TraversalState>();
+    std::future<void> done = state->done.get_future();
+    Forest& forest = static_cast<Forest&>(*this);
+    const auto& roots = rootsOf(forest);
+    if (roots.empty()) {
+      state->done.set_value();
+      return;
+    }
+    state->pending.fetch_add(1, std::memory_order_relaxed);
+    for (const auto& root : roots) {
+      topDownAsync(*root, 0, fn, state);
+    }
+    finishTraversal(state);
+    done.get();
+  }
+
+  template <typename Fn>
+  void runBottomUpPriorityScheduler(Fn fn) {
+    auto state = std::make_shared<TraversalState>();
+    std::future<void> done = state->done.get_future();
+    Forest& forest = static_cast<Forest&>(*this);
+    const auto& roots = rootsOf(forest);
+    if (roots.empty()) {
+      state->done.set_value();
+      return;
+    }
+    state->pending.fetch_add(1, std::memory_order_relaxed);
+    for (const auto& root : roots) {
+      bottomUpAsync(*root, 0, fn, state, [] {});
+    }
+    finishTraversal(state);
+    done.get();
+  }
+
   template <typename Fn>
   void topDownAsync(Node& node, int depth, const Fn& fn,
                     const StatePtr& state) {
     auto task = [this, &node, depth, &fn, state]() {
       try {
         std::invoke(fn, node);
-        // Children are scheduled after the node in top-down order.
         auto&& children = childrenOf(node);
         for (const auto& child : children) {
           topDownAsync(*child, depth + 1, fn, state);
@@ -142,11 +202,9 @@ class ForestTraversal {
         return;
       }
     };
-
     scheduleTask(topDownPriority(depth), state, std::move(task));
   }
 
-  /// Schedule children first, then the parent node once all children finish.
   template <typename Fn>
   void bottomUpAsync(Node& node, int depth, const Fn& fn, const StatePtr& state,
                      const std::function<void()>& onDone) {
@@ -155,13 +213,11 @@ class ForestTraversal {
       scheduleBottomUpNode(node, depth, fn, state, onDone);
       return;
     }
-
     auto remaining =
         std::make_shared<std::atomic<int>>(static_cast<int>(children.size()));
     std::function<void()> childDone = [this, &node, depth, &fn, state, onDone,
                                        remaining]() {
       if (remaining->fetch_sub(1, std::memory_order_relaxed) == 1) {
-        // If a child failed, skip this node and just unwind.
         if (state->hasException.load(std::memory_order_acquire)) {
           onDone();
           return;
@@ -175,7 +231,6 @@ class ForestTraversal {
     }
   }
 
-  /// Schedule bottom-up work for a node after its children finish.
   template <typename Fn>
   void scheduleBottomUpNode(Node& node, int depth, const Fn& fn,
                             const StatePtr& state,
@@ -211,7 +266,6 @@ class ForestTraversal {
 
   /// Record the first exception and keep the traversal draining.
   void recordException(const StatePtr& state, std::exception_ptr exception) {
-    // Record the first exception and let the traversal finish.
     if (!state->exceptionClaim.test_and_set(std::memory_order_acq_rel)) {
       state->exception = exception;
       state->hasException.store(true, std::memory_order_release);
@@ -234,6 +288,12 @@ class ForestTraversal {
       }
     }
   }
+
+  int topDownPriority(int depth) const { return depth; }
+
+  int bottomUpPriority(int depth) const { return -depth; }
+
+#endif
 
   template <typename T, typename = void>
   struct HasChildrenMethod : std::false_type {};
