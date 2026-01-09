@@ -191,10 +191,11 @@ Pose3 Similarity3::transformFrom(const Pose3& bTi,
   }
 
   if (H_bTi) {
-    H_bTi->setZero();
-    H_bTi->block<3, 3>(0, 0) = I_3x3; // DR_dTR = I_3x3
-    // Chain D_result_t * D_t_p * D_p_bTi (ie [Z_3x3, bRi]) .
-    H_bTi->block<3, 3>(3, 3) = R.transpose() * Dt_dp * bRi.matrix();
+    H_bTi->setIdentity();
+    // DR_dTR = I_3x3
+    // Chain D_result_t (ie R.T) * D_t_p (ie s * R_) * D_p_bTi (ie [Z_3x3, bRi])
+    // bRi.T * R_.T * s * R * bRi => s * I_3x3
+    H_bTi->block<3, 3>(3, 3) *= s_;
   }
   return Pose3(R, t);
 }
