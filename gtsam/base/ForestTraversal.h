@@ -121,7 +121,6 @@ class ForestTraversal {
  private:
   /// Run a traversal with TBB and OpenMP concurrency limited to `threadCount_`.
   template <typename Body>
-  /// Limit TBB+OpenMP parallelism, then invoke the traversal body.
   void withTbbTraversalControl(Body&& body) {
     // Set a cap on TBB threads and enter an OpenMP-compatible scope,
     // then execute the provided traversal body.
@@ -135,7 +134,6 @@ class ForestTraversal {
 
   /// Scheduler-based top-down traversal.
   template <typename Fn>
-  /// Kick off top-down traversal from all roots using the scheduler backend.
   void runTopDown(Fn fn, int parallelThreshold = 10) {
     const auto& roots = getRoots();
     if (roots.empty()) return;
@@ -152,7 +150,6 @@ class ForestTraversal {
 
   /// Scheduler-based bottom-up traversal.
   template <typename Fn>
-  /// Kick off bottom-up traversal from all roots using the scheduler backend.
   void runBottomUp(Fn fn, int parallelThreshold = 10) {
     const auto& roots = getRoots();
     if (roots.empty()) return;
@@ -294,7 +291,7 @@ class ForestTraversal {
         frame.topDownTraverse();
       };
       const int topDownPriority = depth;  // Shallower nodes = higher priority
-      /// Schedule a task and increment the pending counter.
+      // Schedule a task and increment the pending counter.
       state->incrementPending();
       scheduler->schedule(topDownPriority,
                           std::function<void()>(std::move(task)));
@@ -385,7 +382,6 @@ class ForestTraversal {
     }
 
     /// Invoke an `onDone` callback and record any exception it throws.
-    /// Safely run `onDone` and capture any thrown exception in shared state.
     void callOnDone(const DoneFn& onDone) const {
       try {
         onDone();

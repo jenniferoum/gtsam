@@ -65,8 +65,10 @@ class PriorityScheduler {
     std::function<Y()> job;
     std::promise<Y> promise;
 
-    Task(int p, std::function<Y()> j, std::promise<Y> p_out)
-        : priority(p), job(std::move(j)), promise(std::move(p_out)) {}
+    Task(int priority, std::function<Y()> jobFunction,
+         std::promise<Y> promiseOut)
+        : priority(priority), job(std::move(jobFunction)),
+          promise(std::move(promiseOut)) {}
   };
 
   using TaskPtr = std::shared_ptr<Task>;
@@ -99,7 +101,6 @@ class PriorityScheduler {
    * Uses a condition variable to avoid spinning while the queue is empty.
    * Stops once `stop_` is set and no queued work remains.
    */
-  /// Worker loop that executes tasks until shutdown.
   void worker_thread(size_t index) {
     currentScheduler_ = this;
     workerIndex_ = static_cast<int>(index);
@@ -189,7 +190,6 @@ class PriorityScheduler {
    * @param numThreads Number of worker threads to create. If zero, a single
    * thread is created.
    */
-  /// Construct a scheduler with a fixed worker count.
   PriorityScheduler(size_t numThreads = std::thread::hardware_concurrency()) {
     if (numThreads == 0) numThreads = 1;
     queues_.reserve(numThreads);
@@ -206,7 +206,6 @@ class PriorityScheduler {
    *
    * @note The destructor calls `waitForAllTasks` before stopping workers.
    */
-  /// Wait for tasks and join worker threads on destruction.
   ~PriorityScheduler() {
     waitForAllTasks();
     stop_.store(true, std::memory_order_release);
@@ -225,7 +224,6 @@ class PriorityScheduler {
    * @param job Callable returning a `Y`.
    * @return `std::future<Y>` associated with the task.
    */
-  /// Enqueue a task for execution and return its future.
   std::future<Y> schedule(int priority, std::function<Y()> job) {
     if (stop_.load(std::memory_order_acquire)) {
       std::promise<Y> err_promise;
@@ -267,7 +265,6 @@ class PriorityScheduler {
    * Used to fuse continuations without re-entering the queues.
    */
   template <typename T = Y, typename = std::enable_if_t<std::is_void_v<T>>>
-  /// Run inline on workers, otherwise enqueue normally.
   void scheduleOrRunInline(int priority, std::function<void()> job) {
     if (stop_.load(std::memory_order_relaxed)) return;
     if (!isWorkerThread()) {
@@ -290,7 +287,6 @@ class PriorityScheduler {
    *
    * @note If the scheduler is stopping, this returns early.
    */
-  /// Block until all queued and active tasks complete.
   void waitForAllTasks() {
     std::unique_lock<std::mutex> lock(waitMutex_);
     condition_.wait(lock, [this] {

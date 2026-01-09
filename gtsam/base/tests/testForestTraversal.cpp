@@ -25,7 +25,7 @@ using namespace gtsam;
 /// Common TreeNode definition (using shared_ptr).
 struct TreeNode {
   int value;
-  explicit TreeNode(int v) : value(v) {}
+  explicit TreeNode(int initialValue) : value(initialValue) {}
 };
 
 namespace {
