@@ -12,7 +12,7 @@
  *
  * @details
  * Provides top-down and bottom-up traversal helpers that either enqueue work
- * on an internal `PriorityScheduler` (for builds without TBB) or call the
+ * on an internal `TaskScheduler` (for builds without TBB) or call the
  * `treeTraversal` parallel helpers when `GTSAM_USE_TBB` is enabled.
  *
  * @note `Forest::roots()` or `Forest::roots` must return a range of
@@ -168,7 +168,7 @@ class ForestTraversal {
   }
 
  private:
-  PriorityScheduler<void> scheduler_;
+  TaskScheduler<void> scheduler_;
 
   /// Return forest roots via method or field.
   decltype(auto) getRoots() const {
@@ -251,7 +251,7 @@ class ForestTraversal {
   /// Per-node traversal frame to avoid threading many parameters.
   template <typename Fn>
   struct Frame {
-    PriorityScheduler<void>* scheduler;
+    TaskScheduler<void>* scheduler;
     Node& node;
     int depth;
     const Fn& fn;
@@ -293,11 +293,9 @@ class ForestTraversal {
         MaybeFinish finish{frame.state};
         frame.topDownTraverse();
       };
-      const int topDownPriority = depth;  // Shallower nodes = higher priority
       /// Schedule a task and increment the pending counter.
       state->incrementPending();
-      scheduler->schedule(topDownPriority,
-                          std::function<void()>(std::move(task)));
+      scheduler->schedule(std::function<void()>(std::move(task)));
     }
 
     /// Inline node work followed by traversal of children.
@@ -369,9 +367,7 @@ class ForestTraversal {
       state->incrementPending();
 
       // Schedule a continuation or run it inline if already on a worker thread.
-      const int bottomUpPriority = -depth;  // Deeper nodes = higher priority
-      scheduler->scheduleOrRunInline(bottomUpPriority,
-                                     std::function<void()>(std::move(task)));
+      scheduler->scheduleOrRunInline(std::function<void()>(std::move(task)));
     }
 
     /// Do bottom-up node work, then invoke the continuation.

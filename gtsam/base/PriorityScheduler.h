@@ -31,6 +31,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <deque>
 #include <exception>
 #include <functional>
 #include <future>
@@ -44,6 +45,210 @@
 #include <vector>
 
 namespace gtsam {
+
+/**
+ * @brief Thread pool scheduler that executes tasks without priority ordering.
+ *
+ * @details
+ * - Tasks are executed in an efficient deque-based order (LIFO locally).
+ * - Per-thread queues reduce contention; workers steal from peers when idle.
+ * - External submissions are round-robin distributed across worker queues.
+ * - A condition variable parks workers when no work is available.
+ *
+ * @tparam Y Result type returned by tasks. Use `void` for no return value.
+ */
+template <typename Y>
+class TaskScheduler {
+  struct Task {
+    std::function<Y()> job;
+    std::promise<Y> promise;
+
+    Task(std::function<Y()> j, std::promise<Y> p_out)
+        : job(std::move(j)), promise(std::move(p_out)) {}
+  };
+
+  using TaskPtr = std::shared_ptr<Task>;
+
+  struct WorkerQueue {
+    std::mutex mutex;
+    std::deque<TaskPtr> queue;
+  };
+
+  std::vector<std::unique_ptr<WorkerQueue>> queues_;  // Per-worker queues.
+  std::atomic<size_t> queuedTasks_{0};  // Tracks queued work for wakeups.
+  std::vector<std::thread> workers_;
+  mutable std::mutex waitMutex_;  // Dedicated mutex for condition_variable.
+  std::condition_variable condition_;
+  std::atomic<bool> stop_{false};
+  std::atomic<int> activeTasks_{0};  // In-flight tasks (queued + running).
+  inline static thread_local TaskScheduler<Y>* currentScheduler_ = nullptr;
+  inline static thread_local int workerIndex_ = -1;
+  std::atomic<size_t> nextWorker_{0};  // Round-robin distributor.
+
+  /// Worker loop that executes tasks until shutdown.
+  void worker_thread(size_t index) {
+    currentScheduler_ = this;
+    workerIndex_ = static_cast<int>(index);
+    while (true) {
+      TaskPtr task;
+      if (!tryPopTask(index, task)) {
+        std::unique_lock<std::mutex> lock(waitMutex_);
+        condition_.wait(lock, [this] {
+          return stop_.load(std::memory_order_acquire) ||
+                 queuedTasks_.load(std::memory_order_acquire) > 0;
+        });
+        if (stop_.load(std::memory_order_acquire) &&
+            queuedTasks_.load(std::memory_order_acquire) == 0) {
+          currentScheduler_ = nullptr;
+          workerIndex_ = -1;
+          return;
+        }
+        continue;
+      }
+
+      try {
+        if constexpr (std::is_void_v<Y>) {
+          task->job();
+          task->promise.set_value();
+        } else {
+          task->promise.set_value(task->job());
+        }
+      } catch (...) {
+        try {
+          task->promise.set_exception(std::current_exception());
+        } catch (...) { /* ignore */
+        }
+      }
+
+      activeTasks_.fetch_sub(1, std::memory_order_release);
+      condition_.notify_all();
+    }
+  }
+
+  /// Attempt to get a task from local or stolen queues.
+  bool tryPopTask(size_t index, TaskPtr& task) {
+    if (tryPopLocal(index, task)) return true;
+    if (trySteal(index, task)) return true;
+    return false;
+  }
+
+  /// Try to pop a task from the current worker queue (LIFO for locality).
+  bool tryPopLocal(size_t index, TaskPtr& task) {
+    WorkerQueue& queue = *queues_[index];
+    std::lock_guard<std::mutex> lock(queue.mutex);
+    if (queue.queue.empty()) return false;
+    task = queue.queue.back();
+    queue.queue.pop_back();
+    queuedTasks_.fetch_sub(1, std::memory_order_release);
+    return true;
+  }
+
+  /// Try to steal a task from another worker queue (FIFO to reduce
+  /// interference).
+  bool trySteal(size_t index, TaskPtr& task) {
+    const size_t workerCount = queues_.size();
+    if (workerCount <= 1) return false;
+    for (size_t offset = 1; offset < workerCount; ++offset) {
+      size_t target = (index + offset) % workerCount;
+      WorkerQueue& queue = *queues_[target];
+      std::unique_lock<std::mutex> lock(queue.mutex, std::try_to_lock);
+      if (!lock.owns_lock() || queue.queue.empty()) continue;
+      task = queue.queue.front();
+      queue.queue.pop_front();
+      queuedTasks_.fetch_sub(1, std::memory_order_release);
+      return true;
+    }
+    return false;
+  }
+
+  /// Return true if called on a scheduler worker thread.
+  bool isWorkerThread() const { return currentScheduler_ == this; }
+
+ public:
+  /// Construct a scheduler with a fixed worker count.
+  explicit TaskScheduler(
+      size_t numThreads = std::thread::hardware_concurrency()) {
+    if (numThreads == 0) numThreads = 1;
+    queues_.reserve(numThreads);
+    for (size_t i = 0; i < numThreads; ++i) {
+      queues_.push_back(std::make_unique<WorkerQueue>());
+    }
+    for (size_t i = 0; i < numThreads; ++i) {
+      workers_.emplace_back(&TaskScheduler::worker_thread, this, i);
+    }
+  }
+
+  /// Wait for tasks and join worker threads on destruction.
+  ~TaskScheduler() {
+    waitForAllTasks();
+    stop_.store(true, std::memory_order_release);
+    condition_.notify_all();
+    for (std::thread& worker : workers_) {
+      if (worker.joinable()) worker.join();
+    }
+  }
+
+  /// Enqueue a task for execution and return its future.
+  std::future<Y> schedule(std::function<Y()> job) {
+    if (stop_.load(std::memory_order_acquire)) {
+      std::promise<Y> err_promise;
+      err_promise.set_exception(std::make_exception_ptr(
+          std::runtime_error("Scheduler is stopping or stopped.")));
+      return err_promise.get_future();
+    }
+
+    std::promise<Y> promise;
+    std::future<Y> future = promise.get_future();
+    auto task = std::make_shared<Task>(std::move(job), std::move(promise));
+
+    if (isWorkerThread()) {
+      WorkerQueue& queue = *queues_[static_cast<size_t>(workerIndex_)];
+      {
+        std::lock_guard<std::mutex> lock(queue.mutex);
+        queue.queue.push_back(task);
+      }
+    } else {
+      const size_t target =
+          nextWorker_.fetch_add(1, std::memory_order_relaxed) % queues_.size();
+      WorkerQueue& queue = *queues_[target];
+      std::lock_guard<std::mutex> lock(queue.mutex);
+      queue.queue.push_back(task);
+    }
+
+    queuedTasks_.fetch_add(1, std::memory_order_release);
+    activeTasks_.fetch_add(1, std::memory_order_release);
+    condition_.notify_one();
+    return future;
+  }
+
+  /// Run inline on workers, otherwise enqueue normally.
+  template <typename T = Y, typename = std::enable_if_t<std::is_void_v<T>>>
+  void scheduleOrRunInline(std::function<void()> job) {
+    if (stop_.load(std::memory_order_relaxed)) return;
+    if (!isWorkerThread()) {
+      schedule(std::move(job));
+      return;
+    }
+
+    activeTasks_.fetch_add(1, std::memory_order_release);
+    try {
+      job();
+    } catch (...) { /* ignore */
+    }
+    activeTasks_.fetch_sub(1, std::memory_order_release);
+    condition_.notify_all();
+  }
+
+  /// Block until all queued and active tasks complete.
+  void waitForAllTasks() {
+    std::unique_lock<std::mutex> lock(waitMutex_);
+    condition_.wait(lock, [this] {
+      return stop_.load(std::memory_order_acquire) ||
+             (activeTasks_.load(std::memory_order_acquire) == 0 &&
+              queuedTasks_.load(std::memory_order_acquire) == 0);
+    });
+  }
+};
 
 /**
  * @brief Thread pool scheduler that prioritizes tasks by numeric priority.
