@@ -79,13 +79,18 @@ Vector3 NavState::bodyVelocity(OptionalJacobian<3, 9> H) const {
 //------------------------------------------------------------------------------
 double NavState::range(const Point3& point, OptionalJacobian<1, 9> Hself,
                        OptionalJacobian<1, 3> Hpoint) const {
-  Matrix16 Hpose;
-  OptionalJacobian<1, 6> HposeOptional(Hself ? &Hpose : nullptr);
-  const double r = pose().range(point, HposeOptional, Hpoint);
+  const Vector3 delta = point - t_;
+  const double r = delta.norm();
+  if (!Hself && !Hpoint) return r;
 
+  const Vector3 u = delta / r;  // unit vector from position to point
+  const Matrix13 D_r_point = u.transpose();
+
+  if (Hpoint) *Hpoint = D_r_point;
   if (Hself) {
     Hself->setZero();
-    Hself->block<1, 6>(0, 0) = Hpose;
+    // position() = t + R * dP, so d(range)/d(dP) = d(range)/dt * dt/d(dP)
+    Hself->block<1, 3>(0, 3) = -D_r_point * R_.matrix();
   }
   return r;
 }

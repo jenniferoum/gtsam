@@ -172,18 +172,19 @@ const double& Gal3::time(OptionalJacobian<1, 10> H) const {
 //------------------------------------------------------------------------------
 double Gal3::range(const Point3& point, OptionalJacobian<1, 10> Hself,
                    OptionalJacobian<1, 3> Hpoint) const {
-  const Pose3 pose(R_, r_);
-  Matrix16 Hpose;
-  OptionalJacobian<1, 6> HposeOptional(Hself ? &Hpose : nullptr);
-  const double r = pose.range(point, HposeOptional, Hpoint);
+  const Vector3 delta = point - r_;
+  const double r = delta.norm();
+  if (!Hself && !Hpoint) return r;
 
+  const Vector3 u = delta / r;  // unit vector from translation to point
+  const Matrix13 D_r_point = u.transpose();
+
+  if (Hpoint) *Hpoint = D_r_point;
   if (Hself) {
     Hself->setZero();
-    Hself->block<1, 3>(0, 0) = Hpose.block<1, 3>(0, 0);  // w
-    Hself->block<1, 3>(0, 6) = Hpose.block<1, 3>(0, 3);  // rho
-
-    const Vector3 bodyVelocity = R_.unrotate(v_);
-    (*Hself)(0, 9) = (Hpose.block<1, 3>(0, 3) * bodyVelocity)(0, 0);  // alpha
+    // translation() = r + R * dRho + v * dAlpha, so chain those.
+    Hself->block<1, 3>(0, 6) = -D_r_point * R_.matrix();  // rho
+    (*Hself)(0, 9) = -D_r_point.dot(v_);                  // alpha
   }
   return r;
 }
