@@ -18,6 +18,7 @@
 
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/Testable.h>
+#include <gtsam/base/TestableAssertions.h>
 #include <gtsam/base/serializationTestHelpers.h>
 #include <gtsam/discrete/DiscreteConditional.h>
 #include <gtsam/discrete/DiscreteDistribution.h>
@@ -173,6 +174,38 @@ TEST(TableFactor, Conversion) {
   TableFactor tf(dtf.discreteKeys(), dtf);
 
   EXPECT(assert_equal(dtf, tf.toDecisionTreeFactor()));
+
+  // Test for correct construction when keys are not in reverse order.
+  // This is possible in conditionals e.g. P(x1 | x0)
+  DiscreteKey X(1, 2), Y(0, 2);
+  DiscreteConditional dtf2(
+      X, {Y}, std::vector<double>{0.33333333, 0.6, 0.66666667, 0.4});
+
+  TableFactor tf2(dtf2);
+  // GTSAM_PRINT(dtf2);
+  // GTSAM_PRINT(tf2);
+  // GTSAM_PRINT(tf2.toDecisionTreeFactor());
+
+  // Check for ADT equality since the order of keys is irrelevant
+  EXPECT(assert_equal<AlgebraicDecisionTree<Key>>(dtf2,
+                                                  tf2.toDecisionTreeFactor()));
+}
+
+/* ************************************************************************* */
+TEST(TableFactor, Empty) {
+  DiscreteKey X(1, 2);
+
+  auto single = TableFactor({X}, "1 1").sum(1);
+  // Should not throw a segfault
+  auto expected_single = DecisionTreeFactor(X, "1 1").sum(1);
+  EXPECT(assert_equal(expected_single->toDecisionTreeFactor(),
+                      single->toDecisionTreeFactor()));
+
+  auto empty = TableFactor({X}, "0 0").sum(1);
+  // Should not throw a segfault
+  auto expected_empty = DecisionTreeFactor(X, "0 0").sum(1);
+  EXPECT(assert_equal(expected_empty->toDecisionTreeFactor(),
+                      empty->toDecisionTreeFactor()));
 }
 
 /* ************************************************************************* */
@@ -273,15 +306,18 @@ TEST(TableFactor, sum_max) {
   TableFactor f1(v0 & v1, "1 2  3 4  5 6");
 
   TableFactor expected(v1, "9 12");
-  TableFactor::shared_ptr actual = f1.sum(1);
+  auto actual = std::dynamic_pointer_cast<TableFactor>(f1.sum(1));
+  CHECK(actual);
   CHECK(assert_equal(expected, *actual, 1e-5));
 
   TableFactor expected2(v1, "5 6");
-  TableFactor::shared_ptr actual2 = f1.max(1);
+  auto actual2 = std::dynamic_pointer_cast<TableFactor>(f1.max(1));
+  CHECK(actual2);
   CHECK(assert_equal(expected2, *actual2));
 
   TableFactor f2(v1 & v0, "1 2  3 4  5 6");
-  TableFactor::shared_ptr actual22 = f2.sum(1);
+  auto actual22 = std::dynamic_pointer_cast<TableFactor>(f2.sum(1));
+  CHECK(actual22);
 }
 
 /* ************************************************************************* */

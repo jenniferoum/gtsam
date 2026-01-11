@@ -59,21 +59,30 @@ TEST(ADT, arithmetic) {
 
   // Negate and subtraction
   CHECK(assert_equal(-a, zero - a));
+#ifdef GTSAM_DT_MERGING
   CHECK(assert_equal({zero}, a - a));
+#else
+  CHECK(assert_equal({A, 0, 0}, a - a));
+#endif
   CHECK(assert_equal(a + b, b + a));
   CHECK(assert_equal({A, 3, 4}, a + 2));
   CHECK(assert_equal({B, 1, 2}, b - 2));
 
   // Multiplication
+#ifdef GTSAM_DT_MERGING
   CHECK(assert_equal(zero, zero * a));
-  CHECK(assert_equal(zero, a * zero));
+#else
+  CHECK(assert_equal({A, 0, 0}, zero * a));
+#endif
   CHECK(assert_equal(a, one * a));
   CHECK(assert_equal(a, a * one));
   CHECK(assert_equal(a * b, b * a));
 
+#ifdef GTSAM_DT_MERGING
   // division
   // CHECK(assert_equal(a, (a * b) / b)); // not true because no pruning
   CHECK(assert_equal(b, (a * b) / a));
+#endif
 }
 
 /* ************************************************************************** */
@@ -132,6 +141,7 @@ TEST(ADT, example3) {
 // Asia Bayes Network
 /* ************************************************************************** */
 
+namespace {
 /** Convert Signature into CPT */
 ADT create(const Signature& signature) {
   ADT p(signature.discreteKeys(), signature.cpt());
@@ -144,6 +154,7 @@ ADT create(const Signature& signature) {
   dot(p, DOTfile);
   return p;
 }
+}  // namespace
 
 /* ************************************************************************* */
 namespace asiaCPTs {

@@ -622,7 +622,7 @@ struct GTSAM_EXPORT TriangulationParameters {
 
 private:
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION  ///
+#if GTSAM_ENABLE_BOOST_SERIALIZATION  ///
   /// Serialization function
   friend class boost::serialization::access;
   template<class ARCHIVE>
@@ -687,7 +687,7 @@ class TriangulationResult : public std::optional<Point3> {
   }
 
  private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION  ///
+#if GTSAM_ENABLE_BOOST_SERIALIZATION  ///
   /// Serialization function
   friend class boost::serialization::access;
   template <class ARCHIVE>
@@ -758,10 +758,17 @@ TriangulationResult triangulateSafe(const CameraSet<CAMERA>& cameras,
 }
 
 // Vector of Cameras - used by the Python/MATLAB wrapper
+using CameraSetPinholePoseCal3Bundler = CameraSet<PinholePose<Cal3Bundler>>;
+using CameraSetPinholePoseCal3_S2 = CameraSet<PinholePose<Cal3_S2>>;
+using CameraSetPinholePoseCal3DS2 = CameraSet<PinholePose<Cal3DS2>>;
+using CameraSetPinholePoseCal3Fisheye = CameraSet<PinholePose<Cal3Fisheye>>;
+using CameraSetPinholePoseCal3Unified = CameraSet<PinholePose<Cal3Unified>>;
+
 using CameraSetCal3Bundler = CameraSet<PinholeCamera<Cal3Bundler>>;
 using CameraSetCal3_S2 = CameraSet<PinholeCamera<Cal3_S2>>;
 using CameraSetCal3DS2 = CameraSet<PinholeCamera<Cal3DS2>>;
 using CameraSetCal3Fisheye = CameraSet<PinholeCamera<Cal3Fisheye>>;
 using CameraSetCal3Unified = CameraSet<PinholeCamera<Cal3Unified>>;
+
 using CameraSetSpherical = CameraSet<SphericalCamera>;
 } // \namespace gtsam

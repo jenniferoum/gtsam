@@ -20,13 +20,14 @@
 
 #pragma once
 
-#include <gtsam/geometry/SOn.h>
-
 #include <gtsam/base/Lie.h>
 #include <gtsam/base/Matrix.h>
 #include <gtsam/dllexport.h>
+#include <gtsam/geometry/Kernel.h>
+#include <gtsam/geometry/SOn.h>
 
 #include <vector>
+#include <optional>
 
 namespace gtsam {
 
@@ -57,7 +58,7 @@ Vector3 SO3::Vee(const Matrix3& X);  ///< inverse of Hat
 
 /// Adjoint map
 template <>
-Matrix3 SO3::AdjointMap() const;
+inline Matrix3 SO3::AdjointMap() const{ return matrix_; }
 
 /**
  * Exponential map at identity - create a rotation from canonical coordinates
@@ -98,7 +99,7 @@ template <>
 GTSAM_EXPORT
 Vector9 SO3::vec(OptionalJacobian<9, 3> H) const;
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
 template <class Archive>
 /** Serialization function */
 void serialize(Archive& ar, SO3& R, const unsigned int /*version*/) {
@@ -127,90 +128,128 @@ GTSAM_EXPORT Matrix3 compose(const Matrix3& M, const SO3& R,
 /// (constant) Jacobian of compose wrpt M
 GTSAM_EXPORT Matrix99 Dcompose(const SO3& R);
 
-// Below are two functors that allow for saving computation when exponential map
-// and its derivatives are needed at the same location in so<3>. The second
-// functor also implements dedicated methods to apply dexp and/or inv(dexp).
-
-/// Functor implementing Exponential map
+/**
+ * Opaque evaluation context at ω: caches Ω, Ω², θ, θ², nearZero/nearPi,
+ * Lazily computes C, D, E, dA, dB, dC, dE on demand.
+ * Math is based on Ethan Eade's elegant Lie group document, at
+ * https://www.ethaneade.org/lie.pdf, and the Kernel idea in doc/Jacobians.md
+ */
 struct GTSAM_EXPORT ExpmapFunctor {
-  const double theta2, theta;
-  const Matrix3 W, WW;
-  bool nearZero;
+  double theta2;  ///< The squared norm of the rotation vector (θ²).
+  double theta;   ///< The norm of the rotation vector (θ).
+  Matrix3 W;      ///< The skew-symmetric matrix Ω for the rotation vector.
+  Matrix3 WW;     ///< The square of the skew-symmetric matrix (Ω²).
+  bool nearZero{false};  ///< Flag indicating if theta is near zero.
 
   // Ethan Eade's constants:
-  double A;  // A = sin(theta) / theta or 1 for theta->0
-  double B;  // B = (1 - cos(theta)) / theta^2 or 0.5 for theta->0
+  double A;  // A = sin(theta) / theta
+  double B;  // B = (1 - cos(theta))
 
   /// Constructor with element of Lie algebra so(3)
-  explicit ExpmapFunctor(const Vector3& omega, bool nearZeroApprox = false);
+  explicit ExpmapFunctor(const Vector3& omega);
+
+  /// Constructor with threshold (advanced)
+  ExpmapFunctor(double nearZeroThresholdSq, const Vector3& axis);
 
   /// Constructor with axis-angle
-  ExpmapFunctor(const Vector3& axis, double angle, bool nearZeroApprox = false);
+  ExpmapFunctor(const Vector3& axis, double angle);
 
   /// Rodrigues formula
-  SO3 expmap() const;
+  Matrix3 expmap() const;
 
- protected:
-  void init(bool nearZeroApprox = false);
+protected:
+  void init(double nearZeroThresholdSq);
 };
 
 /// Functor that implements Exponential map *and* its derivatives
+/// Math extends Ethan theme of elegant I + aW + bWW expressions.
+/// See https://www.ethaneade.org/lie.pdf expmap (82) and left Jacobian (83).
 struct GTSAM_EXPORT DexpFunctor : public ExpmapFunctor {
-  const Vector3 omega;
-  double C;  // Ethan's C constant: (1 - A) / theta^2 or 1/6 for theta->0
-  // Constants used in cross and doubleCross
-  double D;  // (A - 2.0 * B) / theta2 or -1/12 for theta->0
-  double E;  // (B - 3.0 * C) / theta2 or -1/60 for theta->0
+  Vector3 omega;       ///< The rotation vector.
+  bool nearPi{false};  ///< Flag indicating if theta is near pi.
 
   /// Constructor with element of Lie algebra so(3)
-  explicit DexpFunctor(const Vector3& omega, bool nearZeroApprox = false);
+  explicit DexpFunctor(const Vector3& omega);
 
-  // NOTE(luca): Right Jacobian for Exponential map in SO(3) - equation
-  // (10.86) and following equations in G.S. Chirikjian, "Stochastic Models,
-  // Information Theory, and Lie Groups", Volume 2, 2008.
-  //   Expmap(xi + dxi) \approx Expmap(xi) * Expmap(dexp * dxi)
+  /// Constructor with custom thresholds (advanced)
+  explicit DexpFunctor(const Vector3& omega, double nearZeroThresholdSq, double nearPiThresholdSq);
+
+  // Rodrigues kernel: R_[l/r](ω) = I + A(θ) Ω + B(θ) Ω² (left).
+  Kernel Rodrigues() const&;
+
+  // Jacobian kernel J_[l/r](ω) = I +/0 B Ω + C Ω²  (left/right).
+  Kernel Jacobian() const&;
+
+  // Specialized kernel for inverse Jacobian, stable even for |ω| > π
+  InvJKernel InvJacobian() const&;  // I +/- 1/2 Ω + D Ω²
+
+  // Gamma kernel: Γ_[l/r](ω) = 0.5 I ± C Ω + E Ω² (left/right).
+  Kernel Gamma() const&;
+
+  // NOTE(luca): Right Jacobian for Exponential map in SO(3)
   // This maps a perturbation dxi=(w,v) in the tangent space to
   // a perturbation on the manifold Expmap(dexp * xi)
-  Matrix3 rightJacobian() const { return I_3x3 - B * W + C * WW; }
+  Matrix3 rightJacobian() const;
 
   // Compute the left Jacobian for Exponential map in SO(3)
-  Matrix3 leftJacobian() const { return I_3x3 + B * W + C * WW; }
+  Matrix3 leftJacobian() const;
 
-  /// Differential of expmap == right Jacobian
+#ifdef GTSAM_ALLOW_DEPRECATED_SINCE_V43
+  /// @deprecated: use InvJacobian().right()
+  Matrix3 rightJacobianInverse() const;
+
+  /// @deprecated: use InvJacobian().left()
+  Matrix3 leftJacobianInverse() const;
+
+  /// @deprecated: use Jacobian().applyRight()
+  Vector3 applyRightJacobian(const Vector3& v,
+    OptionalJacobian<3, 3> H1 = {}, OptionalJacobian<3, 3> H2 = {}) const;
+
+  /// @deprecated: use InvJacobian().applyRight()
+  Vector3 applyRightJacobianInverse(const Vector3& v,
+    OptionalJacobian<3, 3> H1 = {}, OptionalJacobian<3, 3> H2 = {}) const;
+
+  /// @deprecated: use Jacobian().applyLeft()
+  Vector3 applyLeftJacobian(const Vector3& v,
+    OptionalJacobian<3, 3> H1 = {}, OptionalJacobian<3, 3> H2 = {}) const;
+
+  /// @deprecated: use InvJacobian().applyLeft()
+  Vector3 applyLeftJacobianInverse(const Vector3& v,
+    OptionalJacobian<3, 3> H1 = {}, OptionalJacobian<3, 3> H2 = {}) const;
+
+  /// @deprecated: use rightJacobian()
   inline Matrix3 dexp() const { return rightJacobian(); }
 
-  /// Computes B * (omega x v).
-  Vector3 crossB(const Vector3& v, OptionalJacobian<3, 3> H = {}) const;
+  /// @deprecated: use InvJacobian().right()
+  inline Matrix3 invDexp() const { return rightJacobianInverse(); }
+#endif
 
-  /// Computes C * (omega x (omega x v)).
-  Vector3 doubleCrossC(const Vector3& v, OptionalJacobian<3, 3> H = {}) const;
+  // access to (lazily evaluated) coefficients
+  double C() const;
+  double D() const;
+  double E() const;
 
-  /// Multiplies with dexp(), with optional derivatives
-  Vector3 applyDexp(const Vector3& v, OptionalJacobian<3, 3> H1 = {},
-                    OptionalJacobian<3, 3> H2 = {}) const;
+  // access to (lazily evaluated) radial derivatives c'(θ)/θ
+  double dA() const;
+  double dB() const;
+  double dC() const;
+  double dE() const;
 
-  /// Multiplies with dexp().inverse(), with optional derivatives
-  Vector3 applyInvDexp(const Vector3& v, OptionalJacobian<3, 3> H1 = {},
-                       OptionalJacobian<3, 3> H2 = {}) const;
-
-  /// Multiplies with leftJacobian(), with optional derivatives
-  Vector3 applyLeftJacobian(const Vector3& v, OptionalJacobian<3, 3> H1 = {},
-                            OptionalJacobian<3, 3> H2 = {}) const;
-
-  static constexpr double one_sixth = 1.0 / 6.0;
-  static constexpr double _one_twelfth = -1.0 / 12.0;
-  static constexpr double _one_sixtieth = -1.0 / 60.0;
+ protected:
+  // Lazy caches stored as std::optional
+  mutable std::optional<double> C_, D_, E_;  ///< C, D and E lazily computed.
+  mutable std::optional<double> dA_, dB_, dC_, dE_;  ///< lazy c(θ)′/θ
 };
 }  //  namespace so3
 
 /*
- * Define the traits. internal::LieGroup provides both Lie group and Testable
+ * Define the traits. internal::MatrixLieGroup provides both Lie group and Testable
  */
 
 template <>
-struct traits<SO3> : public internal::LieGroup<SO3> {};
+struct traits<SO3> : public internal::MatrixLieGroup<SO3, 3> {};
 
 template <>
-struct traits<const SO3> : public internal::LieGroup<SO3> {};
+struct traits<const SO3> : public internal::MatrixLieGroup<SO3, 3> {};
 
 }  // end namespace gtsam

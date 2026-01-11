@@ -24,7 +24,6 @@
 #include <gtsam/linear/GaussianFactorGraph.h>
 #include <gtsam/linear/VectorValues.h>
 #include <gtsam/inference/VariableSlots.h>
-#include <gtsam/inference/Ordering.h>
 #include <gtsam/base/debug.h>
 #include <gtsam/base/timing.h>
 #include <gtsam/base/Matrix.h>
@@ -110,6 +109,28 @@ JacobianFactor::JacobianFactor(const HessianFactor& factor)
     // indefinite system
     throw IndeterminantLinearSystemException(factor.keys().front());
   }
+}
+
+  /* ************************************************************************* */
+void JacobianFactor::checkAb(const SharedDiagonal& model,
+                             const VerticalBlockMatrix& augmentedMatrix) const {
+  // Check noise model dimension
+  if (model && (DenseIndex)model->dim() != augmentedMatrix.rows())
+    throw InvalidNoiseModel(augmentedMatrix.rows(), model->dim());
+
+  // Check number of variables
+  if ((DenseIndex)Base::keys_.size() != augmentedMatrix.nBlocks() - 1)
+    throw std::invalid_argument(
+        "Error in JacobianFactor constructor input. Number of provided keys "
+        "plus one for the RHS vector must equal the number of provided "
+        "matrix blocks.");
+
+  // Check RHS dimension
+  if (augmentedMatrix(augmentedMatrix.nBlocks() - 1).cols() != 1)
+    throw std::invalid_argument(
+        "Error in JacobianFactor constructor input. The last provided "
+        "matrix block must be the RHS vector, but the last provided block "
+        "had more than one column.");
 }
 
 /* ************************************************************************* */
@@ -470,10 +491,17 @@ bool JacobianFactor::equals(const GaussianFactor& f_, double tol) const {
 
 /* ************************************************************************* */
 Vector JacobianFactor::unweighted_error(const VectorValues& c) const {
-  Vector e = -getb();
-  for (size_t pos = 0; pos < size(); ++pos)
-    e += Ab_(pos) * c[keys_[pos]];
-  return e;
+  const DenseIndex totalDim = c.totalDim(keys_);
+  Vector w(totalDim + 1);
+  c.fillVector(keys_, w);
+  w(totalDim) = -1.0;
+  // Fast path when the active view is the full matrix (no row/column offsets).
+  if (Ab_.firstBlock() == 0 && Ab_.rowStart() == 0 &&
+      Ab_.rowEnd() == Ab_.matrix().rows()) {
+    return Ab_.matrix() * w;
+  }
+  // Fallback that respects firstBlock/rowStart/rowEnd for subviews.
+  return Ab_.full() * w;
 }
 
 /* ************************************************************************* */
@@ -494,9 +522,13 @@ double JacobianFactor::error(const VectorValues& c) const {
 /* ************************************************************************* */
 Matrix JacobianFactor::augmentedInformation() const {
   if (model_) {
-    Matrix AbWhitened = Ab_.full();
-    model_->WhitenInPlace(AbWhitened);
-    return AbWhitened.transpose() * AbWhitened;
+    Matrix Ab = Ab_.full();
+    if (model_->isConstrained()) {
+      auto constrained = std::static_pointer_cast<noiseModel::Constrained>(model_);
+      return constrained->informationFromA(Ab);
+    }
+    model_->WhitenInPlace(Ab);
+    return Ab.transpose() * Ab;
   } else {
     return Ab_.full().transpose() * Ab_.full();
   }
@@ -505,9 +537,13 @@ Matrix JacobianFactor::augmentedInformation() const {
 /* ************************************************************************* */
 Matrix JacobianFactor::information() const {
   if (model_) {
-    Matrix AWhitened = this->getA();
-    model_->WhitenInPlace(AWhitened);
-    return AWhitened.transpose() * AWhitened;
+    Matrix A = this->getA();
+    if (model_->isConstrained()) {
+      auto constrained = std::static_pointer_cast<noiseModel::Constrained>(model_);
+      return constrained->informationFromA(A);
+    }
+    model_->WhitenInPlace(A);
+    return A.transpose() * A;
   } else {
     return this->getA().transpose() * this->getA();
   }
@@ -580,16 +616,19 @@ void JacobianFactor::updateHessian(const KeyVector& infoKeys,
     // Ab_ is the augmented Jacobian matrix A, and we perform I += A'*A below
     DenseIndex n = Ab_.nBlocks() - 1, N = info->nBlocks() - 1;
 
+    // Pre-calculate slots
+    vector<DenseIndex> slots(n + 1);
+    for (DenseIndex j = 0; j < n; ++j) slots[j] = Slot(infoKeys, keys_[j]);
+    slots[n] = N;
+
     // Apply updates to the upper triangle
     // Loop over blocks of A, including RHS with j==n
-    vector<DenseIndex> slots(n+1);
     for (DenseIndex j = 0; j <= n; ++j) {
       Eigen::Block<const Matrix> Ab_j = Ab_(j);
-      const DenseIndex J = (j == n) ? N : Slot(infoKeys, keys_[j]);
-      slots[j] = J;
+      const DenseIndex J = slots[j];
       // Fill off-diagonal blocks with Ai'*Aj
       for (DenseIndex i = 0; i < j; ++i) {
-        const DenseIndex I = slots[i];  // because i<j, slots[i] is valid.
+        const DenseIndex I = slots[i];
         info->updateOffDiagonalBlock(I, J, Ab_(i).transpose() * Ab_j);
       }
       // Fill diagonal block with Aj'*Aj
@@ -802,8 +841,6 @@ std::pair<GaussianConditional::shared_ptr, JacobianFactor::shared_ptr> Eliminate
     // The inplace variant will have no valid rows anymore below m==n
     // and only entries above the diagonal are valid.
     inplace_QR(Ab.matrix());
-    // We zero below the diagonal to agree with the result from noieModel QR
-    Ab.matrix().triangularView<Eigen::StrictlyLower>().setZero();
     size_t m = Ab.rows(), n = Ab.cols() - 1;
     size_t maxRank = min(m, n);
     jointFactor->model_ = noiseModel::Unit::Create(maxRank);

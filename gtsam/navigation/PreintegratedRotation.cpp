@@ -27,7 +27,7 @@ namespace gtsam {
 
 void PreintegratedRotationParams::print(const string& s) const {
   cout << (s.empty() ? s : s + "\n") << endl;
-  cout << "gyroscopeCovariance:\n[\n" << gyroscopeCovariance << "\n]" << endl;
+  cout << "gyroscopeCovariance:\n" << gyroscopeCovariance << endl;
   if (omegaCoriolis)
     cout << "omegaCoriolis = (" << omegaCoriolis->transpose() << ")" << endl;
   if (body_P_sensor) body_P_sensor->print("body_P_sensor");
@@ -136,10 +136,10 @@ Rot3 PreintegratedRotation::biascorrectedDeltaRij(const Vector3& biasOmegaIncr,
   return deltaRij_biascorrected;
 }
 
-Vector3 PreintegratedRotation::integrateCoriolis(const Rot3& rot_i) const {
-  if (!p_->omegaCoriolis)
-    return Vector3::Zero();
-  return rot_i.transpose() * (*p_->omegaCoriolis) * deltaTij_;
+Vector3 PreintegratedRotation::integrateCoriolis(
+    const Rot3& Ri, OptionalJacobian<3, 3> H) const {
+  if (!p_->omegaCoriolis) return Vector3::Zero();
+  return Ri.unrotate(*p_->omegaCoriolis * deltaTij_, H);
 }
 
-} // namespace gtsam
+}  // namespace gtsam

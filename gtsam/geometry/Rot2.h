@@ -20,7 +20,7 @@
 #pragma once
 
 #include <gtsam/geometry/Point2.h>
-#include <gtsam/base/Lie.h>
+#include <gtsam/base/MatrixLieGroup.h>
 
 #include <random>
 
@@ -32,8 +32,7 @@ namespace gtsam {
    * @ingroup geometry
    * \nosubgrouping
    */
-  class GTSAM_EXPORT Rot2 : public LieGroup<Rot2, 1> {
-
+  class GTSAM_EXPORT Rot2 : public MatrixLieGroup<Rot2, 1, 2> {
     /** we store cos(theta) and sin(theta) */
     double c_, s_;
 
@@ -52,10 +51,14 @@ namespace gtsam {
     Rot2() : c_(1.0), s_(0.0) {}
     
     /** copy constructor */
-    Rot2(const Rot2& r) : Rot2(r.c_, r.s_) {}
+    Rot2(const Rot2& r) = default;
+
+    Rot2& operator=(const Rot2& other) = default;
 
     /// Constructor from angle in radians == exponential map at identity
     Rot2(double theta) : c_(cos(theta)), s_(sin(theta)) {}
+
+    // Rot2& operator=(const gtsam::Rot2& other) = default;
 
     /// Named constructor from angle in radians
     static Rot2 fromAngle(double theta) {
@@ -121,6 +124,8 @@ namespace gtsam {
     /// @name Lie Group
     /// @{
 
+    using LieAlgebra = Matrix2;
+
     /// Exponential map at identity - create a rotation from canonical coordinates
     static Rot2 Expmap(const Vector1& v, ChartJacobian H = {});
 
@@ -129,6 +134,14 @@ namespace gtsam {
 
     /** Calculate Adjoint map */
     Matrix1 AdjointMap() const { return I_1x1; }
+
+    /// Lie-algebra adjoint (zero for abelian SO(2)).
+    static Matrix1 adjointMap(const Vector1&);
+
+    /// Apply Lie-algebra adjoint (always zero).
+    static Vector1 adjoint(const Vector1&, const Vector1&,
+                           OptionalJacobian<1, 1> Hxi = {},
+                           OptionalJacobian<1, 1> Hy = {});
 
     /// Left-trivialized derivative of the exponential map
     static Matrix ExpmapDerivative(const Vector& /*v*/) {
@@ -151,6 +164,12 @@ namespace gtsam {
     };
 
     using LieGroup<Rot2, 1>::inverse; // version with derivative
+
+    /// Hat maps from tangent vector to Lie algebra
+    static Matrix2 Hat(const Vector1& xi);
+
+    /// Vee maps from Lie algebra to tangent vector
+    static Vector1 Vee(const Matrix2& X);
 
     /// @}
     /// @name Group Action on Point2
@@ -206,14 +225,18 @@ namespace gtsam {
     /** return 2*2 rotation matrix */
     Matrix2 matrix() const;
 
-    /** return 2*2 transpose (inverse) rotation matrix   */
+    /** return 2*2 transpose (inverse) rotation matrix */
     Matrix2 transpose() const;
 
     /** Find closest valid rotation matrix, given a 2x2 matrix */
     static Rot2 ClosestTo(const Matrix2& M);
 
-  private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+    /** Vectorize the rotation matrix into a 4D vector */
+    Vector4 vec(OptionalJacobian<4, 1> H = {}) const;
+    /// @}
+
+    private:
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
     /** Serialization function */
     friend class boost::serialization::access;
     template<class ARCHIVE>
@@ -225,10 +248,10 @@ namespace gtsam {
 
   };
 
-  template<>
-  struct traits<Rot2> : public internal::LieGroup<Rot2> {};
+  template <>
+struct traits<Rot2> : public internal::MatrixLieGroup<Rot2, 2> {};
 
-  template<>
-  struct traits<const Rot2> : public internal::LieGroup<Rot2> {};
+template <>
+struct traits<const Rot2> : public internal::MatrixLieGroup<Rot2, 2> {};
 
 } // gtsam

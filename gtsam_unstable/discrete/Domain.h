@@ -49,7 +49,7 @@ class GTSAM_UNSTABLE_EXPORT Domain : public Constraint {
   /// Erase a value, non const :-(
   void erase(size_t value) { values_.erase(value); }
 
-  size_t nrValues() const { return values_.size(); }
+  uint64_t nrValues() const override { return values_.size(); }
 
   bool isSingleton() const { return nrValues() == 1; }
 
@@ -67,11 +67,6 @@ class GTSAM_UNSTABLE_EXPORT Domain : public Constraint {
       const Domain& f(static_cast<const Domain&>(other));
       return (cardinality_ == f.cardinality_) && (values_ == f.values_);
     }
-  }
-
-  /// Compute error for each assignment and return as a tree
-  AlgebraicDecisionTree<Key> errorTree() const override {
-    throw std::runtime_error("Domain::error not implemented");
   }
 
   // Return concise string representation, mostly to debug arc consistency.

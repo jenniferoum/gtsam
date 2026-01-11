@@ -212,7 +212,7 @@ public:
 
 private:
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
   template<class Archive>
@@ -386,12 +386,10 @@ public:
   /// @name Manifold
   /// @{
 
-  /// @deprecated
   size_t dim() const {
     return 6;
   }
 
-  /// @deprecated
   static size_t Dim() {
     return 6;
   }
@@ -425,7 +423,7 @@ public:
 
 private:
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
   template<class Archive>

@@ -18,6 +18,7 @@
 #pragma once
 
 #include <gtsam/nonlinear/NonlinearFactor.h>
+#include <gtsam/nonlinear/NoiseModelFactorN.h>
 #include <gtsam/base/Lie.h>
 
 #include <cassert>
@@ -142,7 +143,7 @@ namespace gtsam {
     const std::vector<size_t>& indices() const { return indices_; }
 
   private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
     /** Serialization function */
     friend class boost::serialization::access;
     template<class ARCHIVE>

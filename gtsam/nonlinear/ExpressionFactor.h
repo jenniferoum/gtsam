@@ -149,7 +149,7 @@ protected:
       noiseModel_->WhitenSystem(Ab.matrix(), b);
     }
 
-    return std::move(factor);
+    return factor;
   }
 
   /// @return a deep copy of this factor
@@ -200,7 +200,7 @@ protected:
  }
 
 private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
  /// Save to an archive: just saves the base class
  template <class Archive>
  void save(Archive& ar, const unsigned int /*version*/) const {
@@ -287,7 +287,7 @@ private:
     return expression(keys);
   }
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
   friend class boost::serialization::access;
   template <class ARCHIVE>
   void serialize(ARCHIVE &ar, const unsigned int /*version*/) {

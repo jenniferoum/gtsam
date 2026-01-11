@@ -17,6 +17,7 @@
  **/
 
 #include <gtsam/navigation/NavState.h>
+#include <gtsam/geometry/Kernel.h>
 
 #include <string>
 
@@ -26,12 +27,11 @@ namespace gtsam {
 NavState NavState::Create(const Rot3& R, const Point3& t, const Velocity3& v,
     OptionalJacobian<9, 3> H1, OptionalJacobian<9, 3> H2,
     OptionalJacobian<9, 3> H3) {
-  if (H1)
-    *H1 << I_3x3, Z_3x3, Z_3x3;
-  if (H2)
-    *H2 << Z_3x3, R.transpose(), Z_3x3;
-  if (H3)
-    *H3 << Z_3x3, Z_3x3, R.transpose();
+  Matrix3 Rt;
+  if (H2 || H3) Rt = R.transpose();
+  if (H1) *H1 << I_3x3, Z_3x3, Z_3x3;
+  if (H2) *H2 << Z_3x3, Rt, Z_3x3;
+  if (H3) *H3 << Z_3x3, Z_3x3, Rt;
   return NavState(R, t, v);
 }
 //------------------------------------------------------------------------------
@@ -77,6 +77,39 @@ Vector3 NavState::bodyVelocity(OptionalJacobian<3, 9> H) const {
 }
 
 //------------------------------------------------------------------------------
+double NavState::range(const Point3& point, OptionalJacobian<1, 9> Hself,
+                       OptionalJacobian<1, 3> Hpoint) const {
+  const Vector3 delta = point - t_;
+  const double r = delta.norm();
+  if (!Hself && !Hpoint) return r;
+
+  const Vector3 u = delta / r;  // unit vector from position to point
+  const Matrix13 D_r_point = u.transpose();
+
+  if (Hpoint) *Hpoint = D_r_point;
+  if (Hself) {
+    Hself->setZero();
+    // position() = t + R * dP, so d(range)/d(dP) = d(range)/dt * dt/d(dP)
+    Hself->block<1, 3>(0, 3) = -D_r_point * R_.matrix();
+  }
+  return r;
+}
+
+//------------------------------------------------------------------------------
+Unit3 NavState::bearing(const Point3& point, OptionalJacobian<2, 9> Hself,
+                        OptionalJacobian<2, 3> Hpoint) const {
+  Matrix26 Hpose;
+  OptionalJacobian<2, 6> HposeOptional(Hself ? &Hpose : nullptr);
+  const Unit3 b = pose().bearing(point, HposeOptional, Hpoint);
+
+  if (Hself) {
+    Hself->setZero();
+    Hself->block<2, 6>(0, 0) = Hpose;
+  }
+  return b;
+}
+
+//------------------------------------------------------------------------------
 Matrix5 NavState::matrix() const {
   Matrix3 R = this->R();
 
@@ -85,6 +118,24 @@ Matrix5 NavState::matrix() const {
   T.block<3, 1>(0, 3) = t_;
   T.block<3, 1>(0, 4) = v_;
   return T;
+}
+
+//------------------------------------------------------------------------------
+NavState::Vector25 NavState::vec(OptionalJacobian<25, 9> H) const {
+  const Matrix5 T = this->matrix();
+  if (H) {
+    H->setZero();
+    auto R = T.block<3, 3>(0, 0);
+    H->block<3, 1>(0, 1) = -R.col(2);
+    H->block<3, 1>(0, 2) = R.col(1);
+    H->block<3, 1>(5, 0) = R.col(2);
+    H->block<3, 1>(5, 2) = -R.col(0);
+    H->block<3, 1>(10, 0) = -R.col(1);
+    H->block<3, 1>(10, 1) = R.col(0);
+    H->block<3, 3>(15, 3) = R;
+    H->block<3, 3>(20, 6) = R;
+  }
+  return Eigen::Map<const Vector25>(T.data());
 }
 
 //------------------------------------------------------------------------------
@@ -113,25 +164,36 @@ NavState NavState::inverse() const {
 }
 
 //------------------------------------------------------------------------------
+// See [this document](doc/Jacobians.md) for details.
 NavState NavState::Expmap(const Vector9& xi, OptionalJacobian<9, 9> Hxi) {
-  // Get angular velocity w, translational velocity v, and acceleration a
-  Vector3 w = xi.head<3>();
-  Vector3 rho = xi.segment<3>(3);
-  Vector3 nu = xi.tail<3>();
+  // Get angular velocity w and components rho (for t) and nu (for v) from xi
+  Vector3 w = xi.head<3>(), rho = xi.segment<3>(3), nu = xi.tail<3>();
+
+  // Instantiate functor for Dexp-related operations:
+  const so3::DexpFunctor local(w);
 
   // Compute rotation using Expmap
-  Rot3 R = Rot3::Expmap(w);
+#ifdef GTSAM_USE_QUATERNIONS
+  const Rot3 R = traits<gtsam::Quaternion>::Expmap(w);
+#else
+  const Rot3 R(local.expmap());
+#endif
 
-  // Compute translations and optionally their Jacobians
-  Matrix3 Qt, Qv;
-  Vector3 t = Pose3::ExpmapTranslation(w, rho, Hxi ? &Qt : nullptr, R);
-  Vector3 v = Pose3::ExpmapTranslation(w,  nu, Hxi ? &Qv : nullptr, R);
+  // Compute translation and velocity. See Pose3::Expmap
+  Matrix3 H_t_w, H_v_w;
+  const Vector3 t = local.Jacobian().applyLeft(rho, Hxi ? &H_t_w : nullptr);
+  const Vector3 v = local.Jacobian().applyLeft(nu, Hxi ? &H_v_w : nullptr);
 
   if (Hxi) {
-    const Matrix3 Jw = Rot3::ExpmapDerivative(w);
-    *Hxi << Jw, Z_3x3, Z_3x3,
-            Qt,    Jw, Z_3x3,
-            Qv, Z_3x3,    Jw;
+    const Matrix3 Jr = local.Jacobian().right();
+    // We are creating a NavState, so we still need to chain H_t_w and H_v_w
+    // with R^T, the Jacobian of Navstate::Create with respect to both t and v.
+    const Matrix3 Rt = R.transpose();
+    *Hxi << Jr, Z_3x3, Z_3x3,   // Jr here *is* the Jacobian of expmap
+        Rt * H_t_w, Jr, Z_3x3,  //
+        Rt * H_v_w, Z_3x3, Jr;
+    // In the last two rows, Jr = R^T * Jl, see Barfoot eq. (8.83).
+    // Jl is the left Jacobian of SO(3) at w.
   }
 
   return NavState(R, t, v);
@@ -168,8 +230,8 @@ Vector9 NavState::Logmap(const NavState& state, OptionalJacobian<9, 9> Hstate) {
 //------------------------------------------------------------------------------
 Matrix9 NavState::AdjointMap() const {
   const Matrix3 R = R_.matrix();
-  Matrix3 A = skewSymmetric(t_.x(), t_.y(), t_.z()) * R;
-  Matrix3 B = skewSymmetric(v_.x(), v_.y(), v_.z()) * R;
+  Matrix3 A = skewSymmetric(t_) * R;
+  Matrix3 B = skewSymmetric(v_) * R;
   // Eqn 2 in Barrau20icra
   Matrix9 adj;
   adj << R, Z_3x3, Z_3x3, A, R, Z_3x3, B, Z_3x3, R;
@@ -271,16 +333,25 @@ Matrix9 NavState::ExpmapDerivative(const Vector9& xi) {
 }
 
 //------------------------------------------------------------------------------
-Matrix9 NavState::LogmapDerivative(const NavState& state) {
-  const Vector9 xi = Logmap(state);
+Matrix9 NavState::LogmapDerivative(const Vector9& xi) {
   const Vector3 w = xi.head<3>();
   Vector3 rho = xi.segment<3>(3);
   Vector3 nu = xi.tail<3>();
-  
-  Matrix3 Qt, Qv;
-  const Rot3 R = Rot3::Expmap(w);
-  Pose3::ExpmapTranslation(w, rho, Qt, R);
-  Pose3::ExpmapTranslation(w,  nu, Qv, R);
+
+  // Instantiate functor for Dexp-related operations:
+  const so3::DexpFunctor local(w);
+
+  // Call Jacobian().applyLeft to get its Jacobians
+  Matrix3 H_t_w, H_v_w;
+  local.Jacobian().applyLeft(rho, H_t_w);
+  local.Jacobian().applyLeft(nu, H_v_w);
+
+  // Multiply with R^T to account for NavState::Create Jacobian.
+  const Matrix3 Rt = local.expmap().transpose();
+  const Matrix3 Qt = Rt * H_t_w;
+  const Matrix3 Qv = Rt * H_v_w;
+
+  // Now compute the blocks of the LogmapDerivative Jacobian
   const Matrix3 Jw = Rot3::LogmapDerivative(w);
   const Matrix3 Qt2 = -Jw * Qt * Jw;
   const Matrix3 Qv2 = -Jw * Qv * Jw;
@@ -292,6 +363,34 @@ Matrix9 NavState::LogmapDerivative(const NavState& state) {
   return J;
 }
 
+//------------------------------------------------------------------------------
+Matrix9 NavState::LogmapDerivative(const NavState& state) {
+  const Vector9 xi = Logmap(state);
+  return LogmapDerivative(xi);
+}
+
+//------------------------------------------------------------------------------
+Matrix5 NavState::Hat(const Vector9& xi) {
+  Matrix5 X;
+  const double wx = xi(0), wy = xi(1), wz = xi(2);
+  const double px = xi(3), py = xi(4), pz = xi(5);
+  const double vx = xi(6), vy = xi(7), vz = xi(8);
+  X << 0., -wz, wy, px, vx,
+    wz, 0., -wx, py, vy,
+    -wy, wx, 0., pz, vz,
+    0., 0., 0., 0., 0.,
+    0., 0., 0., 0., 0.;
+  return X;
+}
+
+//------------------------------------------------------------------------------
+Vector9 NavState::Vee(const Matrix5& Xi) {
+  Vector9 xi;
+  xi << Xi(2, 1), Xi(0, 2), Xi(1, 0),
+    Xi(0, 3), Xi(1, 3), Xi(2, 3),
+    Xi(0, 4), Xi(1, 4), Xi(2, 4);
+  return xi;
+}
 
 //------------------------------------------------------------------------------
 NavState NavState::ChartAtOrigin::Retract(const Vector9& xi,
@@ -438,6 +537,13 @@ NavState NavState::update(const Vector3& b_acceleration, const Vector3& b_omega,
 }
 
 //------------------------------------------------------------------------------
+
+// Because our navigation frames are placed on a spinning Earth, we experience two apparent forces on our inertials
+// Let Omega be the Earth's rotation rate in the navigation frame
+// Coriolis acceleration = -2 * (omega X n_v)
+// Centrifugal acceleration (secondOrder) = -omega X (omega X n_t)
+// We would also experience a rotation of (omega*dt) over time - so, counteract by compensating rotation by (-omega * dt)
+// Integrate centrifugal & coriolis accelerations to yield position, velocity perturbations
 Vector9 NavState::coriolis(double dt, const Vector3& omega, bool secondOrder,
     OptionalJacobian<9, 9> H) const {
   Rot3 nRb = R_;
@@ -446,37 +552,42 @@ Vector9 NavState::coriolis(double dt, const Vector3& omega, bool secondOrder,
   const double dt2 = dt * dt;
   const Vector3 omega_cross_vel = omega.cross(n_v);
 
-  // Get perturbations in nav frame
-  Vector9 n_xi, xi;
-  Matrix3 D_dR_R, D_dP_R, D_dV_R, D_body_nav;
+  Vector9 n_xi;
+  // Coriolis (first order) acceleration corrections
   dR(n_xi) << ((-dt) * omega);
   dP(n_xi) << ((-dt2) * omega_cross_vel); // NOTE(luca): we got rid of the 2 wrt INS paper
   dV(n_xi) << ((-2.0 * dt) * omega_cross_vel);
+
+  // Centrifugal (second order) acceleration corrections
+  Matrix3 D_c2_nt; // To store Jacobian (if needed/desired)
   if (secondOrder) {
-    const Vector3 omega_cross2_t = omega.cross(omega.cross(n_t));
+    const Vector3 omega_cross2_t = doubleCross(omega, n_t, nullptr, H ? &D_c2_nt : nullptr);
     dP(n_xi) -= (0.5 * dt2) * omega_cross2_t;
     dV(n_xi) -= dt * omega_cross2_t;
   }
 
-  // Transform n_xi into the body frame
-  xi << nRb.unrotate(dR(n_xi), H ? &D_dR_R : 0, H ? &D_body_nav : 0), 
-        nRb.unrotate(dP(n_xi), H ? &D_dP_R : 0),
-        nRb.unrotate(dV(n_xi), H ? &D_dV_R : 0);
+  // Transform correction from navigation frame -> body frame and get Jacobians
+  Vector9 xi;
+  Matrix3 D_dR_R, D_dP_R, D_dV_R;
+  dR(xi) = nRb.unrotate(dR(n_xi), H ? &D_dR_R : 0);
+  dP(xi) = nRb.unrotate(dP(n_xi), H ? &D_dP_R : 0);
+  dV(xi) = nRb.unrotate(dV(n_xi), H ? &D_dV_R : 0);
 
+  // Assemble Jacobians
   if (H) {
     H->setZero();
-    const Matrix3 Omega = skewSymmetric(omega);
-    const Matrix3 D_cross_state = Omega * R();
+    const Vector3 omega_b = nRb.unrotate(omega);
+    const Matrix3 D_c1_b = skewSymmetric(omega_b);
     H->setZero();
     D_R_R(H) << D_dR_R;
-    D_t_v(H) << D_body_nav * (-dt2) * D_cross_state;
+    D_t_v(H) << (-dt2) * D_c1_b;
     D_t_R(H) << D_dP_R;
-    D_v_v(H) << D_body_nav * (-2.0 * dt) * D_cross_state;
+    D_v_v(H) << (-2.0 * dt) * D_c1_b;
     D_v_R(H) << D_dV_R;
     if (secondOrder) {
-      const Matrix3 D_cross2_state = Omega * D_cross_state;
-      D_t_t(H) -= D_body_nav * (0.5 * dt2) * D_cross2_state;
-      D_v_t(H) -= D_body_nav * dt * D_cross2_state;
+      Matrix3 D_c2_b = D_c1_b * D_c1_b;
+      D_t_t(H) -= (0.5 * dt2) * D_c2_b;
+      D_v_t(H) -= dt * D_c2_b;
     }
   }
   return xi;

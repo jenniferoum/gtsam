@@ -24,7 +24,7 @@
 #include <gtsam/dllexport.h>
 #include <gtsam/linear/LossFunctions.h>
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
 #include <boost/serialization/nvp.hpp>
 #include <boost/serialization/extended_type_info.hpp>
 #include <boost/serialization/singleton.hpp>
@@ -141,7 +141,7 @@ namespace gtsam {
       virtual double weight(const Vector& v) const { return 1.0; }
 
     private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
       /** Serialization function */
       friend class boost::serialization::access;
       template<class ARCHIVE>
@@ -280,7 +280,7 @@ namespace gtsam {
       double negLogConstant() const;
 
      private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
       /** Serialization function */
       friend class boost::serialization::access;
       template<class ARCHIVE>
@@ -375,7 +375,7 @@ namespace gtsam {
       }
 
     private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
       /** Serialization function */
       friend class boost::serialization::access;
       template<class ARCHIVE>
@@ -408,8 +408,8 @@ namespace gtsam {
       Vector mu_; ///< Penalty function weight - needs to be large enough to dominate soft constraints
 
       /**
-       * Constructor that prevents any inf values
-       * from appearing in invsigmas or precisions.
+       * Constructor that prevents inf values from appearing in invsigmas,
+       * while preserving infinite precisions for constrained entries.
        * Allows for specifying mu.
        */
       Constrained(const Vector& mu, const Vector& sigmas);
@@ -439,25 +439,25 @@ namespace gtsam {
 
       /**
        * A diagonal noise model created by specifying a Vector of
-       * standard devations, some of which might be zero
+       * standard deviations, some of which might be zero
        */
       static shared_ptr MixedSigmas(const Vector& mu, const Vector& sigmas);
 
       /**
        * A diagonal noise model created by specifying a Vector of
-       * standard devations, some of which might be zero
+       * standard deviations, some of which might be zero
        */
       static shared_ptr MixedSigmas(const Vector& sigmas);
 
       /**
        * A diagonal noise model created by specifying a Vector of
-       * standard devations, some of which might be zero
+       * standard deviations, some of which might be zero
        */
       static shared_ptr MixedSigmas(double m, const Vector& sigmas);
 
       /**
        * A diagonal noise model created by specifying a Vector of
-       * standard devations, some of which might be zero
+       * standard deviations, some of which might be zero
        */
       static shared_ptr MixedVariances(const Vector& mu, const Vector& variances);
       static shared_ptr MixedVariances(const Vector& variances);
@@ -470,7 +470,7 @@ namespace gtsam {
       static shared_ptr MixedPrecisions(const Vector& precisions);
 
       /**
-       * The squaredMahalanobisDistance function for a constrained noisemodel,
+       * The squaredMahalanobisDistance function for a constrained noise model,
        * for non-constrained versions, uses sigmas, otherwise
        * uses the penalty function with mu
        */
@@ -503,6 +503,12 @@ namespace gtsam {
       void WhitenInPlace(Eigen::Block<Matrix> H) const override;
 
       /**
+       * Compute A' * diag(precisions) * A using constrained precisions.
+       * Infinite precisions yield infinite entries where the row has support.
+       */
+      Matrix informationFromA(const Matrix& A) const;
+
+      /**
        * Apply QR factorization to the system [A b], taking into account constraints
        *               Q'  *   [A b]  =  [R d]
        * Dimensions: (r*m) * m*(n+1) = r*(n+1), where r = min(m,n).
@@ -514,13 +520,13 @@ namespace gtsam {
       Diagonal::shared_ptr QR(Matrix& Ab) const override;
 
       /**
-       * Returns a Unit version of a constrained noisemodel in which
+       * Returns a Unit version of a constrained noise model in which
        * constrained sigmas remain constrained and the rest are unit scaled
        */
       shared_ptr unit() const;
 
     private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
       /** Serialization function */
       friend class boost::serialization::access;
       template<class ARCHIVE>
@@ -559,7 +565,7 @@ namespace gtsam {
       typedef std::shared_ptr<Isotropic> shared_ptr;
 
       /**
-       * An isotropic noise model created by specifying a standard devation sigma
+       * An isotropic noise model created by specifying a standard deviation sigma
        */
       static shared_ptr Sigma(size_t dim, double sigma, bool smart = true);
 
@@ -593,7 +599,7 @@ namespace gtsam {
       inline double sigma() const { return sigma_; }
 
     private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
       /** Serialization function */
       friend class boost::serialization::access;
       template<class ARCHIVE>
@@ -648,7 +654,7 @@ namespace gtsam {
       void unwhitenInPlace(Eigen::Block<Vector>& /*v*/) const override {}
 
     private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
       /** Serialization function */
       friend class boost::serialization::access;
       template<class ARCHIVE>
@@ -719,7 +725,7 @@ namespace gtsam {
         return robust_->loss(std::sqrt(squared_distance));
       }
 
-      // NOTE: This is special because in whiten the base version will do the reweighting
+      // NOTE: This is special because in whiten the base version will do the re-weighting
       // which is incorrect!
       double squaredMahalanobisDistance(const Vector& v) const override {
         return noise_->squaredMahalanobisDistance(v);
@@ -739,7 +745,7 @@ namespace gtsam {
         const RobustModel::shared_ptr &robust, const NoiseModel::shared_ptr noise);
 
     private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
       /** Serialization function */
       friend class boost::serialization::access;
       template<class ARCHIVE>
@@ -773,5 +779,3 @@ namespace gtsam {
   template<> struct traits<noiseModel::Unit> : public Testable<noiseModel::Unit> {};
 
 } //\ namespace gtsam
-
-

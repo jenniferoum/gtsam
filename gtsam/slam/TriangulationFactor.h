@@ -64,7 +64,7 @@ public:
 
   /// Default constructor
   TriangulationFactor() :
-      throwCheirality_(false), verboseCheirality_(false) {
+      throwCheirality_(false), verboseCheirality_(false), measured_() {
   }
 
   /**
@@ -187,7 +187,7 @@ public:
 
 private:
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION  ///
+#if GTSAM_ENABLE_BOOST_SERIALIZATION  ///
   /// Serialization function
   friend class boost::serialization::access;
   template<class ARCHIVE>

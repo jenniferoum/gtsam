@@ -19,13 +19,11 @@
 #include <gtsam/discrete/DiscreteBayesNet.h>
 #include <gtsam/discrete/DiscreteConditional.h>
 #include <gtsam/discrete/DiscreteFactorGraph.h>
+#include <gtsam/discrete/TableDistribution.h>
 #include <gtsam/hybrid/HybridBayesNet.h>
 #include <gtsam/hybrid/HybridValues.h>
 
 #include <memory>
-
-// In Wrappers we have no access to this so have a default ready
-static std::mt19937_64 kRandomNumberGenerator(42);
 
 namespace gtsam {
 
@@ -41,49 +39,76 @@ bool HybridBayesNet::equals(const This &bn, double tol) const {
 }
 
 /* ************************************************************************* */
-// The implementation is: build the entire joint into one factor and then prune.
-// TODO(Frank): This can be quite expensive *unless* the factors have already
-// been pruned before. Another, possibly faster approach is branch and bound
-// search to find the K-best leaves and then create a single pruned conditional.
-HybridBayesNet HybridBayesNet::prune(size_t maxNrLeaves) const {
+HybridBayesNet HybridBayesNet::prune(
+    size_t maxNrLeaves, const std::optional<double> &marginalThreshold,
+    DiscreteValues *fixedValues) const {
+#if GTSAM_HYBRID_TIMING
+  gttic_(HybridPruning);
+#endif
   // Collect all the discrete conditionals. Could be small if already pruned.
   const DiscreteBayesNet marginal = discreteMarginal();
 
-  // Multiply into one big conditional. NOTE: possibly quite expensive.
-  DiscreteConditional joint;
-  for (auto &&conditional : marginal) {
-    joint = joint * (*conditional);
+  // We use a separate value here since we need this to perform `restrict` on
+  // the HybridConditionals later.
+  DiscreteValues fixed;
+  // Prune discrete Bayes net
+  DiscreteBayesNet prunedBN =
+      marginal.prune(maxNrLeaves, marginalThreshold, &fixed);
+
+  // Multiply into one big conditional.
+  // NOTE: This is cheap since marginal.prune above creates a
+  // DBN with a single joint conditional.
+  DiscreteConditional pruned = prunedBN.joint();
+
+  // Set the fixed values if requested.
+  if (marginalThreshold && fixedValues) {
+    if (!fixedValues->empty()) {
+      throw std::invalid_argument(
+          "HybridBayesNet::prune: fixedValues should be empty since it is "
+          "a purely output argument.");
+    }
+    *fixedValues = fixed;
   }
 
-  // Prune the joint. NOTE: again, possibly quite expensive.
-  const DecisionTreeFactor pruned = joint.prune(maxNrLeaves);
-
-  // Create a the result starting with the pruned joint.
   HybridBayesNet result;
-  result.emplace_shared<DiscreteConditional>(pruned.size(), pruned);
+  result.reserve(size());
 
-  /* To prune, we visitWith every leaf in the HybridGaussianConditional.
-   * For each leaf, using the assignment we can check the discrete decision tree
-   * for 0.0 probability, then just set the leaf to a nullptr.
-   *
-   * We can later check the HybridGaussianConditional for just nullptrs.
-   */
+  // Go through all the Gaussian conditionals, restrict them according to
+  // fixed values, and then prune further.
+  for (std::shared_ptr<HybridConditional> conditional : *this) {
+    if (conditional->isDiscrete()) continue;
 
-  // Go through all the Gaussian conditionals in the Bayes Net and prune them as
-  // per pruned Discrete joint.
-  for (auto &&conditional : *this) {
+    // No-op if not a HybridGaussianConditional.
+    if (marginalThreshold) {
+      conditional = std::static_pointer_cast<HybridConditional>(
+          conditional->restrict(fixed));
+    }
+
+    // Now decide on type what to do:
     if (auto hgc = conditional->asHybrid()) {
       // Prune the hybrid Gaussian conditional!
       auto prunedHybridGaussianConditional = hgc->prune(pruned);
-
+      if (!prunedHybridGaussianConditional) {
+        throw std::runtime_error(
+            "A HybridGaussianConditional had all its conditionals pruned");
+      }
       // Type-erase and add to the pruned Bayes Net fragment.
       result.push_back(prunedHybridGaussianConditional);
-    } else if (auto gc = conditional->asGaussian()) {
-      // Add the non-HybridGaussianConditional conditional
-      result.push_back(gc);
-    }
-    // We ignore DiscreteConditional as they are already pruned and added.
+    } else if (conditional->isContinuous()) {
+      // Add the non-Hybrid GaussianConditional conditional
+      result.push_back(conditional);
+    } else
+      throw std::runtime_error(
+          "HybrdiBayesNet::prune: Unknown HybridConditional type.");
   }
+
+#if GTSAM_HYBRID_TIMING
+  gttoc_(HybridPruning);
+#endif
+
+  // Add the pruned discrete conditionals to the result.
+  for (const DiscreteConditional::shared_ptr &discrete : prunedBN)
+    result.push_back(discrete);
 
   return result;
 }
@@ -120,18 +145,30 @@ GaussianBayesNet HybridBayesNet::choose(
 }
 
 /* ************************************************************************* */
-HybridValues HybridBayesNet::optimize() const {
+DiscreteValues HybridBayesNet::mpe() const {
   // Collect all the discrete factors to compute MPE
   DiscreteFactorGraph discrete_fg;
 
   for (auto &&conditional : *this) {
     if (conditional->isDiscrete()) {
-      discrete_fg.push_back(conditional->asDiscrete());
+      if (auto dtc = conditional->asDiscrete<TableDistribution>()) {
+        // The number of keys should be small so should not
+        // be expensive to convert to DiscreteConditional.
+        discrete_fg.push_back(DiscreteConditional(dtc->nrFrontals(),
+                                                  dtc->toDecisionTreeFactor()));
+      } else {
+        discrete_fg.push_back(conditional->asDiscrete());
+      }
     }
   }
 
+  return discrete_fg.optimize();
+}
+
+/* ************************************************************************* */
+HybridValues HybridBayesNet::optimize() const {
   // Solve for the MPE
-  DiscreteValues mpe = discrete_fg.optimize();
+  DiscreteValues mpe = this->mpe();
 
   // Given the MPE, compute the optimal continuous values.
   return HybridValues(optimize(mpe), mpe);
@@ -160,7 +197,7 @@ HybridValues HybridBayesNet::sample(const HybridValues &given,
     }
   }
   // Sample a discrete assignment.
-  const DiscreteValues assignment = dbn.sample(given.discrete());
+  const DiscreteValues assignment = dbn.sample(given.discrete(), rng);
   // Select the continuous Bayes net corresponding to the assignment.
   GaussianBayesNet gbn = choose(assignment);
   // Sample from the Gaussian Bayes net.
@@ -172,16 +209,6 @@ HybridValues HybridBayesNet::sample(const HybridValues &given,
 HybridValues HybridBayesNet::sample(std::mt19937_64 *rng) const {
   HybridValues given;
   return sample(given, rng);
-}
-
-/* ************************************************************************* */
-HybridValues HybridBayesNet::sample(const HybridValues &given) const {
-  return sample(given, &kRandomNumberGenerator);
-}
-
-/* ************************************************************************* */
-HybridValues HybridBayesNet::sample() const {
-  return sample(&kRandomNumberGenerator);
 }
 
 /* ************************************************************************* */

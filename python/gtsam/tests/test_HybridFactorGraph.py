@@ -13,14 +13,14 @@ Author: Fan Jiang, Varun Agrawal, Frank Dellaert
 import unittest
 
 import numpy as np
-from gtsam.symbol_shorthand import C, M, X, Z
-from gtsam.utils.test_case import GtsamTestCase
 
 import gtsam
-from gtsam import (DiscreteConditional, GaussianConditional,
-                   HybridBayesNet, HybridGaussianConditional,
-                   HybridGaussianFactor, HybridGaussianFactorGraph,
-                   HybridValues, JacobianFactor, noiseModel)
+from gtsam import (DiscreteConditional, GaussianConditional, HybridBayesNet,
+                   HybridGaussianConditional, HybridGaussianFactor,
+                   HybridGaussianFactorGraph, HybridValues, JacobianFactor,
+                   TableDistribution, noiseModel)
+from gtsam.symbol_shorthand import C, M, X, Z
+from gtsam.utils.test_case import GtsamTestCase
 
 DEBUG_MARGINALS = False
 
@@ -51,7 +51,7 @@ class TestHybridGaussianFactorGraph(GtsamTestCase):
         self.assertEqual(len(hybridCond.keys()), 2)
 
         discrete_conditional = hbn.at(hbn.size() - 1).inner()
-        self.assertIsInstance(discrete_conditional, DiscreteConditional)
+        self.assertIsInstance(discrete_conditional, TableDistribution)
 
     def test_optimize(self):
         """Test construction of hybrid factor graph."""
@@ -287,8 +287,8 @@ class TestHybridGaussianFactorGraph(GtsamTestCase):
             print(f"P(mode=1; Z) = {marginals[1]}")
 
         # Check that the estimate is close to the true value.
-        self.assertAlmostEqual(marginals[0], 0.23, delta=0.01)
-        self.assertAlmostEqual(marginals[1], 0.77, delta=0.01)
+        self.assertAlmostEqual(marginals[0], 0.219, delta=0.01)
+        self.assertAlmostEqual(marginals[1], 0.781, delta=0.01)
 
         # Convert to factor graph using measurements.
         fg = bayesNet.toFactorGraph(measurements)

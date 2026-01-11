@@ -64,10 +64,17 @@ namespace gtsam {
   }
 
   /* ************************************************************************ */
-  DecisionTreeFactor DiscreteFactorGraph::product() const {
-    DecisionTreeFactor result;
-    for (const sharedFactor& factor : *this) {
-      if (factor) result = (*factor) * result;
+  DiscreteFactor::shared_ptr DiscreteFactorGraph::product() const {
+    DiscreteFactor::shared_ptr result = nullptr;
+    for (const auto& factor : *this) {
+      if (factor) {
+        result = result ? result->multiply(factor) : factor;
+      }
+    }
+    if (result->max() == 0.0 && result->nrValues() == 1) {
+      throw std::runtime_error(
+          "Product factor is 0.0, possibly due to disjointed discrete "
+          "factors.");
     }
     return result;
   }
@@ -111,27 +118,9 @@ namespace gtsam {
 //      }
 //  }
 
-  /**
-   * @brief Multiply all the `factors` and normalize the
-   * product to prevent underflow.
-   *
-   * @param factors The factors to multiply as a DiscreteFactorGraph.
-   * @return DecisionTreeFactor
-   */
-  static DecisionTreeFactor ProductAndNormalize(
-      const DiscreteFactorGraph& factors) {
-    // PRODUCT: multiply all factors
-    gttic(product);
-    DecisionTreeFactor product = factors.product();
-    gttoc(product);
-
-    // Max over all the potentials by pretending all keys are frontal:
-    auto normalization = product.max(product.size());
-
-    // Normalize the product factor to prevent underflow.
-    product = product / (*normalization);
-
-    return product;
+  /* ************************************************************************ */
+  DiscreteFactor::shared_ptr DiscreteFactorGraph::scaledProduct() const {
+    return product()->scale();
   }
 
   /* ************************************************************************ */
@@ -139,25 +128,25 @@ namespace gtsam {
   std::pair<DiscreteConditional::shared_ptr, DiscreteFactor::shared_ptr>  //
   EliminateForMPE(const DiscreteFactorGraph& factors,
                   const Ordering& frontalKeys) {
-    DecisionTreeFactor product = ProductAndNormalize(factors);
+    DiscreteFactor::shared_ptr product = factors.scaledProduct();
 
     // max out frontals, this is the factor on the separator
     gttic(max);
-    DecisionTreeFactor::shared_ptr max = product.max(frontalKeys);
+    DiscreteFactor::shared_ptr max = product->max(frontalKeys);
     gttoc(max);
 
     // Ordering keys for the conditional so that frontalKeys are really in front
     DiscreteKeys orderedKeys;
     for (auto&& key : frontalKeys)
-      orderedKeys.emplace_back(key, product.cardinality(key));
+      orderedKeys.emplace_back(key, product->cardinality(key));
     for (auto&& key : max->keys())
-      orderedKeys.emplace_back(key, product.cardinality(key));
+      orderedKeys.emplace_back(key, product->cardinality(key));
 
     // Make lookup with product
     gttic(lookup);
     size_t nrFrontals = frontalKeys.size();
-    auto lookup =
-        std::make_shared<DiscreteLookupTable>(nrFrontals, orderedKeys, product);
+    auto lookup = std::make_shared<DiscreteLookupTable>(
+        nrFrontals, orderedKeys, product->toDecisionTreeFactor());
     gttoc(lookup);
 
     return {std::dynamic_pointer_cast<DiscreteConditional>(lookup), max};
@@ -207,8 +196,7 @@ namespace gtsam {
     return dag.argmax();
   }
 
-  DiscreteValues DiscreteFactorGraph::optimize(
-      const Ordering& ordering) const {
+  DiscreteValues DiscreteFactorGraph::optimize(const Ordering& ordering) const {
     gttic(DiscreteFactorGraph_optimize);
     DiscreteLookupDAG dag = maxProduct(ordering);
     return dag.argmax();
@@ -218,11 +206,14 @@ namespace gtsam {
   std::pair<DiscreteConditional::shared_ptr, DiscreteFactor::shared_ptr>  //
   EliminateDiscrete(const DiscreteFactorGraph& factors,
                     const Ordering& frontalKeys) {
-    DecisionTreeFactor product = ProductAndNormalize(factors);
+    gttic(product);
+    // `product` is scaled later to prevent underflow.
+    DiscreteFactor::shared_ptr product = factors.scaledProduct();
+    gttoc(product);
 
     // sum out frontals, this is the factor on the separator
     gttic(sum);
-    DecisionTreeFactor::shared_ptr sum = product.sum(frontalKeys);
+    DiscreteFactor::shared_ptr sum = product->sum(frontalKeys);
     gttoc(sum);
 
     // Ordering keys for the conditional so that frontalKeys are really in front
@@ -234,8 +225,9 @@ namespace gtsam {
 
     // now divide product/sum to get conditional
     gttic(divide);
-    auto conditional =
-        std::make_shared<DiscreteConditional>(product, *sum, orderedKeys);
+    auto conditional = std::make_shared<DiscreteConditional>(
+        product->toDecisionTreeFactor(), sum->toDecisionTreeFactor(),
+        orderedKeys);
     gttoc(divide);
 
     return {conditional, sum};

@@ -12,6 +12,7 @@
 #pragma once
 
 #include <gtsam/nonlinear/NonlinearFactor.h>
+#include <gtsam/nonlinear/NoiseModelFactorN.h>
 #include <gtsam/geometry/PinholeCamera.h>
 #include <gtsam/geometry/Cal3_S2.h>
 #include <gtsam/geometry/Pose3.h>
@@ -140,7 +141,7 @@ public:
 
 private:
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION  ///
+#if GTSAM_ENABLE_BOOST_SERIALIZATION  ///
   /// Serialization function
   friend class boost::serialization::access;
   template<class ARCHIVE>

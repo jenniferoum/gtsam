@@ -25,6 +25,7 @@
 #include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
+#include <gtsam/nonlinear/NoiseModelFactorN.h>
 #include <gtsam/linear/BinaryJacobianFactor.h>
 #include <gtsam/linear/NoiseModel.h>
 #include <gtsam/base/concepts.h>
@@ -36,7 +37,7 @@
 #include <gtsam/base/Vector.h>
 #include <gtsam/base/timing.h>
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
 #include <boost/serialization/nvp.hpp>
 #endif
 #include <iostream>
@@ -182,7 +183,7 @@ public:
   }
 
 private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
   template<class Archive>
@@ -283,7 +284,7 @@ public:
   }
 
 private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
   template<class Archive>

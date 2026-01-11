@@ -21,6 +21,7 @@
 #include <gtsam/discrete/DiscreteConditional.h>
 #include <gtsam/discrete/TableFactor.h>
 #include <gtsam/hybrid/HybridValues.h>
+#include <gtsam/inference/Ordering.h>
 
 #include <utility>
 
@@ -87,7 +88,15 @@ static Eigen::SparseVector<double> ComputeSparseTable(
   });
   sparseTable.reserve(nrValues);
 
-  std::set<Key> allKeys(dt.keys().begin(), dt.keys().end());
+  KeySet allKeys(dt.keys().begin(), dt.keys().end());
+
+  // Compute denominators to be used in computing sparse table indices
+  std::map<Key, size_t> denominators;
+  double denom = sparseTable.size();
+  for (const DiscreteKey& dkey : dkeys) {
+    denom /= dkey.second;
+    denominators.insert(std::pair<Key, double>(dkey.first, denom));
+  }
 
   /**
    * @brief Functor which is called by the DecisionTree for each leaf.
@@ -100,15 +109,17 @@ static Eigen::SparseVector<double> ComputeSparseTable(
    *
    */
   auto op = [&](const Assignment<Key>& assignment, double p) {
-    if (p > 0) {
+    // Check if greater than a threshold because we consider
+    // smaller than that as numerically 0
+    if (p > 1e-150) {
       // Get all the keys involved in this assignment
-      std::set<Key> assignmentKeys;
+      KeySet assignmentKeys;
       for (auto&& [k, _] : assignment) {
         assignmentKeys.insert(k);
       }
 
       // Find the keys missing in the assignment
-      std::vector<Key> diff;
+      KeyVector diff;
       std::set_difference(allKeys.begin(), allKeys.end(),
                           assignmentKeys.begin(), assignmentKeys.end(),
                           std::back_inserter(diff));
@@ -127,12 +138,10 @@ static Eigen::SparseVector<double> ComputeSparseTable(
 
         // Generate index and add to the sparse vector.
         Eigen::Index idx = 0;
-        size_t previousCardinality = 1;
         // We go in reverse since a DecisionTree has the highest label first
         for (auto&& it = updatedAssignment.rbegin();
              it != updatedAssignment.rend(); it++) {
-          idx += previousCardinality * it->second;
-          previousCardinality *= dt.cardinality(it->first);
+          idx += it->second * denominators.at(it->first);
         }
         sparseTable.coeffRef(idx) = p;
       }
@@ -153,8 +162,7 @@ TableFactor::TableFactor(const DiscreteKeys& dkeys,
 
 /* ************************************************************************ */
 TableFactor::TableFactor(const DecisionTreeFactor& dtf)
-    : TableFactor(dtf.discreteKeys(),
-                  ComputeSparseTable(dtf.discreteKeys(), dtf)) {}
+    : TableFactor(dtf.discreteKeys(), dtf) {}
 
 /* ************************************************************************ */
 TableFactor::TableFactor(const DiscreteConditional& c)
@@ -250,14 +258,66 @@ DecisionTreeFactor TableFactor::operator*(const DecisionTreeFactor& f) const {
 }
 
 /* ************************************************************************ */
+DiscreteFactor::shared_ptr TableFactor::multiply(
+    const DiscreteFactor::shared_ptr& f) const {
+  DiscreteFactor::shared_ptr result;
+  if (auto tf = std::dynamic_pointer_cast<TableFactor>(f)) {
+    // If `f` is a TableFactor, we can simply call `operator*`.
+    result = std::make_shared<TableFactor>(this->operator*(*tf));
+
+  } else if (auto dtf = std::dynamic_pointer_cast<DecisionTreeFactor>(f)) {
+    // If `f` is a DecisionTreeFactor, we convert to a TableFactor which is
+    // cheaper than converting `this` to a DecisionTreeFactor.
+    result = std::make_shared<TableFactor>(this->operator*(TableFactor(*dtf)));
+
+  } else {
+    // Simulate double dispatch in C++
+    // Useful for other classes which inherit from DiscreteFactor and have
+    // only `operator*(DecisionTreeFactor)` defined. Thus, other classes don't
+    // need to be updated to know about TableFactor.
+    // Those classes can be specialized to use TableFactor
+    // if efficiency is a problem.
+    result = std::make_shared<DecisionTreeFactor>(
+        f->operator*(this->toDecisionTreeFactor()));
+  }
+  return result;
+}
+
+/* ************************************************************************ */
+DiscreteFactor::shared_ptr TableFactor::operator/(
+    const DiscreteFactor::shared_ptr& f) const {
+  if (auto tf = std::dynamic_pointer_cast<TableFactor>(f)) {
+    return std::make_shared<TableFactor>(this->operator/(*tf));
+  } else if (auto dtf = std::dynamic_pointer_cast<DecisionTreeFactor>(f)) {
+    return std::make_shared<TableFactor>(
+        this->operator/(TableFactor(f->discreteKeys(), *dtf)));
+  } else {
+    TableFactor divisor(f->toDecisionTreeFactor());
+    return std::make_shared<TableFactor>(this->operator/(divisor));
+  }
+}
+
+/* ************************************************************************ */
 DecisionTreeFactor TableFactor::toDecisionTreeFactor() const {
   DiscreteKeys dkeys = discreteKeys();
-  std::vector<double> table;
-  for (auto i = 0; i < sparse_table_.size(); i++) {
-    table.push_back(sparse_table_.coeff(i));
+
+  // If no keys, then return empty DecisionTreeFactor
+  if (dkeys.size() == 0) {
+    AlgebraicDecisionTree<Key> tree;
+    // We can have an empty sparse_table_ or one with a single value.
+    if (sparse_table_.size() != 0) {
+      tree = AlgebraicDecisionTree<Key>(sparse_table_.coeff(0));
+    }
+    return DecisionTreeFactor(dkeys, tree);
   }
-  // NOTE(Varun): This constructor is really expensive!!
-  DecisionTreeFactor f(dkeys, table);
+
+  std::vector<double> table(sparse_table_.size(), 0.0);
+  for (SparseIt it(sparse_table_); it; ++it) {
+    table[it.index()] = it.value();
+  }
+
+  AlgebraicDecisionTree<Key> tree(dkeys, table);
+  DecisionTreeFactor f(dkeys, tree);
   return f;
 }
 
@@ -330,6 +390,35 @@ void TableFactor::print(const string& s, const KeyFormatter& formatter) const {
          << it.index() << endl;
   }
   cout << "number of nnzs: " << sparse_table_.nonZeros() << endl;
+}
+
+/* ************************************************************************ */
+DiscreteFactor::shared_ptr TableFactor::sum(size_t nrFrontals) const {
+  return combine(nrFrontals, Ring::add);
+}
+
+/* ************************************************************************ */
+DiscreteFactor::shared_ptr TableFactor::sum(const Ordering& keys) const {
+  return combine(keys, Ring::add);
+}
+
+/* ************************************************************************ */
+double TableFactor::max() const {
+  double max_value = std::numeric_limits<double>::lowest();
+  for (Eigen::SparseVector<double>::InnerIterator it(sparse_table_); it; ++it) {
+    max_value = std::max(max_value, it.value());
+  }
+  return max_value;
+}
+
+/* ************************************************************************ */
+DiscreteFactor::shared_ptr TableFactor::max(size_t nrFrontals) const {
+  return combine(nrFrontals, Ring::max);
+}
+
+/* ************************************************************************ */
+DiscreteFactor::shared_ptr TableFactor::max(const Ordering& keys) const {
+  return combine(keys, Ring::max);
 }
 
 /* ************************************************************************ */
@@ -692,6 +781,12 @@ TableFactor TableFactor::prune(size_t maxNrAssignments) const {
 
   // Create pruned decision tree factor and return.
   return TableFactor(this->discreteKeys(), pruned_vec);
+}
+
+/* ************************************************************************ */
+DiscreteFactor::shared_ptr TableFactor::restrict(
+    const DiscreteValues& assignment) const {
+  throw std::runtime_error("TableFactor::restrict not implemented");
 }
 
 /* ************************************************************************ */

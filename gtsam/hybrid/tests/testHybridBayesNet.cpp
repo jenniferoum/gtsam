@@ -20,6 +20,7 @@
 
 #include <gtsam/base/Testable.h>
 #include <gtsam/discrete/DiscreteFactor.h>
+#include <gtsam/discrete/TableDistribution.h>
 #include <gtsam/hybrid/HybridBayesNet.h>
 #include <gtsam/hybrid/HybridBayesTree.h>
 #include <gtsam/hybrid/HybridConditional.h>
@@ -33,6 +34,7 @@
 #include <CppUnitLite/TestHarness.h>
 
 #include <memory>
+#include <numeric>
 
 using namespace std;
 using namespace gtsam;
@@ -88,7 +90,7 @@ TEST(HybridBayesNet, EvaluatePureDiscrete) {
 
   // sample
   std::mt19937_64 rng(42);
-  EXPECT(assert_equal(zero, bayesNet.sample(&rng)));
+  EXPECT(assert_equal(one, bayesNet.sample(&rng)));
   EXPECT(assert_equal(one, bayesNet.sample(one, &rng)));
   EXPECT(assert_equal(zero, bayesNet.sample(zero, &rng)));
 
@@ -164,8 +166,8 @@ TEST(HybridBayesNet, Tiny) {
 
   // prune
   auto pruned = bayesNet.prune(1);
-  CHECK(pruned.at(1)->asHybrid());
-  EXPECT_LONGS_EQUAL(1, pruned.at(1)->asHybrid()->nrComponents());
+  CHECK(pruned.at(0)->asHybrid());
+  EXPECT_LONGS_EQUAL(1, pruned.at(0)->asHybrid()->nrComponents());
   EXPECT(!pruned.equals(bayesNet));
 
   // error
@@ -341,11 +343,20 @@ TEST(HybridBayesNet, Optimize) {
 }
 
 /* ****************************************************************************/
-// Test Bayes net error
-TEST(HybridBayesNet, Pruning) {
-  // Create switching network with three continuous variables and two discrete:
-  // ϕ(x0) ϕ(x0,x1,m0) ϕ(x1,x2,m1) ϕ(x0;z0) ϕ(x1;z1) ϕ(x2;z2) ϕ(m0) ϕ(m0,m1)
-  Switching s(3);
+namespace hbn_error {
+// Create switching network with three continuous variables and two discrete:
+// ϕ(x0) ϕ(x0,x1,m0) ϕ(x1,x2,m1) ϕ(x0;z0) ϕ(x1;z1) ϕ(x2;z2) ϕ(m0) ϕ(m0,m1)
+Switching s(3);
+
+// The true discrete assignment
+const DiscreteValues discrete_values{{M(0), 1}, {M(1), 1}};
+
+}  // namespace hbn_error
+
+/* ****************************************************************************/
+// Test Bayes net error and log-probability
+TEST(HybridBayesNet, Error) {
+  using namespace hbn_error;
 
   HybridBayesNet::shared_ptr posterior =
       s.linearizedFactorGraph().eliminateSequential();
@@ -364,7 +375,6 @@ TEST(HybridBayesNet, Pruning) {
   EXPECT(assert_equal(expected, discretePosterior, 1e-6));
 
   // Verify logProbability computation and check specific logProbability value
-  const DiscreteValues discrete_values{{M(0), 1}, {M(1), 1}};
   const HybridValues hybridValues{delta.continuous(), discrete_values};
   double logProbability = 0;
   logProbability += posterior->at(0)->asHybrid()->logProbability(hybridValues);
@@ -388,26 +398,95 @@ TEST(HybridBayesNet, Pruning) {
   // Check agreement with discrete posterior
   double density = exp(logProbability + negLogConstant) / normalizer;
   EXPECT_DOUBLES_EQUAL(density, discretePosterior(discrete_values), 1e-6);
+}
+
+/* ****************************************************************************/
+// Test Bayes net pruning
+TEST(HybridBayesNet, Prune) {
+  Switching s(3);
+
+  HybridBayesNet::shared_ptr posterior =
+      s.linearizedFactorGraph().eliminateSequential();
+  EXPECT_LONGS_EQUAL(5, posterior->size());
+
+  // Call Max-Product to get MAP
+  HybridValues delta = posterior->optimize();
+
+  // Prune the Bayes net
+  auto prunedBayesNet = posterior->prune(2);
+
+  // Test if Max-Product gives the same result as unpruned version
+  HybridValues pruned_delta = prunedBayesNet.optimize();
+  EXPECT(assert_equal(delta.discrete(), pruned_delta.discrete()));
+  EXPECT(assert_equal(delta.continuous(), pruned_delta.continuous()));
+}
+
+/* ****************************************************************************/
+// Test Bayes net pruning and dead node removal
+TEST(HybridBayesNet, RemoveDeadNodes) {
+  Switching s(3);
+
+  HybridBayesNet::shared_ptr posterior =
+      s.linearizedFactorGraph().eliminateSequential();
+  EXPECT_LONGS_EQUAL(5, posterior->size());
+
+  // Call Max-Product to get MAP
+  HybridValues delta = posterior->optimize();
+
+  // Prune the Bayes net
+  const double pruneDeadVariables = 0.99;
+  auto prunedBayesNet = posterior->prune(2, pruneDeadVariables);
+
+  // First conditional is still the same: P( x0 | x1 m0)
+  EXPECT(prunedBayesNet.at(0)->isHybrid());
+
+  // Check that hybrid conditional that only depend on M1
+  // is now Gaussian and not Hybrid
+  EXPECT(prunedBayesNet.at(1)->isContinuous());
+
+  // Third conditional is still Hybrid: P( x1 | m0 m1) -> P( x1 | m0)
+  EXPECT(prunedBayesNet.at(0)->isHybrid());
+
+  // Check that discrete joint only has M0 and not (M0, M1)
+  // since M0 is removed
+  auto joint = prunedBayesNet.at(3)->asDiscrete();
+  EXPECT(joint);
+  EXPECT(joint->keys() == KeyVector{M(0)});
+}
+
+/* ****************************************************************************/
+// Test Bayes net error and log-probability after pruning
+TEST(HybridBayesNet, ErrorAfterPruning) {
+  using namespace hbn_error;
+
+  HybridBayesNet::shared_ptr posterior =
+      s.linearizedFactorGraph().eliminateSequential();
+  EXPECT_LONGS_EQUAL(5, posterior->size());
+
+  // Optimize
+  HybridValues delta = posterior->optimize();
 
   // Prune and get probabilities
-  auto prunedBayesNet = posterior->prune(2);
-  auto prunedTree = prunedBayesNet.discretePosterior(delta.continuous());
+  HybridBayesNet prunedBayesNet = posterior->prune(2);
+  AlgebraicDecisionTree<Key> prunedTree =
+      prunedBayesNet.discretePosterior(delta.continuous());
 
-  // Regression test on pruned logProbability tree
+  // Regression test on pruned probability tree
   std::vector<double> pruned_leaves = {0.0, 0.50758422, 0.0, 0.49241578};
   AlgebraicDecisionTree<Key> expected_pruned(s.modes, pruned_leaves);
   EXPECT(assert_equal(expected_pruned, prunedTree, 1e-6));
 
-  // Regression
+  // Regression to  check specific logProbability value
+  const HybridValues hybridValues{delta.continuous(), discrete_values};
   double pruned_logProbability = 0;
   pruned_logProbability +=
-      prunedBayesNet.at(0)->asDiscrete()->logProbability(hybridValues);
+      prunedBayesNet.at(0)->asHybrid()->logProbability(hybridValues);
   pruned_logProbability +=
       prunedBayesNet.at(1)->asHybrid()->logProbability(hybridValues);
   pruned_logProbability +=
       prunedBayesNet.at(2)->asHybrid()->logProbability(hybridValues);
   pruned_logProbability +=
-      prunedBayesNet.at(3)->asHybrid()->logProbability(hybridValues);
+      prunedBayesNet.at(3)->asDiscrete()->logProbability(hybridValues);
 
   double pruned_negLogConstant = prunedBayesNet.negLogConstant(discrete_values);
 
@@ -419,24 +498,6 @@ TEST(HybridBayesNet, Pruning) {
   double pruned_density =
       exp(pruned_logProbability + pruned_negLogConstant) / pruned_normalizer;
   EXPECT_DOUBLES_EQUAL(pruned_density, prunedTree(discrete_values), 1e-9);
-}
-
-/* ****************************************************************************/
-// Test Bayes net pruning
-TEST(HybridBayesNet, Prune) {
-  Switching s(4);
-
-  HybridBayesNet::shared_ptr posterior =
-      s.linearizedFactorGraph().eliminateSequential();
-  EXPECT_LONGS_EQUAL(7, posterior->size());
-
-  HybridValues delta = posterior->optimize();
-
-  auto prunedBayesNet = posterior->prune(2);
-  HybridValues pruned_delta = prunedBayesNet.optimize();
-
-  EXPECT(assert_equal(delta.discrete(), pruned_delta.discrete()));
-  EXPECT(assert_equal(delta.continuous(), pruned_delta.continuous()));
 }
 
 /* ****************************************************************************/
@@ -454,7 +515,8 @@ TEST(HybridBayesNet, UpdateDiscreteConditionals) {
   }
 
   size_t maxNrLeaves = 3;
-  auto prunedDecisionTree = joint.prune(maxNrLeaves);
+  DiscreteConditional prunedDecisionTree(joint);
+  prunedDecisionTree.prune(maxNrLeaves);
 
 #ifdef GTSAM_DT_MERGING
   EXPECT_LONGS_EQUAL(maxNrLeaves + 2 /*2 zero leaves*/,
@@ -487,8 +549,8 @@ TEST(HybridBayesNet, UpdateDiscreteConditionals) {
   };
 
   // Get the pruned discrete conditionals as an AlgebraicDecisionTree
-  CHECK(pruned.at(0)->asDiscrete());
-  auto pruned_discrete_conditionals = pruned.at(0)->asDiscrete();
+  CHECK(pruned.at(4)->asDiscrete());
+  auto pruned_discrete_conditionals = pruned.at(4)->asDiscrete();
   auto discrete_conditional_tree =
       std::dynamic_pointer_cast<DecisionTreeFactor::ADT>(
           pruned_discrete_conditionals);
@@ -550,19 +612,23 @@ TEST(HybridBayesNet, Sampling) {
   EXPECT_LONGS_EQUAL(2, average_continuous.size());
   EXPECT_LONGS_EQUAL(num_samples, discrete_samples.size());
 
-  // Regressions don't work across platforms :-(
-  // // regression for specific RNG seed
-  // double discrete_sum =
-  //     std::accumulate(discrete_samples.begin(), discrete_samples.end(),
-  //                     decltype(discrete_samples)::value_type(0));
-  // EXPECT_DOUBLES_EQUAL(0.477, discrete_sum / num_samples, 1e-9);
+  // regression for specific RNG seed
+  double discrete_sum =
+      std::accumulate(discrete_samples.begin(), discrete_samples.end(),
+                      decltype(discrete_samples)::value_type(0));
+  EXPECT_DOUBLES_EQUAL(0.519, discrete_sum / num_samples, 1e-9);
 
-  // VectorValues expected;
-  // expected.insert({X(0), Vector1(-0.0131207162712)});
-  // expected.insert({X(1), Vector1(-0.499026377568)});
-  // // regression for specific RNG seed
-  // EXPECT(assert_equal(expected, average_continuous.scale(1.0 /
-  // num_samples)));
+  VectorValues expected;
+  // regression for specific RNG seed
+#if __APPLE__ || _WIN32
+  expected.insert({X(0), Vector1(0.0252479903896)});
+  expected.insert({X(1), Vector1(-0.513637101911)});
+#elif __linux__
+  expected.insert({X(0), Vector1(0.0165089744897)});
+  expected.insert({X(1), Vector1(-0.454323399979)});
+#endif
+
+  EXPECT(assert_equal(expected, average_continuous.scale(1.0 / num_samples)));
 }
 
 /* ****************************************************************************/

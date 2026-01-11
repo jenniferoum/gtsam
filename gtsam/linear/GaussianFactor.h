@@ -170,6 +170,9 @@ namespace gtsam {
     /// @name Advanced Interface
     /// @{
 
+    /// Fast check for JacobianFactor-based types.
+    virtual bool isJacobian() const { return false; }
+
     // Determine position of a given key
     template <typename CONTAINER>
     static DenseIndex Slot(const CONTAINER& keys, Key key) {
@@ -179,7 +182,7 @@ namespace gtsam {
     /// @}
     
   private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
     /** Serialization function */
     friend class boost::serialization::access;
     template<class ARCHIVE>

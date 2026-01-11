@@ -441,7 +441,7 @@ TEST(GaussianConditional, likelihood) {
 
 /* ************************************************************************* */
 // Test sampling
-TEST(GaussianConditional, sample) {
+TEST(GaussianConditional, Sample) {
   Matrix A1 = (Matrix(2, 2) << 1., 2., 3., 4.).finished();
   const Vector2 b(20, 40), x1(3, 4);
   const double sigma = 0.01;
@@ -463,9 +463,8 @@ TEST(GaussianConditional, sample) {
   // Use a specific random generator
   std::mt19937_64 rng(4242);
   auto actual3 = conditional.sample(given, &rng);
-  EXPECT_LONGS_EQUAL(1, actual2.size());
-  // regression is not repeatable across platforms/versions :-(
-  // EXPECT(assert_equal(Vector2(31.0111856, 64.9850775), actual2[X(0)], 1e-5));
+  EXPECT_LONGS_EQUAL(1, actual3.size());
+  // regressions don't make sense
 }
 
 /* ************************************************************************* */
@@ -518,7 +517,7 @@ TEST(GaussianConditional, Print) {
     "  mean: 1 elements\n"
     "  x0: 20 40\n"
     "  logNormalizationConstant: -4.0351\n"
-    "isotropic dim=2 sigma=3\n";
+    "isotropic dim=2 sigma=3.0000\n";
   EXPECT(assert_print_equal(expected, conditional, "GaussianConditional"));
 
   auto conditional1 =
@@ -533,7 +532,7 @@ TEST(GaussianConditional, Print) {
     "          [ -3 -4 ]\n"
     "  d = [ 20 40 ]\n"
     "  logNormalizationConstant: -4.0351\n"
-    "isotropic dim=2 sigma=3\n";
+    "isotropic dim=2 sigma=3.0000\n";
   EXPECT(assert_print_equal(expected1, conditional1, "GaussianConditional"));
 
   // Test printing for multiple parents.
@@ -549,7 +548,7 @@ TEST(GaussianConditional, Print) {
     "          [ -7 -8 ]\n"
     "  d = [ 20 40 ]\n"
     "  logNormalizationConstant: -4.0351\n"
-    "isotropic dim=2 sigma=3\n";
+    "isotropic dim=2 sigma=3.0000\n";
   EXPECT(assert_print_equal(expected2, conditional2, "GaussianConditional"));
 }
 

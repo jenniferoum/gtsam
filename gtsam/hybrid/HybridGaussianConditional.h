@@ -23,6 +23,7 @@
 #include <gtsam/discrete/DecisionTree-inl.h>
 #include <gtsam/discrete/DecisionTree.h>
 #include <gtsam/discrete/DecisionTreeFactor.h>
+#include <gtsam/discrete/DiscreteConditional.h>
 #include <gtsam/discrete/DiscreteKey.h>
 #include <gtsam/hybrid/HybridFactor.h>
 #include <gtsam/hybrid/HybridGaussianFactor.h>
@@ -235,10 +236,14 @@ class GTSAM_EXPORT HybridGaussianConditional
    * @return Shared pointer to possibly a pruned HybridGaussianConditional
    */
   HybridGaussianConditional::shared_ptr prune(
-      const DecisionTreeFactor &discreteProbs) const;
+      const DiscreteConditional &discreteProbs) const;
 
   /// Return true if the conditional has already been pruned.
   bool pruned() const { return pruned_; }
+
+  /// Restrict to the given discrete values.
+  std::shared_ptr<Factor> restrict(
+      const DiscreteValues &discreteValues) const override;
 
   /// @}
 
@@ -253,7 +258,7 @@ class GTSAM_EXPORT HybridGaussianConditional
   /// Check whether `given` has values for all frontal keys.
   bool allFrontalsGiven(const VectorValues &given) const;
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
   template <class Archive>

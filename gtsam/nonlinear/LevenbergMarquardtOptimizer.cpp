@@ -24,9 +24,8 @@
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
 #include <gtsam/linear/linearExceptions.h>
-#include <gtsam/inference/Ordering.h>
 #include <gtsam/base/Vector.h>
-#ifdef GTSAM_USE_BOOST_FEATURES
+#if GTSAM_USE_BOOST_FEATURES
 #include <gtsam/base/timing.h>
 #endif
 
@@ -123,7 +122,7 @@ bool LevenbergMarquardtOptimizer::tryLambda(const GaussianFactorGraph& linear,
   auto currentState = static_cast<const State*>(state_.get());
   bool verbose = (params_.verbosityLM >= LevenbergMarquardtParams::TRYLAMBDA);
 
-#ifdef GTSAM_USE_BOOST_FEATURES
+#if GTSAM_USE_BOOST_FEATURES
 #ifdef GTSAM_USING_NEW_BOOST_TIMERS
   boost::timer::cpu_timer lamda_iteration_timer;
   lamda_iteration_timer.start();
@@ -222,7 +221,7 @@ bool LevenbergMarquardtOptimizer::tryLambda(const GaussianFactorGraph& linear,
   } // if (systemSolvedSuccessfully)
 
   if (params_.verbosityLM == LevenbergMarquardtParams::SUMMARY) {
-#ifdef GTSAM_USE_BOOST_FEATURES
+#if GTSAM_USE_BOOST_FEATURES
 // do timing
 #ifdef GTSAM_USING_NEW_BOOST_TIMERS
     double iterationTime = 1e-9 * lamda_iteration_timer.elapsed().wall;

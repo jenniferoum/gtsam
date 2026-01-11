@@ -147,6 +147,14 @@ class GTSAM_EXPORT HybridBayesNet : public BayesNet<HybridConditional> {
   }
 
   /**
+   * @brief Compute the Most Probable Explanation (MPE)
+   * of the discrete variables.
+   *
+   * @return DiscreteValues
+   */
+  DiscreteValues mpe() const;
+
+  /**
    * @brief Solve the HybridBayesNet by first computing the MPE of all the
    * discrete variables and then optimizing the continuous variables based on
    * the MPE assignment.
@@ -173,10 +181,11 @@ class GTSAM_EXPORT HybridBayesNet : public BayesNet<HybridConditional> {
    *   auto sample = bn.sample(given, &rng);
    *
    * @param given Values of missing variables.
-   * @param rng The pseudo-random number generator.
+   * @param rng The optional pseudo-random number generator.
    * @return HybridValues
    */
-  HybridValues sample(const HybridValues &given, std::mt19937_64 *rng) const;
+  HybridValues sample(const HybridValues &given,
+                      std::mt19937_64 *rng = nullptr) const;
 
   /**
    * @brief Sample using ancestral sampling.
@@ -185,33 +194,27 @@ class GTSAM_EXPORT HybridBayesNet : public BayesNet<HybridConditional> {
    *   std::mt19937_64 rng(42);
    *   auto sample = bn.sample(&rng);
    *
-   * @param rng The pseudo-random number generator.
+   * @param rng The optional pseudo-random number generator.
    * @return HybridValues
    */
-  HybridValues sample(std::mt19937_64 *rng) const;
-
-  /**
-   * @brief Sample from an incomplete BayesNet, use default rng.
-   *
-   * @param given Values of missing variables.
-   * @return HybridValues
-   */
-  HybridValues sample(const HybridValues &given) const;
-
-  /**
-   * @brief Sample using ancestral sampling, use default rng.
-   *
-   * @return HybridValues
-   */
-  HybridValues sample() const;
+  HybridValues sample(std::mt19937_64 *rng = nullptr) const;
 
   /**
    * @brief Prune the Bayes Net such that we have at most maxNrLeaves leaves.
    *
    * @param maxNrLeaves Continuous values at which to compute the error.
+   * @param marginalThreshold The threshold to check the mode marginals against.
+   * @param fixedValues The fixed values resulting from dead mode removal.
+   *
+   * @note If marginal greater than this threshold, the mode gets assigned that
+   * value and is considered "dead" for hybrid elimination. The mode can then be
+   * removed since it only has a single possible assignment.
+   *
    * @return A pruned HybridBayesNet
    */
-  HybridBayesNet prune(size_t maxNrLeaves) const;
+  HybridBayesNet prune(size_t maxNrLeaves,
+                       const std::optional<double> &marginalThreshold = {},
+                       DiscreteValues *fixedValues = nullptr) const;
 
   /**
    * @brief Error method using HybridValues which returns specific error for
@@ -245,7 +248,7 @@ class GTSAM_EXPORT HybridBayesNet : public BayesNet<HybridConditional> {
    * @param discrete Optional DiscreteValues
    * @return double
    */
-  double negLogConstant(const std::optional<DiscreteValues> &discrete) const;
+  double negLogConstant(const std::optional<DiscreteValues>& discrete = {}) const;
 
   /**
    * @brief Compute normalized posterior P(M|X=x) and return as a tree.
@@ -268,7 +271,7 @@ class GTSAM_EXPORT HybridBayesNet : public BayesNet<HybridConditional> {
   /// @}
 
  private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
   template <class ARCHIVE>

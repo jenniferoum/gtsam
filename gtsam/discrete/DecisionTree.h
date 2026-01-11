@@ -23,7 +23,7 @@
 #include <gtsam/base/types.h>
 #include <gtsam/discrete/Assignment.h>
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
 #include <boost/serialization/nvp.hpp>
 #endif
 #include <memory>
@@ -132,7 +132,7 @@ namespace gtsam {
       virtual bool isLeaf() const = 0;
 
      private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
       /** Serialization function */
       friend class boost::serialization::access;
       template <class ARCHIVE>
@@ -393,6 +393,13 @@ namespace gtsam {
       return DecisionTree(newRoot);
     }
 
+    /** Choose multiple values. */
+    DecisionTree restrict(const Assignment<L>& assignment) const {
+      NodePtr newRoot = root_;
+      for (const auto& [l, v] : assignment) newRoot = newRoot->choose(l, v);
+      return DecisionTree(newRoot);
+    }
+
     /** combine subtrees on key with binary operation "op" */
     DecisionTree combine(const L& label, size_t cardinality,
                          const Binary& op) const;
@@ -440,7 +447,7 @@ namespace gtsam {
     /// @}
 
    private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
     /** Serialization function */
     friend class boost::serialization::access;
     template <class ARCHIVE>

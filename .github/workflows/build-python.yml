@@ -1,6 +1,21 @@
 name: Python CI
 
-on: [pull_request]
+# Since this is a required check, specify paths-ignore in the check-paths job
+# instead of under 'pull_request:'. Otherwise, the check is still required but
+# never runs, and a maintainer must bypass the check in order to merge the PR.
+on:
+  push:
+    branches:
+      - develop
+    paths-ignore:
+      - '**.md'
+      - '**.ipynb'
+      - 'myst.yml'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.ipynb'
+      - 'myst.yml'
 
 # Every time you make a push to your PR, it cancel immediately the previous checks,
 # and start a new one. The other runner will be available more quickly to your PR.
@@ -9,7 +24,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Check paths to changed files to see if any are non-ignored.
+  check-paths:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.filter.outputs.relevant_changes }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check modified files
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            relevant_changes:
+              - '!**.md'
+              - '!**.ipynb' 
+              - '!myst.yml'
+
   build:
+    # Only run build if relevant files have been modified in this PR.
+    needs: check-paths
+    if: needs.check-paths.outputs.should_run == 'true'
+
     name: ${{ matrix.name }} ${{ matrix.build_type }} Python ${{ matrix.python_version }}
     runs-on: ${{ matrix.os }}
 
@@ -20,6 +58,7 @@ jobs:
       PYTHON_VERSION: ${{ matrix.python_version }}
       BOOST_VERSION: 1.72.0
       BOOST_EXE: boost_1_72_0-msvc-14.2
+      GTSAM_ALLOW_DEPRECATED_SINCE_V43: OFF
 
     strategy:
       fail-fast: true
@@ -28,35 +67,35 @@ jobs:
         # See https://help.github.com/en/articles/workflow-syntax-for-github-actions.
         name:
           [
-            ubuntu-20.04-gcc-9,
-            ubuntu-20.04-clang-9,
-            macos-13-xcode-14.2,
+            ubuntu-22.04-gcc-11,
+            ubuntu-22.04-clang-11,
             macos-14-xcode-15.4,
+            macos-15-xcode-16,
             windows-2022-msbuild,
           ]
 
         build_type: [Release]
         python_version: [3]
         include:
-          - name: ubuntu-20.04-gcc-9
-            os: ubuntu-20.04
+          - name: ubuntu-22.04-gcc-11
+            os: ubuntu-22.04
             compiler: gcc
-            version: "9"
+            version: "11"
 
-          - name: ubuntu-20.04-clang-9
-            os: ubuntu-20.04
+          - name: ubuntu-22.04-clang-11
+            os: ubuntu-22.04
             compiler: clang
-            version: "9"
-
-          - name: macos-13-xcode-14.2
-            os: macos-13
-            compiler: xcode
-            version: "14.2"
+            version: "11"
 
           - name: macos-14-xcode-15.4
             os: macos-14
             compiler: xcode
             version: "15.4"
+
+          - name: macos-15-xcode-16
+            os: macos-15
+            compiler: xcode
+            version: "16"
 
           - name: windows-2022-msbuild
             os: windows-2022
@@ -96,9 +135,17 @@ jobs:
       - name: Install (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew tap ProfFan/robotics
-          brew install cmake ninja
-          brew install boost
+          brew update
+          # Avoid reinstalling cmake when a pinned/local tap version is preinstalled on the runner.
+          if brew list cmake >/dev/null 2>&1; then
+            echo "cmake already installed"
+            cmake --version
+          else
+            brew install cmake
+          fi
+          # Install ninja and boost only if missing
+          brew list ninja >/dev/null 2>&1 || brew install ninja
+          brew list boost >/dev/null 2>&1 || brew install boost
           sudo xcode-select -switch /Applications/Xcode.app
           echo "CC=clang" >> $GITHUB_ENV
           echo "CXX=clang++" >> $GITHUB_ENV

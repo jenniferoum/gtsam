@@ -20,6 +20,7 @@
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/Unit3.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
+#include <gtsam/nonlinear/NoiseModelFactorN.h>
 
 namespace gtsam {
 
@@ -73,7 +74,7 @@ class AttitudeFactor {
   const Unit3& bRef() const { return bMeasured_; }
 #endif
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
   template <class ARCHIVE>
@@ -138,7 +139,7 @@ class GTSAM_EXPORT Rot3AttitudeFactor : public NoiseModelFactorN<Rot3>,
   }
 
  private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
   template <class ARCHIVE>
@@ -220,7 +221,7 @@ class GTSAM_EXPORT Pose3AttitudeFactor : public NoiseModelFactorN<Pose3>,
   }
 
  private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
   template <class ARCHIVE>

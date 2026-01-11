@@ -27,37 +27,26 @@
 
 using namespace std::placeholders;
 
-namespace testing {
-// Create default parameters with Z-down and above noise parameters
-static std::shared_ptr<PreintegrationParams> Params() {
-  auto p = PreintegrationParams::MakeSharedD(kGravity);
-  p->gyroscopeCovariance = kGyroSigma * kGyroSigma * I_3x3;
-  p->accelerometerCovariance = kAccelSigma * kAccelSigma * I_3x3;
-  p->integrationCovariance = 0.0001 * I_3x3;
-  return p;
-}
-}
-
 /* ************************************************************************* */
 TEST(ManifoldPreintegration, BiasCorrectionJacobians) {
   testing::SomeMeasurements measurements;
 
   std::function<Rot3(const Vector3&, const Vector3&)> deltaRij =
-      [=](const Vector3& a, const Vector3& w) {
+      [&](const Vector3& a, const Vector3& w) {
         ManifoldPreintegration pim(testing::Params(), Bias(a, w));
         testing::integrateMeasurements(measurements, &pim);
         return pim.deltaRij();
       };
 
   std::function<Point3(const Vector3&, const Vector3&)> deltaPij =
-      [=](const Vector3& a, const Vector3& w) {
+      [&](const Vector3& a, const Vector3& w) {
         ManifoldPreintegration pim(testing::Params(), Bias(a, w));
         testing::integrateMeasurements(measurements, &pim);
         return pim.deltaPij();
       };
 
   std::function<Vector3(const Vector3&, const Vector3&)> deltaVij =
-      [=](const Vector3& a, const Vector3& w) {
+      [&](const Vector3& a, const Vector3& w) {
         ManifoldPreintegration pim(testing::Params(), Bias(a, w));
         testing::integrateMeasurements(measurements, &pim);
         return pim.deltaVij();

@@ -48,6 +48,24 @@ Matrix3 Pose2::matrix() const {
 }
 
 /* ************************************************************************* */
+Vector9 Pose2::vec(OptionalJacobian<9, 3> H) const {
+  // Vectorize
+  const Matrix3 M = matrix();
+  const Vector9 v = Eigen::Map<const Vector9>(M.data());
+
+  // If requested, calculate H
+  if (H) {
+    H->setZero();
+    auto R = M.block<2, 2>(0, 0);
+    H->block<2, 1>(0, 2) = R.col(1);
+    H->block<2, 1>(3, 2) = -R.col(0);
+    H->block<2, 2>(6, 0) = R;
+  }
+
+  return v;
+}
+
+/* ************************************************************************* */
 void Pose2::print(const string& s) const {
   std::cout << (s.empty() ? s : s + " ") << *this << std::endl;
 }
@@ -204,6 +222,20 @@ Pose2 Pose2::inverse() const {
 }
 
 /* ************************************************************************* */
+Matrix3 Pose2::Hat(const Pose2::TangentVector& xi) {
+  Matrix3 X;
+  X << 0., -xi.z(), xi.x(),
+    xi.z(), 0., xi.y(),
+    0., 0., 0.;
+  return X;
+}
+
+/* ************************************************************************* */
+Pose2::TangentVector Pose2::Vee(const Matrix3& X) {
+  return TangentVector(X(0, 2), X(1, 2), X(1,0));
+}
+
+/* ************************************************************************* */
 // see doc/math.lyx, SE(2) section
 Point2 Pose2::transformTo(const Point2& point,
     OptionalJacobian<2, 3> Hpose, OptionalJacobian<2, 2> Hpoint) const {
@@ -308,6 +340,10 @@ double Pose2::range(const Pose2& pose,
   }
   return r;
 }
+
+/* ************************************************************************* */
+// Compute vectorized Lie algebra generators for SE(2)
+
 
 /* *************************************************************************
  * Align finds the angle using a linear method:

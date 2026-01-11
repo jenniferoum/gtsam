@@ -18,9 +18,11 @@
  */
 
 #include <gtsam/base/FastSet.h>
-#include <gtsam/hybrid/HybridValues.h>
 #include <gtsam/discrete/DecisionTreeFactor.h>
 #include <gtsam/discrete/DiscreteConditional.h>
+#include <gtsam/discrete/TableFactor.h>
+#include <gtsam/hybrid/HybridValues.h>
+#include <gtsam/inference/Ordering.h>
 
 #include <utility>
 
@@ -60,6 +62,49 @@ namespace gtsam {
   /* ************************************************************************ */
   double DecisionTreeFactor::error(const HybridValues& values) const {
     return error(values.discrete());
+  }
+
+  /* ************************************************************************ */
+  DiscreteFactor::shared_ptr DecisionTreeFactor::multiply(
+      const DiscreteFactor::shared_ptr& f) const {
+    DiscreteFactor::shared_ptr result;
+    if (auto tf = std::dynamic_pointer_cast<TableFactor>(f)) {
+      // If f is a TableFactor, we convert `this` to a TableFactor since this
+      // conversion is cheaper than converting `f` to a DecisionTreeFactor. We
+      // then return a TableFactor.
+      result = std::make_shared<TableFactor>((*tf) * TableFactor(*this));
+
+    } else if (auto dtf = std::dynamic_pointer_cast<DecisionTreeFactor>(f)) {
+      // If `f` is a DecisionTreeFactor, simply call operator*.
+      result = std::make_shared<DecisionTreeFactor>(this->operator*(*dtf));
+
+    } else {
+      // Simulate double dispatch in C++
+      // Useful for other classes which inherit from DiscreteFactor and have
+      // only `operator*(DecisionTreeFactor)` defined. Thus, other classes don't
+      // need to be updated.
+      result = std::make_shared<DecisionTreeFactor>(f->operator*(*this));
+    }
+    return result;
+  }
+
+  /* ************************************************************************ */
+  DiscreteFactor::shared_ptr DecisionTreeFactor::operator/(
+      const DiscreteFactor::shared_ptr& f) const {
+    if (auto tf = std::dynamic_pointer_cast<TableFactor>(f)) {
+      // Check if `f` is a TableFactor. If yes, then
+      // convert `this` to a TableFactor which is cheaper.
+      return std::make_shared<TableFactor>(tf->operator/(TableFactor(*this)));
+
+    } else if (auto dtf = std::dynamic_pointer_cast<DecisionTreeFactor>(f)) {
+      // If `f` is a DecisionTreeFactor, divide normally.
+      return std::make_shared<DecisionTreeFactor>(this->operator/(*dtf));
+
+    } else {
+      // Else, convert `f` to a DecisionTreeFactor so we can divide
+      return std::make_shared<DecisionTreeFactor>(
+          this->operator/(f->toDecisionTreeFactor()));
+    }
   }
 
   /* ************************************************************************ */
@@ -203,7 +248,7 @@ namespace gtsam {
   /* ************************************************************************ */
   std::vector<double> DecisionTreeFactor::probabilities() const {
     // Set of all keys
-    std::set<Key> allKeys(keys().begin(), keys().end());
+    KeySet allKeys(keys().begin(), keys().end());
 
     std::vector<double> probs;
 
@@ -216,7 +261,7 @@ namespace gtsam {
      */
     auto op = [&](const Assignment<Key>& a, double p) {
       // Get all the keys in the current assignment
-      std::set<Key> assignment_keys;
+      KeySet assignment_keys;
       for (auto&& [k, _] : a) {
         assignment_keys.insert(k);
       }
@@ -414,13 +459,13 @@ namespace gtsam {
 
     auto op = [&](const Assignment<Key>& a, double p) {
       // Get all the keys in the current assignment
-      std::set<Key> assignment_keys;
+      KeySet assignment_keys;
       for (auto&& [k, _] : a) {
         assignment_keys.insert(k);
       }
 
       // Find the keys missing in the assignment
-      std::vector<Key> diff;
+      KeyVector diff;
       std::set_difference(allKeys.begin(), allKeys.end(),
                           assignment_keys.begin(), assignment_keys.end(),
                           std::back_inserter(diff));
@@ -457,6 +502,10 @@ namespace gtsam {
     };
     this->visitWith(op);
 
+    // If total number of hypotheses is less than N, return 0.0
+    if (min_heap.size() < N) {
+      return 0.0;
+    }
     return min_heap.top();
   }
 
@@ -479,6 +528,10 @@ namespace gtsam {
 
       // Check if value is less than the threshold and
       // we haven't exceeded the maximum number of leaves.
+      // TODO(Varun): Bug since we can have a case where we need to prune higher
+      // probabilities after we have reached N.
+      // E.g. N=3 for [0.2, 0.2, 0.1, 0.2, 0.3]
+      // will give [0.2, 0.2, 0.0, 0.2, 0.0]
       if (value < threshold || total >= N) {
         return 0.0;
       } else {
@@ -491,6 +544,26 @@ namespace gtsam {
     // Create pruned decision tree factor and return.
     return DecisionTreeFactor(this->discreteKeys(), thresholded);
   }
+
+/* ************************************************************************ */
+DiscreteFactor::shared_ptr DecisionTreeFactor::restrict(
+    const DiscreteValues& assignment) const {
+  ADT restricted_tree = ADT::restrict(assignment);
+  // Get all the keys that are not restricted by the assignment
+  // This ensures that the new restricted factor doesn't have keys
+  // for which the information has been removed.
+  DiscreteKeys restricted_keys = this->discreteKeys();
+  for (auto&& kv : assignment) {
+    Key key = kv.first;
+    // Remove the key from the keys list
+    restricted_keys.erase(
+        std::remove_if(restricted_keys.begin(), restricted_keys.end(),
+                       [key](const DiscreteKey& k) { return k.first == key; }),
+        restricted_keys.end());
+  }
+  // Create the restricted factor with the appropriate keys and tree.
+  return std::make_shared<DecisionTreeFactor>(restricted_keys, restricted_tree);
+}
 
   /* ************************************************************************ */
 }  // namespace gtsam

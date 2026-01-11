@@ -86,11 +86,11 @@ private:
 };
 using NonCopyableIntPair = std::pair<NonCopyableInt, NonCopyableInt>;
 
-PYBIND11_MAKE_OPAQUE(std::vector<NonCopyableInt>);
-PYBIND11_MAKE_OPAQUE(std::vector<NonCopyableIntPair>);
+PYBIND11_MAKE_OPAQUE(std::vector<NonCopyableInt>)
+PYBIND11_MAKE_OPAQUE(std::vector<NonCopyableIntPair>)
 
 template <typename PythonType>
-py::list test_random_access_iterator(PythonType x) {
+py::list test_random_access_iterator(const PythonType &x) {
     if (x.size() < 5) {
         throw py::value_error("Please provide at least 5 elements for testing.");
     }

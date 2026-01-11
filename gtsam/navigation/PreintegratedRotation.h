@@ -64,12 +64,11 @@ struct GTSAM_EXPORT PreintegratedRotationParams {
   PreintegratedRotationParams() : gyroscopeCovariance(I_3x3) {}
 
   PreintegratedRotationParams(const Matrix3& gyroscope_covariance,
-                              std::optional<Vector3> omega_coriolis)
-    : gyroscopeCovariance(gyroscope_covariance) {
-      if (omega_coriolis) {
-        omegaCoriolis = *omega_coriolis;
-      }
-  }
+                              std::optional<Vector3> omega_coriolis = {},
+                              std::optional<Pose3> body_P_sensor = {})
+    : gyroscopeCovariance(gyroscope_covariance),
+      omegaCoriolis(omega_coriolis),
+      body_P_sensor(body_P_sensor) {}
 
   virtual ~PreintegratedRotationParams() {}
 
@@ -85,7 +84,7 @@ struct GTSAM_EXPORT PreintegratedRotationParams {
   std::optional<Pose3>   getBodyPSensor()   const { return body_P_sensor; }
 
  private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
   template<class ARCHIVE>
@@ -126,12 +125,12 @@ class GTSAM_EXPORT PreintegratedRotation {
   Rot3 deltaRij_;             ///< Preintegrated relative orientation (in frame i)
   Matrix3 delRdelBiasOmega_;  ///< Jacobian of preintegrated rotation w.r.t. angular rate bias
 
-  /// Default constructor for serialization
-  PreintegratedRotation() {}
-
- public:
+  public:
   /// @name Constructors
   /// @{
+    
+  /// Default constructor for serialization
+  PreintegratedRotation() {}
 
   /// Default constructor, resets integration to zero
   explicit PreintegratedRotation(const std::shared_ptr<Params>& p) : p_(p) {
@@ -148,9 +147,6 @@ class GTSAM_EXPORT PreintegratedRotation {
 
   /// @name Basic utilities
   /// @{
-
-  /// Re-initialize PreintegratedMeasurements
-  void resetIntegration();
 
   /// check parameters equality: checks whether shared pointer points to same Params object.
   bool matchesParamsWith(const PreintegratedRotation& other) const {
@@ -175,6 +171,9 @@ class GTSAM_EXPORT PreintegratedRotation {
   /// @name Main functionality
   /// @{
 
+  /// Re-initialize PreintegratedMeasurements
+  void resetIntegration();
+
   /**
    * @brief Calculate an incremental rotation given the gyro measurement and a
    * time interval, and update both deltaTij_ and deltaRij_.
@@ -196,8 +195,9 @@ class GTSAM_EXPORT PreintegratedRotation {
   Rot3 biascorrectedDeltaRij(const Vector3& biasOmegaIncr,
                              OptionalJacobian<3, 3> H = {}) const;
 
-  /// Integrate coriolis correction in body frame rot_i
-  Vector3 integrateCoriolis(const Rot3& rot_i) const;
+  /// Integrate coriolis correction in body frame Ri
+  Vector3 integrateCoriolis(const Rot3& Ri,
+                            OptionalJacobian<3, 3> H = {}) const;
 
   /// @}
 
@@ -227,7 +227,7 @@ class GTSAM_EXPORT PreintegratedRotation {
   /// @}
 
  private:
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
   template <class ARCHIVE>

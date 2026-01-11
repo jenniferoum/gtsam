@@ -23,6 +23,7 @@
 
 #include <gtsam/geometry/Point2.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
+#include <gtsam/nonlinear/NoiseModelFactorN.h>
 #include <gtsam/nonlinear/GraphvizFormatting.h>
 #include <gtsam/inference/FactorGraph.h>
 #include <gtsam/nonlinear/PriorFactor.h>
@@ -250,7 +251,7 @@ namespace gtsam {
     std::shared_ptr<HessianFactor> linearizeToHessianFactor(
         const Values& values, const Scatter& scatter, const Dampen& dampen = nullptr) const;
 
-#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
     /** Serialization function */
     friend class boost::serialization::access;
     template<class ARCHIVE>

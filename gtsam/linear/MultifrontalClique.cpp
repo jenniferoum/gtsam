@@ -1,0 +1,407 @@
+/* ----------------------------------------------------------------------------
+
+ * GTSAM Copyright 2010, Georgia Tech Research Corporation,
+ * Atlanta, Georgia 30332-0415
+ * All Rights Reserved
+ * Authors: Frank Dellaert, et al. (see THANKS for the full author list)
+
+ * See LICENSE for the license information
+
+ * -------------------------------------------------------------------------- */
+
+/**
+ * @file MultifrontalClique.cpp
+ * @brief Implementation of imperative multifrontal clique data structure.
+ * @author Frank Dellaert
+ * @date   December 2025
+ */
+
+#include <gtsam/base/Matrix.h>
+#include <gtsam/linear/GaussianConditional.h>
+#include <gtsam/linear/JacobianFactor.h>
+#include <gtsam/linear/MultifrontalClique.h>
+
+#include <algorithm>
+#include <cassert>
+#include <iostream>
+#include <stdexcept>
+
+namespace gtsam {
+
+namespace {
+
+// Print keys in [start, end) using the provided formatter.
+void printKeyRange(std::ostream& os, const KeyVector& keys, size_t start,
+                   size_t end, const KeyFormatter& formatter) {
+  os << "[";
+  for (size_t i = start; i < end; ++i) {
+    os << formatter(keys[i]);
+    if (i + 1 < end) os << ", ";
+  }
+  os << "]";
+}
+
+// Build a stacked separator vector x_sep in the provided scratch buffer.
+Vector& buildSeparatorVector(const std::vector<const Vector*>& separatorPtrs,
+                             Vector* scratch) {
+  size_t offset = 0;
+  for (const Vector* values : separatorPtrs) {
+    scratch->segment(offset, values->size()) = *values;
+    offset += values->size();
+  }
+  return *scratch;
+}
+
+#ifndef NDEBUG
+bool containsKey(const KeyVector& orderedKeys, Key key) {
+  return std::find(orderedKeys.begin(), orderedKeys.end(), key) !=
+         orderedKeys.end();
+}
+
+bool validateFactorKeys(const GaussianFactorGraph& graph,
+                        const std::vector<size_t>& factorIndices,
+                        const KeyVector& orderedKeys,
+                        const std::unordered_set<Key>* fixedKeys) {
+  for (size_t index : factorIndices) {
+    assert(index < graph.size());
+    const GaussianFactor::shared_ptr& gf = graph[index];
+    if (!gf) continue;
+    for (Key key : gf->keys()) {
+      if (containsKey(orderedKeys, key)) continue;
+      if (fixedKeys && fixedKeys->count(key)) continue;
+      return false;
+    }
+  }
+  return true;
+}
+#endif
+
+}  // namespace
+
+MultifrontalClique::MultifrontalClique(
+    std::vector<size_t> factorIndices,
+    const std::weak_ptr<MultifrontalClique>& parent, const KeyVector& frontals,
+    const KeySet& separatorKeys, const KeyDimMap& dims, size_t vbmRows,
+    VectorValues* solution, const std::unordered_set<Key>* fixedKeys) {
+  factorIndices_ = std::move(factorIndices);
+  this->parent = parent;
+  fixedKeys_ = fixedKeys;
+
+  if (frontals.empty()) {
+    throw std::runtime_error(
+        "MultifrontalSolver: cluster has no frontal keys.");
+  }
+
+  // Cache keys in block order for fast linear lookup in small cliques.
+  orderedKeys_.clear();
+  orderedKeys_.reserve(frontals.size() + separatorKeys.size());
+  orderedKeys_.insert(orderedKeys_.end(), frontals.begin(), frontals.end());
+  orderedKeys_.insert(orderedKeys_.end(), separatorKeys.begin(),
+                      separatorKeys.end());
+
+  // Cache total frontal/separator dimensions for scheduling and sizing.
+  frontalDim = internal::sumDims(dims, frontals);
+  separatorDim = internal::sumDims(dims, separatorKeys);
+
+  rhsScratch_.resize(frontalDim);
+  separatorScratch_.resize(separatorDim);
+
+  // Cache pointers into the solution for fast back-substitution.
+  cacheSolutionPointers(solution, frontals, separatorKeys);
+
+  // Pre-allocate matrices once per structure.
+  blockDims_ = this->blockDims(dims, frontals, separatorKeys);
+  initializeMatrices(blockDims_, vbmRows);
+}
+
+void MultifrontalClique::finalize(std::vector<ChildInfo> children) {
+  this->children.clear();
+  this->children.reserve(children.size());
+  for (const auto& child : children) {
+    this->children.push_back(child.clique);
+  }
+
+  // Compute parent indices for all children (separator blocks + RHS block).
+  for (const auto& child : children) {
+    if (!child.clique) continue;
+    std::vector<DenseIndex> indices;
+    indices.reserve(child.separatorKeys.size() + 1);
+    for (Key key : child.separatorKeys) {
+      indices.push_back(blockIndex(key));
+    }
+    // The RHS block is always the last block in Ab/SBM.
+    indices.push_back(static_cast<DenseIndex>(orderedKeys_.size()));
+    child.clique->setParentIndices(indices);
+  }
+
+  // Allocation is deferred until load.
+}
+
+DenseIndex MultifrontalClique::blockIndex(Key key) const {
+  const auto it = std::find(orderedKeys_.begin(), orderedKeys_.end(), key);
+  assert(it != orderedKeys_.end());
+  return static_cast<DenseIndex>(std::distance(orderedKeys_.begin(), it));
+}
+
+void MultifrontalClique::cacheSolutionPointers(VectorValues* solution,
+                                               const KeyVector& frontals,
+                                               const KeySet& separatorKeys) {
+  frontalPtrs_.clear();
+  separatorPtrs_.clear();
+  frontalPtrs_.reserve(frontals.size());
+  separatorPtrs_.reserve(separatorKeys.size());
+  for (Key key : frontals) {
+    frontalPtrs_.push_back(&solution->at(key));
+  }
+  for (Key key : separatorKeys) {
+    separatorPtrs_.push_back(&solution->at(key));
+  }
+}
+
+std::vector<size_t> MultifrontalClique::blockDims(
+    const KeyDimMap& dims, const KeyVector& frontals,
+    const KeySet& separatorKeys) const {
+  std::vector<size_t> blockDims;
+  blockDims.reserve(frontals.size() + separatorKeys.size());
+  for (Key k : frontals) blockDims.push_back(dims.at(k));
+  for (Key k : separatorKeys) blockDims.push_back(dims.at(k));
+  return blockDims;
+}
+
+void MultifrontalClique::initializeMatrices(
+    const std::vector<size_t>& blockDims, size_t verticalBlockMatrixRows) {
+  Ab_ = VerticalBlockMatrix(blockDims, verticalBlockMatrixRows, true);
+  // Ab's structure is fixed; clear it once and reuse across loads.
+  Ab_.matrix().setZero();
+  RSd_ =
+      VerticalBlockMatrix(blockDims, static_cast<DenseIndex>(frontalDim), true);
+}
+
+void MultifrontalClique::allocateSbm() {
+  if (sbm_.nBlocks() > 0) return;
+  sbm_ = SymmetricBlockMatrix(blockDims_, true);
+}
+
+size_t MultifrontalClique::addJacobianFactor(
+    const JacobianFactor& jacobianFactor, size_t rowOffset) {
+  // We only overwrite the fixed sparsity pattern, so Ab must be zeroed once in
+  // initializeMatrices and then kept consistent across loads.
+  const size_t rows = jacobianFactor.rows();
+  const size_t rhsBlockIdx = Ab_.nBlocks() - 1;
+  for (auto it = jacobianFactor.begin(); it != jacobianFactor.end(); ++it) {
+    Key k = *it;
+    if (fixedKeys_ && fixedKeys_->count(k)) continue;
+    const size_t blockIdx = blockIndex(k);
+    Ab_(blockIdx).middleRows(rowOffset, rows) = jacobianFactor.getA(it);
+  }
+  Ab_(rhsBlockIdx).middleRows(rowOffset, rows) = jacobianFactor.getb();
+
+  if (auto model = jacobianFactor.get_model()) {
+    if (!model->isConstrained()) {
+      // Only whiten non-constrained rows; constrained factors are handled as
+      // hard constraints elsewhere.
+      model->WhitenInPlace(Ab_.matrix().middleRows(rowOffset, rows));
+    }
+  }
+  return rows;
+}
+
+void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
+  assert(validateFactorKeys(graph, factorIndices_, orderedKeys_, fixedKeys_));
+
+  size_t rowOffset = 0;
+  for (size_t index : factorIndices_) {
+    assert(index < graph.size());
+    const GaussianFactor::shared_ptr& gf = graph[index];
+    if (!gf) continue;
+    if (!gf->isJacobian()) {
+      throw std::runtime_error(
+          "MultifrontalClique::fillAb: only JacobianFactor inputs are "
+          "supported.");
+    }
+    auto jacobianFactor = std::static_pointer_cast<JacobianFactor>(gf);
+    rowOffset += addJacobianFactor(*jacobianFactor, rowOffset);
+  }
+
+  // Lock in QR only for leaf cliques.
+  const bool isLeaf = children.empty();
+  const bool useQR =
+      isLeaf && (frontalDim > 0) &&
+      (frontalDim + separatorDim > kQrAspectRatio * frontalDim) &&
+      (Ab_.matrix().rows() >= static_cast<DenseIndex>(frontalDim));
+  solveMode_ = useQR ? SolveMode::QrLeaf : SolveMode::Cholesky;
+  RSdReady_ = false;
+  assert((useQR && RSd_.matrix().rows() ==
+                       static_cast<DenseIndex>(Ab_.matrix().rows()) ||
+          RSd_.matrix().rows() == static_cast<DenseIndex>(frontalDim)));
+  allocateSbm();
+}
+
+void MultifrontalClique::prepareForElimination() {
+  // QR leaf cliques skip SBM assembly entirely.
+  if (useQR()) return;
+  assert(sbm_.nBlocks() > 0);
+  sbm_.setZero();
+  if (Ab_.matrix().rows() > 0) {
+    sbm_.selfadjointView().rankUpdate(Ab_.matrix().transpose());
+  }
+
+  for (const auto& child : children) {
+    if (!child) continue;
+    child->updateParent(*this);
+  }
+}
+
+void MultifrontalClique::factorize() {
+  if (useQR()) {
+    // Copy Ab_ to preserve its invariant; QR writes in place.
+    assert(RSd_.matrix().rows() == Ab_.matrix().rows());
+    assert(RSd_.matrix().cols() == Ab_.matrix().cols());
+    RSd_.matrix() = Ab_.matrix();
+    inplace_QR(RSd_.matrix());
+  } else {
+    sbm_.choleskyPartial(numFrontals());
+    sbm_.split(numFrontals(), &RSd_);
+    sbm_.blockStart() = 0;
+  }
+  RSdReady_ = true;
+}
+
+void MultifrontalClique::addIdentityDamping(double lambda) {
+  const size_t nf = numFrontals();
+  for (size_t j = 0; j < nf; ++j) {
+    sbm_.addScaledIdentity(j, lambda);
+  }
+}
+
+void MultifrontalClique::addDiagonalDamping(double lambda, double minDiagonal,
+                                            double maxDiagonal) {
+  const size_t nf = numFrontals();
+  for (size_t j = 0; j < nf; ++j) {
+    const Vector scaled =
+        lambda * sbm_.diagonal(j).cwiseMax(minDiagonal).cwiseMin(maxDiagonal);
+    sbm_.addToDiagonalBlock(j, scaled);
+  }
+}
+
+void MultifrontalClique::eliminateInPlace() {
+  prepareForElimination();
+  factorize();
+}
+
+void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
+  if (useQR()) {
+    // Accumulate separator (and RHS) normal equations (S^T S) into the parent.
+    assert(RSdReady_);
+    assert(RSd_.firstBlock() == 0);
+    assert(parent.sbm_.nBlocks() > 0);
+    const DenseIndex nfBlocks = static_cast<DenseIndex>(numFrontals());
+    RSd_.firstBlock() = nfBlocks;
+    parent.sbm_.updateFromOuterProductBlocks(RSd_, parentIndices_);
+    RSd_.firstBlock() = 0;
+  } else {
+    // Accumulate the S^T S part from this clique's SBM into the parent.
+    assert(sbm_.nBlocks() > 0 && sbm_.blockStart() == 0);
+    sbm_.blockStart() = numFrontals();
+    parent.sbm_.updateFromMappedBlocks(sbm_, parentIndices_);
+    sbm_.blockStart() = 0;
+  }
+}
+
+std::shared_ptr<GaussianConditional> MultifrontalClique::conditional() const {
+  assert(RSdReady_);
+  // RSd_ is cached at elimination time.
+  return std::make_shared<GaussianConditional>(orderedKeys_, numFrontals(),
+                                               RSd_);
+}
+
+// Solve with block back-substitution on the Cholesky-stored SBM.
+void MultifrontalClique::updateSolution() const {
+  assert(RSdReady_);
+  // Use cached [R S d] for fast back-substitution.
+  const size_t nf = numFrontals();
+  const size_t n = RSd_.nBlocks() - 1;  // # frontals + # separators
+
+  // The in-place factorization yields an upper-triangular system [R S d]:
+  //   R * x_f + S * x_s = d,
+  // with x_f the frontals and x_s the separators.
+  const auto R = RSd_.range(0, nf).triangularView<Eigen::Upper>();
+  const auto S = RSd_.range(nf, n);
+  const auto d = RSd_.range(n, n + 1);
+
+  // We first solve rhs = d - S * x_s
+  rhsScratch_.noalias() = d;
+  if (!separatorPtrs_.empty()) {
+    const Vector& x_s =
+        buildSeparatorVector(separatorPtrs_, &separatorScratch_);
+    rhsScratch_.noalias() -= S * x_s;
+  }
+
+  // Then solve for x_f, our solution, via R * x_f = rhs
+  // We solve the contiguous frontal system in one triangular solve.
+  R.solveInPlace(rhsScratch_);
+  const Vector& x_f = rhsScratch_;
+
+  // Write solved frontal blocks back into the global solution.
+  size_t offset = 0;
+  for (Vector* values : frontalPtrs_) {
+    const size_t dim = values->size();
+    values->noalias() = x_f.segment(offset, dim);
+    offset += dim;
+  }
+}
+
+void MultifrontalClique::print(const std::string& s,
+                               const KeyFormatter& keyFormatter) const {
+  if (!s.empty()) std::cout << s;
+  const KeyVector& orderedKeys = orderedKeys_;
+  std::cout << "Clique(frontals=[";
+  printKeyRange(std::cout, orderedKeys, 0,
+                std::min(numFrontals(), orderedKeys.size()), keyFormatter);
+  std::cout << "], separators=[";
+  printKeyRange(std::cout, orderedKeys,
+                std::min(numFrontals(), orderedKeys.size()), orderedKeys.size(),
+                keyFormatter);
+  std::cout << "], factors=" << factorIndices_.size()
+            << ", children=" << children.size()
+            << ", sbmBlocks=" << sbm_.nBlocks()
+            << ", AbRows=" << Ab_.matrix().rows() << ")\n";
+
+  auto assembleSbm = [](const SymmetricBlockMatrix& sbm) {
+    const size_t nBlocks = sbm.nBlocks();
+    std::vector<size_t> offsets(nBlocks + 1, 0);
+    for (size_t i = 0; i < nBlocks; ++i) {
+      offsets[i + 1] = offsets[i] + sbm.getDim(i);
+    }
+    Matrix full = Matrix::Zero(offsets.back(), offsets.back());
+    for (size_t i = 0; i < nBlocks; ++i) {
+      for (size_t j = 0; j < nBlocks; ++j) {
+        Matrix block = sbm.block(i, j);
+        full.block(offsets[i], offsets[j], block.rows(), block.cols()) = block;
+      }
+    }
+    return full;
+  };
+
+  std::cout << "  Ab:\n" << Ab_.matrix() << "\n";
+  std::cout << "  SBM:\n" << assembleSbm(sbm_) << "\n";
+}
+
+std::ostream& operator<<(std::ostream& os, const MultifrontalClique& clique) {
+  const KeyVector& orderedKeys = clique.orderedKeys_;
+  const KeyFormatter formatter = DefaultKeyFormatter;
+  os << "Clique(frontals=";
+  printKeyRange(os, orderedKeys, 0,
+                std::min(clique.numFrontals(), orderedKeys.size()), formatter);
+  os << ", separators=";
+  printKeyRange(os, orderedKeys,
+                std::min(clique.numFrontals(), orderedKeys.size()),
+                orderedKeys.size(), formatter);
+  os << ", factors=" << clique.factorIndices_.size();
+  os << ", children=" << clique.children.size();
+  os << ", sbmBlocks=" << clique.sbm().nBlocks();
+  os << ", AbRows=" << clique.Ab().matrix().rows() << ")";
+  return os;
+}
+
+}  // namespace gtsam
