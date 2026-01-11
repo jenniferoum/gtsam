@@ -326,9 +326,7 @@ void MultifrontalClique::updateParentSbm(
     SymmetricBlockMatrix& parentSbm) const {
   if (useQR()) {
     // Accumulate separator (and RHS) normal equations (S^T S) into the parent.
-    assert(RSdReady_);
-    assert(RSd_.firstBlock() == 0);
-    assert(parent.sbm_.nBlocks() > 0);
+    assert(RSdReady_ && RSd_.firstBlock() == 0);
     const DenseIndex nfBlocks = static_cast<DenseIndex>(numFrontals());
     RSd_.firstBlock() = nfBlocks;
     parentSbm.updateFromOuterProductBlocks(RSd_, parentIndices_);
@@ -365,7 +363,7 @@ void MultifrontalClique::gatherUpdatesParallel(size_t numThreads) {
         auto& local = locals.local();  // Thread-local SBM.
         for (size_t i = range.begin(); i < range.end(); ++i) {
           const auto& child = children[i];
-          if (!child) continue;
+          assert(child);
           child->updateParentSbm(
               local);  // No locking: each thread writes its own SBM.
         }
@@ -392,7 +390,7 @@ void MultifrontalClique::gatherUpdatesParallel(size_t numThreads) {
       auto& local = locals[t];
       for (size_t i = start; i < end; ++i) {
         const auto& child = children[i];
-        if (!child) continue;
+        assert(child);
         child->updateParentSbm(
             local);  // No locking: each thread writes its own SBM.
       }
