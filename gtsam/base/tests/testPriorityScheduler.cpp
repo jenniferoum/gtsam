@@ -16,6 +16,9 @@
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/PriorityScheduler.h>
 
+#include <mutex>
+#include <vector>
+
 using namespace gtsam;
 
 /* ************************************************************************* */
@@ -34,6 +37,33 @@ TEST(PriorityScheduler, ReturnValueComposition) {
 
   const size_t expectedSum = 7;
   EXPECT_LONGS_EQUAL(expectedSum, parent.get());
+}
+
+/* ************************************************************************* */
+TEST(PriorityScheduler, VoidPriorityOrderingSingleWorker) {
+  PriorityScheduler<void> scheduler(1);
+
+  std::mutex mutex;
+  std::vector<int> executionOrder;
+
+  scheduler.schedule(5, [&] {
+    std::lock_guard<std::mutex> lock(mutex);
+    executionOrder.push_back(5);
+  });
+  scheduler.schedule(1, [&] {
+    std::lock_guard<std::mutex> lock(mutex);
+    executionOrder.push_back(1);
+  });
+  scheduler.schedule(3, [&] {
+    std::lock_guard<std::mutex> lock(mutex);
+    executionOrder.push_back(3);
+  });
+
+  scheduler.waitForAllTasks();
+  EXPECT_LONGS_EQUAL(3, executionOrder.size());
+  EXPECT_LONGS_EQUAL(1, executionOrder.at(0));
+  EXPECT_LONGS_EQUAL(3, executionOrder.at(1));
+  EXPECT_LONGS_EQUAL(5, executionOrder.at(2));
 }
 
 /* ************************************************************************* */
