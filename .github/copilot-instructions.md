@@ -8,3 +8,4 @@ For reviewing PRs:
 * Classes are Uppercase, methods and functions lowerMixedCase.
 * Public fields in structs keep plain names (no trailing underscore).
 * Apart from those naming conventions, we adopt Google C++ style.
+* After any code change, always run relevant tests via `make -j6 testXXX.run` in the build folder $WORKSPACE/build. If in VS code, ask for escalated permissions if needed.
