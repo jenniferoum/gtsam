@@ -31,6 +31,9 @@
 
 namespace gtsam {
 
+/**
+ * @brief Unary measurement represents a measurement on a single key in a graph.
+ */
 template <class T> class UnaryMeasurement : public Factor {
   // Check that T type is testable
   GTSAM_CONCEPT_ASSERT(IsTestable<T>);
@@ -44,6 +47,12 @@ private:
   SharedNoiseModel noiseModel_; ///< Noise model
 
 public:
+  /**
+   * @brief Constructs a unary measurement with a key, value, and noise model.
+   * @param key The key of the measurement.
+   * @param measured The measurement value.
+   * @param model The noise model (optional).
+   */
   UnaryMeasurement(Key key, const T &measured,
                    const SharedNoiseModel &model = nullptr)
       : Factor(std::vector<Key>({key})), measured_(measured), noiseModel_(model) {}
@@ -51,14 +60,18 @@ public:
   /// @name Standard Interface
   /// @{
 
+  // Returns the key of the measurement.
   Key key() const { return keys_[0]; }
+  // Returns the measurement value.
   const T &measured() const { return measured_; }
+  // Returns the noise model.
   const SharedNoiseModel &noiseModel() const { return noiseModel_; }
 
   /// @}
   /// @name Testable
   /// @{
 
+  // Prints the measurement.
   void print(const std::string &s, const KeyFormatter &keyFormatter =
                                         DefaultKeyFormatter) const override {
     std::cout << s << "UnaryMeasurement(" << keyFormatter(this->key()) << ")\n";
@@ -69,6 +82,7 @@ public:
       std::cout << "  noise model: (null)\n";
   }
 
+  // Checks if the measurement is equal to another measurement.
   bool equals(const UnaryMeasurement &expected, double tol = 1e-9) const {
     const UnaryMeasurement<T> *e =
         dynamic_cast<const UnaryMeasurement<T> *>(&expected);
