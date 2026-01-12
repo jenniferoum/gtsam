@@ -66,19 +66,16 @@ Similarity3 estimateInitialSim3(const std::vector<MeasurementPair> &overlapPairs
   }
 }
 
-
 }  // namespace
 
 namespace gtsam {
-
-
 TrajectoryAlignerSim3::TrajectoryAlignerSim3(
     const PoseMeasurements &aTi, const ChildrenPoses &bTi_all,
     const std::vector<Similarity3> &aSb_all) {
   const size_t childCount = bTi_all.size();
   if (!aSb_all.empty() && aSb_all.size() != childCount) {
     throw std::invalid_argument(
-        "TrajectoryAlignerSim3: aSb_all and childrenPoses sizes differ");
+        "TrajectoryAlignerSim3: aSb_all and bTi_all sizes differ");
   }
 
   // Add priors for all parent poses up front.
@@ -99,7 +96,7 @@ TrajectoryAlignerSim3::TrajectoryAlignerSim3(
       const auto overlap = overlappingMeasurementPairs(aTi, bTi);
       initial_.insert(simKey, estimateInitialSim3(overlap));
     }
-    
+
     const Expression<Similarity3> aSb(simKey);
     for (const auto &meas : bTi) {
       Key cameraKey = meas.key();

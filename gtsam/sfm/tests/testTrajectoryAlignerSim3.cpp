@@ -46,7 +46,6 @@ std::vector<Pose3> transformPoses(const Similarity3& sim,
   return out;
 }
 
-
 Pose3 perturbPose(const Pose3& p) {
   static thread_local std::mt19937 rng(42);
   std::normal_distribution<double> noise(0.0, 0.01);
