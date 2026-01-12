@@ -196,7 +196,17 @@ Matrix extractVectors(const Values& values, char c) {
   return result;
 }
 
-/// Perturb all Point2 values using normally distributed noise
+/**
+ * Perturbs all 2D point values in a Values container using isotropic Gaussian
+ * noise.
+ *
+ * This updates in-place both Point2 entries and any Vector entries of size 2
+ * by adding zero-mean Gaussian noise with the given standard deviation.
+ *
+ * @param values Values whose Point2/2D Vector entries will be perturbed.
+ * @param sigma Standard deviation of the isotropic Gaussian noise applied.
+ * @param seed Random seed used by the Sampler (default 42u).
+ */
 void perturbPoint2(Values& values, double sigma, int32_t seed = 42u) {
   auto model = noiseModel::Isotropic::Sigma(2, sigma);
   Sampler sampler(model, seed);
@@ -208,11 +218,40 @@ void perturbPoint2(Values& values, double sigma, int32_t seed = 42u) {
       values.update<gtsam::Vector>(key, sampler.perturb(value));
     }
   }
+}
+
+/**
+ * Perturbs all 2D pose values (Pose2) in a Values container using diagonal
+ * Gaussian noise.
+ *
+ * The translational components (x, y) are perturbed with sigmaT, and the
+ * rotational component (theta) is perturbed with sigmaR.
+ *
+ * @param values Values container whose Pose2 entries will be perturbed.
+ * @param sigmaT Standard deviation for translational noise.
+ * @param sigmaR Standard deviation for rotational noise (applied to theta).
+ * @param seed Random seed used by the Sampler (default 42u).
+ */
+void perturbPose2(Values& values, double sigmaT, double sigmaR,
+                  int32_t seed = 42u) {
   auto model = noiseModel::Diagonal::Sigmas(Vector3(sigmaT, sigmaT, sigmaR));
   Sampler sampler(model, seed);
   for (const auto& [key, value] : values.extract<Pose2>()) {
     values.update<Pose2>(key, sampler.perturb(value));
   }
+}
+
+/**
+ * Perturbs all 3D point values in a Values container using isotropic Gaussian
+ * noise.
+ *
+ * This updates in-place both Point3 entries and any Vector entries of size 3
+ * by adding zero-mean Gaussian noise with the given standard deviation.
+ *
+ * @param values Values whose Point3 and 3D Vector entries will be perturbed.
+ * @param sigma Standard deviation of the isotropic Gaussian noise applied.
+ * @param seed Random seed used by the Sampler (default 42u).
+ */
 void perturbPoint3(Values& values, double sigma, int32_t seed = 42u) {
   auto model = noiseModel::Isotropic::Sigma(3, sigma);
   Sampler sampler(model, seed);
@@ -224,6 +263,28 @@ void perturbPoint3(Values& values, double sigma, int32_t seed = 42u) {
       values.update<gtsam::Vector>(key, sampler.perturb(value));
     }
   }
+}
+
+/**
+ * Perturbs all 3D pose values (Pose3) in a Values container using diagonal
+ * Gaussian noise.
+ *
+ * The noise is applied in the tangent space order [rx, ry, rz, tx, ty, tz],
+ * where rotational components are perturbed with sigmaR and translational
+ * components with sigmaT.
+ *
+ * @param values Values container whose Pose3 entries will be perturbed.
+ * @param sigmaT Standard deviation for translational noise.
+ * @param sigmaR Standard deviation for rotational noise.
+ * @param seed Random seed used by the Sampler (default 42u).
+ */
+void perturbPose3(Values& values, double sigmaT, double sigmaR,
+                  int32_t seed = 42u) {
+  auto model = noiseModel::Diagonal::Sigmas(
+      (Vector6() << sigmaR, sigmaR, sigmaR, sigmaT, sigmaT, sigmaT).finished());
+  Sampler sampler(model, seed);
+  for (const auto& [key, value] : values.extract<Pose3>()) {
+    values.update<Pose3>(key, sampler.perturb(value));
   }
 }
 
@@ -333,4 +394,3 @@ Values localToWorld(const Values& local, const Pose2& base,
 } // namespace utilities
 
 }
-
