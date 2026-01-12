@@ -14,7 +14,7 @@
 /**
  * @file UnaryMeasurement.h
  * @author Akshay Krishnan
- * @date July 2020
+ * @date January 2026
  * @brief Unary measurement represents a measurement on a single key in a graph.
  * It mirrors BinaryMeasurement but holds just one key. The measurement value
  * and noise model are stored without an accompanying error function.
