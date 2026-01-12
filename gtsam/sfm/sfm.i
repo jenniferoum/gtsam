@@ -171,7 +171,7 @@ class TrajectoryAlignerSim3 {
   TrajectoryAlignerSim3(
       const std::vector<gtsam::UnaryMeasurement<gtsam::Pose3>>& aTi,
       const std::vector<std::vector<gtsam::UnaryMeasurement<gtsam::Pose3>>>>& bTi_all,
-      const std::vector<gtsam::Similarity3>& aSb_all);
+      const std::vector<gtsam::Similarity3>& bSa_all);
 
   gtsam::Values solve() const;
 };

@@ -41,8 +41,8 @@ namespace gtsam {
  * The class takes as input:
  * - Parent frame poses (aTi): Pose3 measurements in the parent coordinate frame
  * - Child frame poses (bTi_all): Pose3 measurements in one or more child frames
- * - (Optional) Initial Sim3 estimates (aSb_all): Initial transforms from each
- *   child frame to the parent frame
+ * - (Optional) Initial Sim3 estimates (bSa_all): Initial transforms from parent
+ *   to each child frame
  *
  * The output is a Values object containing:
  * - Optimized parent frame poses (with keys from the input aTi measurements)
@@ -57,16 +57,20 @@ class GTSAM_EXPORT TrajectoryAlignerSim3 {
   // Data members.
   ExpressionFactorGraph graph_;
   Values initial_;
+  PoseMeasurements parentPoses_;
+  ChildrenPoses childrenPoses_;
+  std::vector<Similarity3> initialBSa_;
+  std::vector<Key> simKeys_;
 
  public:
   /**
    * @brief Constructs a trajectory aligner with the given measurements.
    * @param aTi Parent frame pose measurements (key-value pairs with noise)
    * @param bTi_all Vector of child frame pose measurements, one vector per child
-   * @param aSb_all Initial Sim3 estimates transforming from each child to parent.
+   * @param bSa_all Initial Sim3 estimates transforming from parent to each child.
    *                If empty, initial estimates are computed automatically.
    */
-  TrajectoryAlignerSim3(const PoseMeasurements &aTi, const ChildrenPoses &bTi_all, const std::vector<Similarity3> &aSb_all);
+  TrajectoryAlignerSim3(const PoseMeasurements &aTi, const ChildrenPoses &bTi_all, const std::vector<Similarity3> &bSa_all);
 
   /// Solves the optimization problem and returns optimized poses and transforms.
   Values solve() const;

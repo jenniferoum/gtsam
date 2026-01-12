@@ -16,12 +16,6 @@ namespace {
 
 using namespace gtsam;
 
-Pose3 sim3TransformPose(const Similarity3 &sim, const Pose3 &pose,
-                        OptionalJacobian<6, 7> H1 = {},
-                        OptionalJacobian<6, 6> H2 = {}) {
-  return sim.transformFrom(pose, H1, H2);
-}
-
 SharedNoiseModel chooseNoise(const SharedNoiseModel &noise, double sigma) {
   if (noise) return noise;
   return noiseModel::Isotropic::Sigma(6, sigma);
@@ -57,7 +51,9 @@ Similarity3 estimateInitialSim3(const std::vector<MeasurementPair> &overlapPairs
   Pose3Pairs pairs;
   pairs.reserve(overlapPairs.size());
   for (const auto &[p1, p2] : overlapPairs) {
-    pairs.emplace_back(p1.measured(), p2.measured());
+    // Similarity3::Align expects the pairs to be in the form (aTi, bTi)
+    // to estimate aSb, but we want bSa, so we swap the pairs.
+    pairs.emplace_back(p2.measured(), p1.measured());
   }
   try {
     return Similarity3::Align(pairs);
@@ -71,11 +67,11 @@ Similarity3 estimateInitialSim3(const std::vector<MeasurementPair> &overlapPairs
 namespace gtsam {
 TrajectoryAlignerSim3::TrajectoryAlignerSim3(
     const PoseMeasurements &aTi, const ChildrenPoses &bTi_all,
-    const std::vector<Similarity3> &aSb_all) {
+    const std::vector<Similarity3> &bSa_all) {
   const size_t childCount = bTi_all.size();
-  if (!aSb_all.empty() && aSb_all.size() != childCount) {
+  if (!bSa_all.empty() && bSa_all.size() != childCount) {
     throw std::invalid_argument(
-        "TrajectoryAlignerSim3: aSb_all and bTi_all sizes differ");
+        "TrajectoryAlignerSim3: bSa_all and bTi_all sizes differ");
   }
 
   // Add priors for all parent poses up front.
@@ -90,20 +86,20 @@ TrajectoryAlignerSim3::TrajectoryAlignerSim3(
     const auto &bTi = bTi_all[childIdx];
 
     const Key simKey = Symbol('S', childIdx);
-    if (!aSb_all.empty()) {
-      initial_.insert(simKey, aSb_all[childIdx]);
+    if (!bSa_all.empty()) {
+      initial_.insert(simKey, bSa_all[childIdx]);
     } else {
       const auto overlap = overlappingMeasurementPairs(aTi, bTi);
       initial_.insert(simKey, estimateInitialSim3(overlap));
     }
-
-    const Expression<Similarity3> aSb(simKey);
+    
+    const Expression<Similarity3> bSa(simKey);
     for (const auto &meas : bTi) {
       Key cameraKey = meas.key();
       if (!initial_.exists(cameraKey)) continue;
 
       const Pose3_ aPose(cameraKey);
-      const Pose3_ expected = Pose3_(sim3TransformPose, aSb, aPose);
+      const Pose3_ expected = Pose3_(bSa, &Similarity3::transformFrom, aPose);
       graph_.addExpressionFactor(expected, meas.measured(), meas.noiseModel());
     }
   }
