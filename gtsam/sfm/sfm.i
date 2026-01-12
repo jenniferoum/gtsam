@@ -129,6 +129,16 @@ typedef gtsam::BinaryMeasurement<gtsam::Unit3> BinaryMeasurementUnit3;
 typedef gtsam::BinaryMeasurement<gtsam::Rot3> BinaryMeasurementRot3;
 typedef gtsam::BinaryMeasurement<gtsam::Point3> BinaryMeasurementPoint3;
 
+#include <gtsam/sfm/UnaryMeasurement.h>
+template <T>
+class UnaryMeasurement {
+  UnaryMeasurement(gtsam::Key key, const T& measured,
+                   const gtsam::noiseModel::Base* model);
+  gtsam::Key key() const;
+  T measured() const;
+  gtsam::noiseModel::Base* noiseModel() const;
+};
+
 // Used in Matlab wrapper
 class BinaryMeasurementsUnit3 {
   BinaryMeasurementsUnit3();
@@ -155,6 +165,16 @@ class BinaryMeasurementsRot3 {
 
 #include <gtsam/slam/dataset.h>
 #include <gtsam/sfm/ShonanAveraging.h>
+
+#include <gtsam/sfm/TrajectoryAlignerSim3.h>
+class TrajectoryAlignerSim3 {
+  TrajectoryAlignerSim3(
+      const std::vector<gtsam::UnaryMeasurement<gtsam::Pose3>>& aTi,
+      const std::vector<std::vector<gtsam::UnaryMeasurement<gtsam::Pose3>>>>& bTi_all,
+      const std::vector<gtsam::Similarity3>& aSb_all);
+
+  gtsam::Values solve() const;
+};
 
 template <d={2, 3}>
 class ShonanAveragingParameters {
