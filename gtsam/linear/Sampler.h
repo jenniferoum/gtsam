@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <gtsam/base/Manifold.h>
 #include <gtsam/linear/NoiseModel.h>
 
 #include <random>
@@ -102,6 +103,16 @@ class GTSAM_EXPORT Sampler {
 
   /// sample from distribution
   Vector sample() const;
+
+  /**
+   * Perturb a value by sampling in its tangent space and applying `retract`.
+   *
+   * The supplied noise model must match the dimensionality expected by `T`.
+   */
+  template <typename T>
+  T perturb(const T& value) const {
+    return traits<T>::Retract(value, sample());
+  }
 
   /// sample with given random number generator
   static Vector sampleDiagonal(const Vector& sigmas, std::mt19937_64* rng);

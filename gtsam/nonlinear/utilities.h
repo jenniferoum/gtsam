@@ -198,46 +198,32 @@ Matrix extractVectors(const Values& values, char c) {
 
 /// Perturb all Point2 values using normally distributed noise
 void perturbPoint2(Values& values, double sigma, int32_t seed = 42u) {
-  noiseModel::Isotropic::shared_ptr model =
-      noiseModel::Isotropic::Sigma(2, sigma);
+  auto model = noiseModel::Isotropic::Sigma(2, sigma);
   Sampler sampler(model, seed);
-  for (const auto& key_value : values.extract<Point2>()) {
-    values.update<Point2>(key_value.first,
-                          key_value.second + Point2(sampler.sample()));
+  for (const auto& [key, value] : values.extract<Point2>()) {
+    values.update<Point2>(key, sampler.perturb(value));
   }
-  for (const auto& key_value : values.extract<gtsam::Vector>()) {
-    if (key_value.second.rows() == 2) {
-      values.update<gtsam::Vector>(key_value.first,
-                                   key_value.second + Point2(sampler.sample()));
+  for (const auto& [key, value] : values.extract<gtsam::Vector>()) {
+    if (value.rows() == 2) {
+      values.update<gtsam::Vector>(key, sampler.perturb(value));
     }
   }
-}
-
-/// Perturb all Pose2 values using normally distributed noise
-void perturbPose2(Values& values, double sigmaT, double sigmaR, int32_t seed =
-    42u) {
-  noiseModel::Diagonal::shared_ptr model = noiseModel::Diagonal::Sigmas(
-      Vector3(sigmaT, sigmaT, sigmaR));
+  auto model = noiseModel::Diagonal::Sigmas(Vector3(sigmaT, sigmaT, sigmaR));
   Sampler sampler(model, seed);
-  for(const auto& key_value: values.extract<Pose2>()) {
-    values.update<Pose2>(key_value.first, key_value.second.retract(sampler.sample()));
+  for (const auto& [key, value] : values.extract<Pose2>()) {
+    values.update<Pose2>(key, sampler.perturb(value));
   }
-}
-
-/// Perturb all Point3 values using normally distributed noise
 void perturbPoint3(Values& values, double sigma, int32_t seed = 42u) {
-  noiseModel::Isotropic::shared_ptr model =
-      noiseModel::Isotropic::Sigma(3, sigma);
+  auto model = noiseModel::Isotropic::Sigma(3, sigma);
   Sampler sampler(model, seed);
-  for (const auto& key_value : values.extract<Point3>()) {
-    values.update<Point3>(key_value.first,
-                          key_value.second + Point3(sampler.sample()));
+  for (const auto& [key, value] : values.extract<Point3>()) {
+    values.update<Point3>(key, sampler.perturb(value));
   }
-  for (const auto& key_value : values.extract<gtsam::Vector>()) {
-    if (key_value.second.rows() == 3) {
-      values.update<gtsam::Vector>(key_value.first,
-                                   key_value.second + Point3(sampler.sample()));
+  for (const auto& [key, value] : values.extract<gtsam::Vector>()) {
+    if (value.rows() == 3) {
+      values.update<gtsam::Vector>(key, sampler.perturb(value));
     }
+  }
   }
 }
 
