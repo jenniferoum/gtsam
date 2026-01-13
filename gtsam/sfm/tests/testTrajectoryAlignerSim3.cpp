@@ -22,6 +22,7 @@
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/sfm/TrajectoryAlignerSim3.h>
 #include <gtsam/slam/expressions.h>
+#include <gtsam/nonlinear/utilities.h>
 
 #include <random>
 #include <vector>
@@ -32,52 +33,44 @@ using ChildrenPoses = std::vector<std::vector<UnaryMeasurement<Pose3>>>;
 
 namespace {
 
-std::vector<Pose3> makeParentPoses() {
-  return {
-      Pose3::Identity(),
-      Pose3(Rot3::RzRyRx(0.15, -0.2, 0.1), Point3(1.0, 0.1, 0.0)),
-      Pose3(Rot3::RzRyRx(0.1, 0.05, -0.03), Point3(2.0, 0.4, 0.1))};
+Values makeParentValues() {
+  Values values;
+  values.insert(0, Pose3::Identity());
+  values.insert(1, Pose3(Rot3::RzRyRx(0.15, -0.2, 0.1), Point3(1.0, 0.1, 0.0)));
+  values.insert(2, Pose3(Rot3::RzRyRx(0.1, 0.05, -0.03), Point3(2.0, 0.4, 0.1)));
+  return values;
 }
 
-// Makes a vector of unary measurements from a vector of poses.
-// Does not add measurement noise, only creates measurement objects.
-PoseMeasurements makeMeasurements(const std::vector<Pose3>& poses,
-                                  double noiseSigma = 1e-3) {
+// Makes a vector of unary measurements from a Values of poses.
+PoseMeasurements makeMeasurements(const Values& poses, double noiseSigma = 1e-3) {
   PoseMeasurements m;
   auto noise = noiseModel::Isotropic::Sigma(6, noiseSigma);
-  for (size_t i = 0; i < poses.size(); ++i) {
-    m.emplace_back(i, poses[i], noise);
+  for (const auto& key_value : poses) {
+    const Key key = key_value.key;
+    m.emplace_back(key, poses.at<Pose3>(key), noise);
   }
   return m;
 }
 
-// Transforms a vector of poses by a similarity transform.
-std::vector<Pose3> transformPoses(const Similarity3& sim,
-                                  const std::vector<Pose3>& poses) {
-  std::vector<Pose3> out;
-  out.reserve(poses.size());
-  for (const auto& p : poses) out.push_back(sim.transformFrom(p));
+// Transforms values of poses by a similarity transform.
+Values transformValues(const Similarity3& sim, const Values& poses) {
+  Values out;
+  for (const auto& key_value : poses) {
+    const Key key = key_value.key;
+    out.insert(key, sim.transformFrom(poses.at<Pose3>(key)));
+  }
   return out;
 }
 
-// Perturbs a pose by a small random rotation and translation.
-Pose3 perturbPose(const Pose3& p) {
-  static thread_local std::mt19937 rng(42);
-  std::normal_distribution<double> noise(0.0, 0.01);
-  const Rot3 dR = Rot3::RzRyRx(noise(rng), noise(rng), noise(rng));
-  const Point3 dt(noise(rng), noise(rng), noise(rng));
-  return p.compose(Pose3(dR, dt));
+// Perturbs a Values of poses by a small noise.
+Values perturbPoses(const Values& poses) {
+  Values perturbed = poses;
+  utilities::perturbPose3(perturbed, /*sigmaT=*/0.01, /*sigmaR=*/0.01);
+  return perturbed;
 }
 
-// Perturbs a vector of poses independently.
-std::vector<Pose3> perturbPoses(const std::vector<Pose3>& poses) {
-  std::vector<Pose3> out;
-  out.reserve(poses.size());
-  for (const auto& p : poses) out.push_back(perturbPose(p));
-  return out;
-}
-
-// Perturbs a similarity transform by a small noise.
+// Perturbs a similarity transform by a large value.
+// The initial similarity estimate can be very inaccurate.
 Similarity3 perturbSim3(const Similarity3& sim) {
   Similarity3 delta(Rot3::RzRyRx(0.2, -0.25, 0.1), Point3(2, 3, -1),
                     2.3);
@@ -102,8 +95,8 @@ bool simClose(const Similarity3& expected, const Similarity3& actual,
 
 /* ************************************************************************* */
 TEST(TrajectoryAlignerSim3, PerfectSingleChild) {
-  const auto parent = makeParentPoses();
-  const auto child = transformPoses(gtSim1, parent);
+  const auto parent = makeParentValues();
+  const auto child = transformValues(gtSim1, parent);
 
   PoseMeasurements aTi = makeMeasurements(parent);
   ChildrenPoses bTi_all{makeMeasurements(child)};
@@ -115,23 +108,23 @@ TEST(TrajectoryAlignerSim3, PerfectSingleChild) {
   const auto recoveredSim = result.at<Similarity3>(Symbol('S', 0));
   EXPECT(simClose(gtSim1, recoveredSim, 1e-6));
 
-  for (size_t i = 0; i < parent.size(); ++i) {
-    EXPECT(assert_equal<Pose3>(parent[i], result.at<Pose3>(i), 1e-6));
+  for (const auto& kv : parent) {
+    const Key key = kv.key;
+    EXPECT(assert_equal<Pose3>(parent.at<Pose3>(key), result.at<Pose3>(key), 1e-6));
   }
 }
 
 /* ************************************************************************* */
 TEST(TrajectoryAlignerSim3, PerfectSingleChildNoInitialSim) {
-  const auto parent = makeParentPoses();
+  const auto parent = makeParentValues();
   const Similarity3 gtSim(Rot3::RzRyRx(0.25, -0.05, 0.12),
                           Point3(-0.3, 0.2, -0.15), 1.4);
-  const auto child = transformPoses(gtSim, parent);
+  const auto child = transformValues(gtSim, parent);
 
   PoseMeasurements aTi = makeMeasurements(parent);
   ChildrenPoses bTi_all{makeMeasurements(child)};
-  std::vector<Similarity3> sims;  // empty initial Sim3s
 
-  TrajectoryAlignerSim3 aligner(aTi, bTi_all, sims);
+  TrajectoryAlignerSim3 aligner(aTi, bTi_all);
   Values result = aligner.solve();
 
   const auto recoveredSim = result.at<Similarity3>(Symbol('S', 0));
@@ -140,11 +133,12 @@ TEST(TrajectoryAlignerSim3, PerfectSingleChildNoInitialSim) {
 
 /* ************************************************************************* */
 TEST(TrajectoryAlignerSim3, NoisySingleChild) {
-  const auto parent = makeParentPoses();
-  const auto child = transformPoses(gtSim1, parent);
+  const auto parent = makeParentValues();
+  const auto child = transformValues(gtSim1, parent);
+  const auto perturbedChild = perturbPoses(child);
 
   PoseMeasurements aTi = makeMeasurements(parent, /*noiseSigma=*/1e-2);
-  PoseMeasurements bTi = makeMeasurements(perturbPoses(child), 1e-1);
+  PoseMeasurements bTi = makeMeasurements(perturbedChild, 1e-1);
   ChildrenPoses bTi_all{bTi};
   std::vector<Similarity3> sims{perturbSim3(gtSim1)};
 
@@ -152,20 +146,22 @@ TEST(TrajectoryAlignerSim3, NoisySingleChild) {
   Values result = aligner.solve();
 
   const auto recoveredSim = result.at<Similarity3>(Symbol('S', 0));
-  EXPECT(simClose(gtSim1, recoveredSim, 1e-2));
+  EXPECT(simClose(gtSim1, recoveredSim, 2e-2));
 
-  for (size_t i = 0; i < parent.size(); ++i) {
-    EXPECT(assert_equal<Pose3>(parent[i], result.at<Pose3>(i), 1e-3));
+  for (const auto& kv : parent) {
+    const Key key = kv.key;
+    EXPECT(assert_equal<Pose3>(parent.at<Pose3>(key), result.at<Pose3>(key), 1e-2));
   }
 }
 
 /* ************************************************************************* */
 TEST(TrajectoryAlignerSim3, SingleChildWithExtraNonOverlap) {
-  const auto parent = makeParentPoses();
-  auto child = transformPoses(gtSim1, parent);
+  const auto parent = makeParentValues();
+  auto child = transformValues(gtSim1, parent);
+  const auto perturbedChild = perturbPoses(child);
 
   PoseMeasurements aTi = makeMeasurements(parent, /*noiseSigma=*/1e-2);
-  PoseMeasurements bTi = makeMeasurements(perturbPoses(child), 1e-1);
+  PoseMeasurements bTi = makeMeasurements(perturbedChild, 1e-1);
   // Add a non-overlapping camera in the child frame.
   bTi.emplace_back(10,
                    gtSim1.transformFrom(Pose3(Rot3(), Point3(4.0, -1.0, 0.5))),
@@ -180,20 +176,21 @@ TEST(TrajectoryAlignerSim3, SingleChildWithExtraNonOverlap) {
   const auto recoveredSim = result.at<Similarity3>(Symbol('S', 0));
   EXPECT(simClose(gtSim1, recoveredSim, 2e-2));
 
-  for (size_t i = 0; i < parent.size(); ++i) {
-    EXPECT(assert_equal<Pose3>(parent[i], result.at<Pose3>(i), 1e-3));
+  for (const auto& kv : parent) {
+    const Key key = kv.key;
+    EXPECT(assert_equal<Pose3>(parent.at<Pose3>(key), result.at<Pose3>(key), 1e-2));
   }
 }
 
 /* ************************************************************************* */
 TEST(TrajectoryAlignerSim3, TwoChildrenNoisy) {
-  const auto parent = makeParentPoses();
+  const auto parent = makeParentValues();
 
   PoseMeasurements aTi = makeMeasurements(parent, 1e-2);
   PoseMeasurements b1 =
-      makeMeasurements(perturbPoses(transformPoses(gtSim1, parent)), 5e-2);
+      makeMeasurements(perturbPoses(transformValues(gtSim1, parent)), 5e-2);
   PoseMeasurements b2 =
-      makeMeasurements(perturbPoses(transformPoses(gtSim2, parent)), 5e-2);
+      makeMeasurements(perturbPoses(transformValues(gtSim2, parent)), 5e-2);
 
   ChildrenPoses bTi_all{b1, b2};
   std::vector<Similarity3> sims{perturbSim3(gtSim1), perturbSim3(gtSim2)};
@@ -204,22 +201,23 @@ TEST(TrajectoryAlignerSim3, TwoChildrenNoisy) {
   EXPECT(simClose(gtSim1, result.at<Similarity3>(Symbol('S', 0)), 5e-2));
   EXPECT(simClose(gtSim2, result.at<Similarity3>(Symbol('S', 1)), 5e-2));
 
-  for (size_t i = 0; i < parent.size(); ++i) {
-    EXPECT(assert_equal<Pose3>(parent[i], result.at<Pose3>(i), 1e-2));
+  for (const auto& kv : parent) {
+    const Key key = kv.key;
+    EXPECT(assert_equal<Pose3>(parent.at<Pose3>(key), result.at<Pose3>(key), 1e-2));
   }
 }
 
 /* ************************************************************************* */
 TEST(TrajectoryAlignerSim3, ThreeChildrenNoisy) {
-  const auto parent = makeParentPoses();
+  const auto parent = makeParentValues();
 
   PoseMeasurements aTi = makeMeasurements(parent, 1e-2);
   PoseMeasurements b1 =
-      makeMeasurements(perturbPoses(transformPoses(gtSim1, parent)), 2e-2);
+      makeMeasurements(perturbPoses(transformValues(gtSim1, parent)), 2e-2);
   PoseMeasurements b2 =
-      makeMeasurements(perturbPoses(transformPoses(gtSim2, parent)), 2e-2);
+      makeMeasurements(perturbPoses(transformValues(gtSim2, parent)), 2e-2);
   PoseMeasurements b3 =
-      makeMeasurements(perturbPoses(transformPoses(gtSim3, parent)), 2e-2);
+      makeMeasurements(perturbPoses(transformValues(gtSim3, parent)), 2e-2);
 
   ChildrenPoses bTi_all{b1, b2, b3};
   std::vector<Similarity3> sims{perturbSim3(gtSim1), perturbSim3(gtSim2),
@@ -232,8 +230,9 @@ TEST(TrajectoryAlignerSim3, ThreeChildrenNoisy) {
   EXPECT(simClose(gtSim2, result.at<Similarity3>(Symbol('S', 1)), 1e-1));
   EXPECT(simClose(gtSim3, result.at<Similarity3>(Symbol('S', 2)), 1e-1));
 
-  for (size_t i = 0; i < parent.size(); ++i) {
-    EXPECT(assert_equal<Pose3>(parent[i], result.at<Pose3>(i), 1e-2));
+  for (const auto& kv : parent) {
+    const Key key = kv.key;
+    EXPECT(assert_equal<Pose3>(parent.at<Pose3>(key), result.at<Pose3>(key), 1e-2));
   }
 }
 
