@@ -68,9 +68,22 @@ class GTSAM_EXPORT TrajectoryAlignerSim3 {
     const std::vector<std::vector<UnaryMeasurement<Pose3>>> &bTi_all, 
     const std::vector<Similarity3> &bSa_all = {});
 
-  /// Solves the optimization problem and returns optimized poses and transforms.
+  /**
+   * @brief Optimizes the graph and returns optimized poses and Sim3 transforms.
+   * @return The optimized poses and transforms. Contains:
+   * - Parent frame poses (with keys the same as those in input aTi measurements)
+   * - Sim3 transforms (with keys Symbol('S', i), where i is the child index)
+   */
   Values solve() const;
 
+  /**
+   * @brief Computes the marginals of the solution.
+   * 
+   * @param solution The solution to marginalize. 
+   * Obtained from solve() or should contain the same keys as variables in graph_.
+   * @param ordering_type The ordering type to use for the marginalization.
+   * @return The Marginals object.
+   */
   Marginals marginalize(
     const Values& solution, 
     const Ordering::OrderingType ordering_type = Ordering::COLAMD) const;
