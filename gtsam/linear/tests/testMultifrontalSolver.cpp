@@ -72,7 +72,7 @@ TEST(MultifrontalSolver, Constructor) {
   auto childClique = root->children[0];
 
   // Verify matrices in leaf (childClique)
-  EXPECT_LONGS_EQUAL(4, childClique->sbm().nBlocks());
+  EXPECT_LONGS_EQUAL(4, childClique->info().nBlocks());
   EXPECT_LONGS_EQUAL(2, childClique->Ab().rows());
   EXPECT_LONGS_EQUAL(4, childClique->Ab().nBlocks());
 
@@ -104,7 +104,7 @@ TEST(MultifrontalSolver, ConstructorPrecomputed) {
 
   // Verify matrices in leaf (childClique)
   CHECK(childClique->useQR() == false);
-  EXPECT_LONGS_EQUAL(4, childClique->sbm().nBlocks());
+  EXPECT_LONGS_EQUAL(4, childClique->info().nBlocks());
   EXPECT_LONGS_EQUAL(2, childClique->Ab().rows());
   EXPECT_LONGS_EQUAL(4, childClique->Ab().nBlocks());
 
@@ -168,6 +168,34 @@ TEST(MultifrontalSolver, EliminateWithLoad) {
 
   GaussianBayesTree expectedBT = *chain.eliminateMultifrontal(chainOrdering);
   VectorValues expected = expectedBT.optimize();
+
+  EXPECT(assert_equal(expected, actual, 1e-9));
+}
+
+/* ************************************************************************* */
+// Forcing QR enables QR on all leaves and matches legacy QR elimination.
+TEST(MultifrontalSolver, ForceQRMatchesDenseQR) {
+  auto qrParams = noMergeParams();
+  qrParams.qrMode = MultifrontalParameters::QRMode::Force;
+  MultifrontalSolver solverQR(chain, chainOrdering, qrParams);
+  solverQR.eliminateInPlace(chain);
+
+  size_t leafCount = 0;
+  size_t qrLeafCount = 0;
+  solverQR.runTopDown([&](MultifrontalClique& node) {
+    if (node.children.empty()) {
+      ++leafCount;
+      if (node.useQR()) {
+        ++qrLeafCount;
+      }
+    }
+  });
+  CHECK(leafCount > 0);
+  CHECK(leafCount == qrLeafCount);
+
+  const VectorValues& actual = solverQR.updateSolution();
+
+  VectorValues expected = chain.optimize(chainOrdering, EliminateQR);
 
   EXPECT(assert_equal(expected, actual, 1e-9));
 }
@@ -368,7 +396,7 @@ TEST(MultifrontalSolver, BalancedSmoother) {
   EXPECT(solver.roots().size() == 1);
   auto root = solver.roots()[0];
 
-  EXPECT_LONGS_EQUAL(root->Ab().nBlocks(), root->sbm().nBlocks());
+  EXPECT_LONGS_EQUAL(root->Ab().nBlocks(), root->info().nBlocks());
 
   // Check a leaf clique block structure.
   MultifrontalSolver::CliquePtr leaf = nullptr;
@@ -377,7 +405,7 @@ TEST(MultifrontalSolver, BalancedSmoother) {
       [&](MultifrontalSolver::CliquePtr c) {
         if (!c) return;
         if (c->children.empty()) {
-          const size_t blocks = c->sbm().nBlocks();
+          const size_t blocks = c->info().nBlocks();
           if (blocks < minBlocks) {
             minBlocks = blocks;
             leaf = c;
@@ -391,6 +419,7 @@ TEST(MultifrontalSolver, BalancedSmoother) {
   EXPECT_LONGS_EQUAL(3, minBlocks);
 
   // Eliminate and solve
+  solver.load(smoother);
   solver.eliminateInPlace();
   const VectorValues& actual = solver.updateSolution();
 

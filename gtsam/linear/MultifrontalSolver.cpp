@@ -277,14 +277,67 @@ std::vector<LeafBatch> buildLeafBatches(const std::vector<LeafGroup>& groups,
 
 bool mergeLeafBatches(const SymbolicJunctionTree::sharedNode& cluster,
                       const std::vector<LeafBatch>& batches) {
-  // Merge each batch of siblings into a super-leaf in-place.
-  bool anyMerged = false;
-  for (const auto& batch : batches) {
+  if (batches.empty()) return false;
+
+  // Merge in a single pass to avoid repeated scans of large child lists.
+  FastMap<const SymbolicJunctionTree::Cluster*, size_t> batchIndexByChild;
+  std::vector<SymbolicJunctionTree::sharedNode> mergedBatches(batches.size(),
+                                                              nullptr);
+  size_t mergeBatchCount = 0;
+  size_t selectedLeafCount = 0;
+
+  for (size_t batchIndex = 0; batchIndex < batches.size(); ++batchIndex) {
+    const auto& batch = batches[batchIndex];
     if (batch.leaves.size() <= 1) continue;
-    cluster->mergeChildrenSiblings(batch.leaves);
-    anyMerged = true;
+
+    selectedLeafCount += batch.leaves.size();
+    for (const auto& leaf : batch.leaves) {
+      if (leaf) {
+        batchIndexByChild.emplace(leaf.get(), batchIndex);
+      }
+    }
+
+    auto merged = std::make_shared<SymbolicJunctionTree::Cluster>();
+    for (const auto& leaf : batch.leaves) {
+      if (leaf) {
+        merged->merge(leaf);
+      }
+    }
+    std::reverse(merged->orderedFrontalKeys.begin(),
+                 merged->orderedFrontalKeys.end());
+    mergedBatches[batchIndex] = merged;
+    mergeBatchCount += 1;
   }
-  return anyMerged;
+
+  if (mergeBatchCount == 0) return false;
+
+  auto oldChildren = cluster->children;
+  SymbolicJunctionTree::Cluster::Children newChildren;
+  newChildren.reserve(oldChildren.size() - selectedLeafCount + mergeBatchCount);
+  std::vector<bool> inserted(batches.size(), false);
+
+  for (size_t i = 0; i < oldChildren.size(); ++i) {
+    const auto& child = oldChildren[i];
+    if (!child) {
+      newChildren.push_back(child);
+      continue;
+    }
+
+    auto it = batchIndexByChild.find(child.get());
+    if (it == batchIndexByChild.end()) {
+      newChildren.push_back(child);
+      continue;
+    }
+
+    const size_t batchIndex = it->second;
+    if (!inserted[batchIndex] && i == batches[batchIndex].firstIndex) {
+      newChildren.push_back(mergedBatches[batchIndex]);
+      inserted[batchIndex] = true;
+    }
+  }
+
+  cluster->children.swap(newChildren);
+  return true;
 }
 
 void accumulateSymbolicStats(const SymbolicJunctionTree::sharedNode& cluster,
@@ -396,6 +449,7 @@ struct CliqueBuilder {
   VectorValues* solution;
   std::vector<MultifrontalSolver::CliquePtr>* cliques;
   const std::unordered_set<Key>* fixedKeys;
+  const MultifrontalParameters* params;
   SymbolicJunctionTree::Cluster::KeySetMap separatorCache = {};
 
   BuiltClique build(const SymbolicJunctionTree::sharedNode& cluster,
@@ -433,7 +487,7 @@ struct CliqueBuilder {
     }
 
     // Finalize children metadata and register clique.
-    clique->finalize(std::move(childInfos));
+    clique->finalize(std::move(childInfos), *params);
     cliques->push_back(clique);
     return {clique, std::move(separatorKeys)};
   }
@@ -466,8 +520,7 @@ MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
                                        const Parameters& params)
     : ForestTraversal<MultifrontalSolver, MultifrontalClique>(
           resolveThreadCount(params.numThreads)),
-      params_(params),
-      numThreads_(resolveThreadCount(params.numThreads)) {
+      params_(params) {
   dims_ = std::move(data.dims);
   fixedKeys_ = std::move(data.fixedKeys);
 
@@ -504,7 +557,7 @@ MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
   }
 
   // Build the actual MultifrontalClique structure.
-  CliqueBuilder builder{dims_, &solution_, &cliques_, &fixedKeys_};
+  CliqueBuilder builder{dims_, &solution_, &cliques_, &fixedKeys_, &params_};
   for (const auto& rootCluster : data.junctionTree.roots()) {
     if (rootCluster) {
       roots_.push_back(

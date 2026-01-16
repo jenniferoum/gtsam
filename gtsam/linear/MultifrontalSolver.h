@@ -22,6 +22,7 @@
 #include <gtsam/inference/Key.h>
 #include <gtsam/inference/Ordering.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
+#include <gtsam/linear/MultifrontalParameters.h>
 #include <gtsam/linear/VectorValues.h>
 #include <gtsam/symbolic/SymbolicJunctionTree.h>
 
@@ -58,14 +59,7 @@ class GTSAM_EXPORT MultifrontalSolver
     : public ForestTraversal<MultifrontalSolver, MultifrontalClique> {
  public:
   /// Tuning parameters for traversal and reporting.
-  struct Parameters {
-    size_t leafMergeDimCap = 256;           ///< Leaf-merge cap (0 disables).
-    size_t mergeDimCap = 32;                ///< Merge threshold (0 disables).
-    std::ostream* reportStream = nullptr;   ///< Optional structure reporting.
-    int eliminationParallelThreshold = 10;  ///< Post-order task threshold.
-    int solutionParallelThreshold = 4096;   ///< Pre-order task threshold.
-    size_t numThreads = 0;  ///< Worker count (0 uses 0.75 * hw threads).
-  };
+  using Parameters = MultifrontalParameters;
 
   struct PrecomputedData {
     std::map<Key, size_t> dims;         ///< Map from variable key to dimension.
@@ -87,7 +81,6 @@ class GTSAM_EXPORT MultifrontalSolver
   bool loaded_ = false;                ///< Whether load() has been called.
   bool eliminated_ = false;            ///< Whether eliminateInPlace() ran.
   Parameters params_;                  ///< Tunable solver parameters.
-  size_t numThreads_ = 0;              ///< Resolved thread count for traversal.
 
  public:
   /**
@@ -123,6 +116,20 @@ class GTSAM_EXPORT MultifrontalSolver
   /// Only JacobianFactor inputs are supported.
   static PrecomputedData Precompute(const GaussianFactorGraph& graph,
                                     const Ordering& ordering);
+
+  /**
+   * Construct the solver from precomputed symbolic data.
+   * Call load() before eliminating to populate numerical values.
+   * @param data Precomputed symbolic structure and sizing data.
+   * @param ordering The variable ordering to use for seeding solution storage.
+   * @param mergeDimCap Merge a child if its frontal dimension plus the
+   * parent's total dimension is below this threshold (0 disables merging).
+   * @param reportStream Optional stream to report clique structure stats
+   * (frontals, separators, total dims, and children).
+   */
+  MultifrontalSolver(PrecomputedData data, const Ordering& ordering,
+                     size_t mergeDimCap = 0,
+                     std::ostream* reportStream = nullptr);
 
   /**
    * Load new numerical values from the factor graph.
