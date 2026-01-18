@@ -154,9 +154,7 @@ namespace gtsam {
     };
 
     //---------------------------------------------------------------------------------------
-    /**
-     * Return true if the model dimension matches the manifold dimension.
-     */
+    /// Return true if the model dimension matches the manifold dimension.
     template <class T>
     inline bool matchesDimension(const Base& model, const T& measured) {
       static_assert(IsManifold<T>::value,
@@ -805,6 +803,16 @@ namespace gtsam {
 
     // Helper function
     GTSAM_EXPORT std::optional<Vector> checkIfDiagonal(const Matrix& M);
+
+    /// Create
+    template <class T>
+    Base::shared_ptr validOrDefault(const T& value,
+                                    const Base::shared_ptr& model) {
+      if (!model) return noiseModel::Unit::Create(value);
+      if (noiseModel::matchesDimension(*model, value)) return model;
+      throw std::runtime_error(
+          "noiseModel::validOrDefault: mis-matched model dimension.");
+    }
 
   } // namespace noiseModel
 
