@@ -262,6 +262,21 @@ FastVector<JacobianFactor::shared_ptr> _convertOrCastToJacobians(
 }
 
 /* ************************************************************************* */
+static std::vector<DenseIndex> _computeRowOffsets(
+    const FastVector<JacobianFactor::shared_ptr>& jacobians) {
+  std::vector<DenseIndex> rowOffsets;
+  rowOffsets.reserve(jacobians.size());
+  DenseIndex nextRow = 0;
+  for (const auto& jacobian : jacobians) {
+    rowOffsets.push_back(nextRow);
+    const DenseIndex rows = jacobian->rows();
+    if (rows > 0) {
+      nextRow += rows;
+    }
+  }
+  return rowOffsets;
+}
+
 void JacobianFactor::JacobianFactorHelper(const GaussianFactorGraph& graph,
     const FastVector<VariableSlots::const_iterator>& orderedSlots) {
 
@@ -271,6 +286,9 @@ void JacobianFactor::JacobianFactorHelper(const GaussianFactorGraph& graph,
 
   // Count dimensions
   const auto [varDims, m, n] = _countDims(jacobians, orderedSlots);
+
+  // Precompute row offsets once to avoid recomputing row starts per slot.
+  std::vector<DenseIndex> rowOffsets = _computeRowOffsets(jacobians);
 
   // Allocate matrix and copy keys in order
   gttic(allocate);
@@ -288,12 +306,12 @@ void JacobianFactor::JacobianFactorHelper(const GaussianFactorGraph& graph,
   for(VariableSlots::const_iterator varslot: orderedSlots) {
     JacobianFactor::ABlock destSlot(this->getA(this->begin() + combinedSlot));
     // Loop over source jacobians
-    DenseIndex nextRow = 0;
     for (size_t factorI = 0; factorI < jacobians.size(); ++factorI) {
       // Slot in source factor
       const size_t sourceSlot = varslot->second[factorI];
       const DenseIndex sourceRows = jacobians[factorI]->rows();
       if (sourceRows > 0) {
+        DenseIndex nextRow = rowOffsets[factorI];
         JacobianFactor::ABlock::RowsBlockXpr destBlock(
             destSlot.middleRows(nextRow, sourceRows));
         // Copy if exists in source factor, otherwise set zero
@@ -302,7 +320,6 @@ void JacobianFactor::JacobianFactorHelper(const GaussianFactorGraph& graph,
               jacobians[factorI]->begin() + sourceSlot);
         else
           destBlock.setZero();
-        nextRow += sourceRows;
       }
     }
     ++combinedSlot;
@@ -314,10 +331,10 @@ void JacobianFactor::JacobianFactorHelper(const GaussianFactorGraph& graph,
   bool anyConstrained = false;
   std::optional<Vector> sigmas;
   // Loop over source jacobians
-  DenseIndex nextRow = 0;
   for (size_t factorI = 0; factorI < jacobians.size(); ++factorI) {
     const DenseIndex sourceRows = jacobians[factorI]->rows();
     if (sourceRows > 0) {
+      DenseIndex nextRow = rowOffsets[factorI];
       this->getb().segment(nextRow, sourceRows) = jacobians[factorI]->getb();
       if (jacobians[factorI]->get_model()) {
         // If the factor has a noise model and we haven't yet allocated sigmas, allocate it.
@@ -328,7 +345,6 @@ void JacobianFactor::JacobianFactorHelper(const GaussianFactorGraph& graph,
         if (jacobians[factorI]->isConstrained())
           anyConstrained = true;
       }
-      nextRow += sourceRows;
     }
   }
   gttoc(copy_vectors);
