@@ -26,11 +26,13 @@ namespace gtsam {
 
 template <class T, class ALLOC>
 T FindKarcherMeanImpl(const std::vector<T, ALLOC>& rotations) {
+  static_assert(T::dimension != Eigen::Dynamic,
+                "FindKarcherMean requires fixed-size manifolds.");
   // Cost function C(R) = \sum PriorFactor(R_i)::error(R)
   // No closed form solution.
   NonlinearFactorGraph graph;
   static const Key kKey(0);
-  auto model = noiseModel::Unit::Create(T::dimension);
+  auto model = noiseModel::Unit::Create(static_cast<size_t>(T::dimension));
   for (const auto& R : rotations) {
     graph.addPrior<T>(kKey, R, model);
   }
