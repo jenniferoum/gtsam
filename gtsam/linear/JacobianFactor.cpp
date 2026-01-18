@@ -324,7 +324,7 @@ void JacobianFactor::JacobianFactorHelper(const GaussianFactorGraph& graph,
         if (!sigmas)
           sigmas = Vector::Constant(m, 1.0);
         sigmas->segment(nextRow, sourceRows) =
-            jacobians[factorI]->get_model()->sigmas();
+            jacobians[factorI]->get_model()->sigmasRef();
         if (jacobians[factorI]->isConstrained())
           anyConstrained = true;
       }
@@ -931,13 +931,15 @@ GaussianConditional::shared_ptr JacobianFactor::splitConditional(size_t nrFronta
   Ab_.rowEnd() = Ab_.rowStart() + frontalDim;
   SharedDiagonal conditionalNoiseModel;
   conditionalNoiseModel =
-      noiseModel::Diagonal::Sigmas(model_->sigmas().segment(Ab_.rowStart(), Ab_.rows()));
+      noiseModel::Diagonal::Sigmas(
+          model_->sigmasRef().segment(Ab_.rowStart(), Ab_.rows()));
   GaussianConditional::shared_ptr conditional =
       std::make_shared<GaussianConditional>(Base::keys_, nrFrontals, Ab_, conditionalNoiseModel);
 
   const DenseIndex maxRemainingRows =
       std::min(Ab_.cols(), originalRowEnd) - Ab_.rowStart() - frontalDim;
-  const DenseIndex remainingRows = std::min(model_->sigmas().size() - frontalDim, maxRemainingRows);
+  const DenseIndex remainingRows =
+      std::min(model_->sigmasRef().size() - frontalDim, maxRemainingRows);
   Ab_.rowStart() += frontalDim;
   Ab_.rowEnd() = Ab_.rowStart() + remainingRows;
   Ab_.firstBlock() += nrFrontals;
@@ -946,9 +948,11 @@ GaussianConditional::shared_ptr JacobianFactor::splitConditional(size_t nrFronta
   keys_.erase(begin(), begin() + nrFrontals);
   // Set sigmas with the right model
   if (model_->isConstrained())
-    model_ = noiseModel::Constrained::MixedSigmas(model_->sigmas().tail(remainingRows));
+    model_ = noiseModel::Constrained::MixedSigmas(
+        model_->sigmasRef().tail(remainingRows));
   else
-    model_ = noiseModel::Diagonal::Sigmas(model_->sigmas().tail(remainingRows));
+    model_ = noiseModel::Diagonal::Sigmas(
+        model_->sigmasRef().tail(remainingRows));
   assert(model_->dim() == (size_t)Ab_.rows());
 
   return conditional;

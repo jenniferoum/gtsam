@@ -362,6 +362,8 @@ namespace gtsam {
 
       void print(const std::string& name) const override;
       Vector sigmas() const override { return sigmas_; }
+      /// Return standard deviations without copying.
+      inline const Vector& sigmasRef() const { return sigmas_; }
       Vector whiten(const Vector& v) const override;
       Vector unwhiten(const Vector& v) const override;
       void whitenInPlace(Vector& v) const override;
