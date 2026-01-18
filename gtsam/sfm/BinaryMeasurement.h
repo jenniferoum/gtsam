@@ -33,17 +33,18 @@
 
 namespace gtsam {
 
-template <class T> class BinaryMeasurement : public Factor {
+template <class T>
+class BinaryMeasurement : public Factor {
   // Check that T type is testable
   GTSAM_CONCEPT_ASSERT(IsTestable<T>);
 
-public:
+ public:
   // shorthand for a smart pointer to a measurement
   using shared_ptr = typename std::shared_ptr<BinaryMeasurement>;
 
-private:
-  T measured_;                  ///< The measurement
-  SharedNoiseModel noiseModel_; ///< Noise model
+ private:
+  T measured_;                   ///< The measurement
+  SharedNoiseModel noiseModel_;  ///< Noise model
 
  public:
   BinaryMeasurement(Key key1, Key key2, const T &measured,
@@ -52,12 +53,13 @@ private:
         measured_(measured),
         noiseModel_(model) {
     if (model) {
-      if (static_cast<int>(model->dim()) != traits<T>::GetDimension(measured))
+      if (!noiseModel::matchesDimension(*model, measured)) {
         throw std::runtime_error(
             "BinaryMeasurement: Noise model dimension does not match "
             "measurement dimension.");
+      }
     } else {
-      noiseModel_ = noiseModel::Unit::Create(traits<T>::GetDimension(measured));
+      noiseModel_ = noiseModel::Unit::Create(measured);
     }
   }
 
@@ -90,4 +92,4 @@ private:
   }
   /// @}
 };
-} // namespace gtsam
+}  // namespace gtsam
