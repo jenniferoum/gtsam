@@ -5,6 +5,7 @@
  */
 
 #include <gtsam/geometry/SL4.h>
+#include <gtsam/geometry/SO4.h>
 
 // To use exp(), log()
 #include <cmath>
@@ -15,9 +16,47 @@
 using namespace std;
 
 namespace {
+using gtsam::Matrix44;
+using gtsam::Vector6;
+
 constexpr double kInvSqrt2 = 0.7071067811865475244;
 constexpr double kInvSqrt6 = 0.4082482904638630164;
 constexpr double kInvSqrt12 = 0.2886751345948128823;
+
+Vector6 SkewToSO4(const Vector6& r) {
+  Vector6 so4;
+  so4 << r(5), -r(4), r(2), -r(3), r(1), -r(0);
+  return so4;
+}
+
+Vector6 SO4ToSkew(const Vector6& so4) {
+  Vector6 r;
+  r << -so4(5), so4(4), so4(2), -so4(3), -so4(1), so4(0);
+  return r;
+}
+
+Matrix44 HatSym4(const Vector6& s) {
+  Matrix44 A = Matrix44::Zero();
+  A(0, 1) = s(0);
+  A(1, 0) = s(0);
+  A(0, 2) = s(1);
+  A(2, 0) = s(1);
+  A(0, 3) = s(2);
+  A(3, 0) = s(2);
+  A(1, 2) = s(3);
+  A(2, 1) = s(3);
+  A(1, 3) = s(4);
+  A(3, 1) = s(4);
+  A(2, 3) = s(5);
+  A(3, 2) = s(5);
+  return A;
+}
+
+Vector6 VeeSym4(const Matrix44& A) {
+  Vector6 s;
+  s << A(0, 1), A(0, 2), A(0, 3), A(1, 2), A(1, 3), A(2, 3);
+  return s;
+}
 
 Eigen::Matrix<double, 16, 15> setVecToAlgMatrix() {
   Eigen::Matrix<double, 16, 15> alg = Eigen::Matrix<double, 16, 15>::Zero();
@@ -194,68 +233,34 @@ Matrix44 SL4::Hat(const Vector& xi) {
         "SL4::Hat: xi must be a vector of size 15. Got size " +
         std::to_string(xi.size()));
   }
-  Matrix44 A = Matrix44::Zero();
+  const Vector6 r = kInvSqrt2 * xi.head<6>();
+  const Vector6 s = kInvSqrt2 * xi.segment<6>(6);
 
-  // Rotations (skew-symmetric), normalized by 1/sqrt(2).
-  A(0, 1) += kInvSqrt2 * xi(0);
-  A(1, 0) -= kInvSqrt2 * xi(0);
-  A(0, 2) += kInvSqrt2 * xi(1);
-  A(2, 0) -= kInvSqrt2 * xi(1);
-  A(0, 3) += kInvSqrt2 * xi(2);
-  A(3, 0) -= kInvSqrt2 * xi(2);
-  A(1, 2) += kInvSqrt2 * xi(3);
-  A(2, 1) -= kInvSqrt2 * xi(3);
-  A(1, 3) += kInvSqrt2 * xi(4);
-  A(3, 1) -= kInvSqrt2 * xi(4);
-  A(2, 3) += kInvSqrt2 * xi(5);
-  A(3, 2) -= kInvSqrt2 * xi(5);
-
-  // Symmetric off-diagonal shears, normalized by 1/sqrt(2).
-  A(0, 1) += kInvSqrt2 * xi(6);
-  A(1, 0) += kInvSqrt2 * xi(6);
-  A(0, 2) += kInvSqrt2 * xi(7);
-  A(2, 0) += kInvSqrt2 * xi(7);
-  A(0, 3) += kInvSqrt2 * xi(8);
-  A(3, 0) += kInvSqrt2 * xi(8);
-  A(1, 2) += kInvSqrt2 * xi(9);
-  A(2, 1) += kInvSqrt2 * xi(9);
-  A(1, 3) += kInvSqrt2 * xi(10);
-  A(3, 1) += kInvSqrt2 * xi(10);
-  A(2, 3) += kInvSqrt2 * xi(11);
-  A(3, 2) += kInvSqrt2 * xi(11);
+  Matrix44 A = SO4::Hat(SkewToSO4(r)) + HatSym4(s);
 
   // Traceless diagonal scalings.
   const double a = kInvSqrt2 * xi(12);
   const double b = kInvSqrt6 * xi(13);
   const double c = kInvSqrt12 * xi(14);
 
-  A(0, 0) += a + b + c;
-  A(1, 1) += -a + b + c;
-  A(2, 2) += -2.0 * b + c;
-  A(3, 3) += -3.0 * c;
+  Vector4 diag;
+  diag << a + b + c, -a + b + c, -2.0 * b + c, -3.0 * c;
+  A.diagonal() += diag;
 
   return A;
 }
 
 /* ************************************************************************* */
-// used consistent notation with Hat()
+// Used consistent notation with Hat()
 Vector SL4::Vee(const Matrix44& A) {
   Vector xi(15);
-  xi << kInvSqrt2 * (A(0, 1) - A(1, 0)),
-      kInvSqrt2 * (A(0, 2) - A(2, 0)),
-      kInvSqrt2 * (A(0, 3) - A(3, 0)),
-      kInvSqrt2 * (A(1, 2) - A(2, 1)),
-      kInvSqrt2 * (A(1, 3) - A(3, 1)),
-      kInvSqrt2 * (A(2, 3) - A(3, 2)),
-      kInvSqrt2 * (A(0, 1) + A(1, 0)),
-      kInvSqrt2 * (A(0, 2) + A(2, 0)),
-      kInvSqrt2 * (A(0, 3) + A(3, 0)),
-      kInvSqrt2 * (A(1, 2) + A(2, 1)),
-      kInvSqrt2 * (A(1, 3) + A(3, 1)),
-      kInvSqrt2 * (A(2, 3) + A(3, 2)),
-      kInvSqrt2 * (A(0, 0) - A(1, 1)),
-      kInvSqrt6 * (A(0, 0) + A(1, 1) - 2.0 * A(2, 2)),
-      kInvSqrt12 * (A(0, 0) + A(1, 1) + A(2, 2) - 3.0 * A(3, 3));
+  const Matrix44 skew = A - A.transpose();
+  const Matrix44 sym = A + A.transpose();
+  xi.head<6>() = kInvSqrt2 * SO4ToSkew(SO4::Vee(skew));
+  xi.segment<6>(6) = kInvSqrt2 * VeeSym4(sym);
+  xi(12) = kInvSqrt2 * (A(0, 0) - A(1, 1));
+  xi(13) = kInvSqrt6 * (A(0, 0) + A(1, 1) - 2.0 * A(2, 2));
+  xi(14) = kInvSqrt12 * (A(0, 0) + A(1, 1) + A(2, 2) - 3.0 * A(3, 3));
   return xi;
 }
 
