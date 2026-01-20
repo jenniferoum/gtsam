@@ -108,7 +108,8 @@ TEST(HessianFactor, Constructor1)
   // error 0.5*(f - 2*x'*g + x'*G*x)
   double expected = 80.375;
   double actual = factor.error(dx);
-  double expected_manual = 0.5 * (f - 2.0 * dx[0].dot(g) + dx[0].transpose() * G.selfadjointView<Eigen::Upper>() * dx[0]);
+  const double xGx = dx[0].dot(G * dx[0]);
+  double expected_manual = 0.5 * (f - 2.0 * dx[0].dot(g) + xGx);
   EXPECT_DOUBLES_EQUAL(expected, expected_manual, 1e-10);
   EXPECT_DOUBLES_EQUAL(expected, actual, 1e-10);
 }

@@ -25,12 +25,14 @@ jobs:
             test_target: RUN_TESTS
             binary_cache: C:\Users\runneradmin\AppData\Local\vcpkg\archives
             python: python
+            additional_vcpkg_ports: intel-mkl
           - os: ubuntu-latest
             triplet: x64-linux-release
             build_type: Release
             test_target: test
             binary_cache: /home/runner/.cache/vcpkg/archives
             python: python3
+            additional_vcpkg_ports: intel-mkl
           - os: macos-latest
             triplet: arm64-osx-release
             build_type: Release
@@ -112,6 +114,7 @@ jobs:
           pybind11
           geographiclib
           eigen3
+          ${{ matrix.additional_vcpkg_ports }}
 
       - name: On Failure, upload vcpkg logs
         if: failure()
@@ -178,6 +181,8 @@ jobs:
               -DGTSAM_USE_SYSTEM_PYBIND=ON \
               -DGTSAM_ENABLE_GEOGRAPHICLIB=ON \
               -DGTSAM_SUPPORT_NESTED_DISSECTION=ON \
+              -DGTSAM_WITH_EIGEN_MKL=ON \
+              -DGTSAM_WITH_EIGEN_MKL_OPENMP=ON \
               -DCTEST_EXTRA_ARGS='${{ matrix.ctest_extra_flags }}' \
               -DPYTEST_EXTRA_ARGS='${{ matrix.pytest_extra_flags }}'
 
