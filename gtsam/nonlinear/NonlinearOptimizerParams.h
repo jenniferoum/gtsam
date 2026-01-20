@@ -112,11 +112,8 @@ public:
   /// Parameters for `gtsam::MultifrontalSolver` when using `MULTIFRONTAL_SOLVER`.
 
   /// The type of linear solver to use in the nonlinear optimizer
- #ifdef GTSAM_ALLOW_DEPRECATED_SINCE_V43
   LinearSolverType linearSolverType = MULTIFRONTAL_CHOLESKY;
-#else
-  LinearSolverType linearSolverType = MULTIFRONTAL_SOLVER;
-#endif
+
   MultifrontalParameters multifrontalParams;
 
   NonlinearOptimizerParams() = default;
