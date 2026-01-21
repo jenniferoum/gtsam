@@ -59,11 +59,9 @@ jobs:
           toolset: 14.40
 
       - name: Install sccache
-        if: runner.os == 'Windows'
         uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Use sccache
-        if: runner.os == 'Windows'
         shell: bash
         run: |
           echo "SCCACHE_GHA_ENABLED=ON" >> "$GITHUB_ENV"
