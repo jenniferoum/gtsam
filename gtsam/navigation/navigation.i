@@ -651,6 +651,51 @@ virtual class InvariantEKF : gtsam::LeftLinearEKF<G> {
   void predict(const gtsam::Vector& u, double dt, gtsam::Matrix Q);
 };
 
+// ---------------------------------------------------------------------------
+// Equivariant Filter (attitude example wrapper)
+#include <gtsam/navigation/EquivariantFilter.h>
+#include <gtsam_unstable/geometry/EquivariantFilterAttitude.h>
+template <M = {gtsam::Unit3}, Symmetry = {gtsam::attitude_example::Symmetry}>
+virtual class EquivariantFilter : gtsam::ManifoldEKF<M> {
+  // Constructors
+  EquivariantFilter(const M& xi_ref, gtsam::Matrix Sigma);
+  EquivariantFilter(const M& xi_ref, gtsam::Matrix Sigma,
+                    const Symmetry::Group& X0);
+
+  // Accessors
+  gtsam::Matrix errorCovariance() const;
+  gtsam::Matrix covariance() const;
+  Symmetry::Group groupEstimate() const;
+
+  // Wrapper-friendly predict
+  void predictWithJacobianEuler(const gtsam::Vector& Lambda, gtsam::Matrix A,
+                                gtsam::Matrix Qc, double dt);
+
+  // Only vector-based measurements are supported in wrapper
+  void updateWithVector(const gtsam::Vector& prediction, const gtsam::Matrix& H,
+                        const gtsam::Vector& z, const gtsam::Matrix& R);
+};
+
+// ---------------------------------------------------------------------------
+// ABC Equivariant Filter wrapper (N=1)
+#include <gtsam_unstable/geometry/ABCEqFWrapper.h>
+namespace abc {
+class AbcEquivariantFilter1 {
+  AbcEquivariantFilter1();
+  AbcEquivariantFilter1(const gtsam::Matrix& Sigma0);
+
+  void predict(const gtsam::Vector& omega, const gtsam::Matrix& inputCovariance,
+               double dt);
+  void update(const gtsam::Unit3& y, const gtsam::Unit3& d,
+              const gtsam::Matrix& R, int cal_idx);
+
+  gtsam::Rot3 attitude() const;
+  gtsam::Vector bias() const;
+  gtsam::Rot3 calibration(size_t i) const;
+  gtsam::Matrix errorCovariance() const;
+};
+}  // namespace abc
+
 // Specialized NavState IMU EKF
 #include <gtsam/navigation/NavStateImuEKF.h>
 class NavStateImuEKF : gtsam::LeftLinearEKF<gtsam::NavState> {

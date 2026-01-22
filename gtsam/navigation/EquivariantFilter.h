@@ -223,6 +223,34 @@ class EquivariantFilter : public ManifoldEKF<M> {
   }
 
   /**
+   * @brief Propagate the filter state with explicit Jacobian and lift vector.
+   *
+   * This overload is wrapper-friendly: takes a lifted tangent vector
+   * directly, avoiding templated Lift functors. It uses first-order Euler
+   * discretization (K = 1).
+   *
+   * @param Lambda Lifted tangent vector in the group tangent space.
+   * @param A Error dynamics matrix (DimM x DimM).
+   * @param Qc Process noise covariance on the manifold (continuous-time).
+   * @param dt Time step.
+   */
+  void predictWithJacobianEuler(const Vector& Lambda, const MatrixM& A,
+                                const MatrixM& Qc, double dt) {
+    TangentG lambda_g;
+    if constexpr (TangentG::RowsAtCompileTime == Eigen::Dynamic) {
+      lambda_g.resize(DimG);
+    }
+    lambda_g = Lambda;
+
+    g_ = traits<G>::Compose(g_, traits<G>::Expmap(lambda_g * dt));
+    M xi_next = act_on_ref_(g_);
+
+    MatrixM Phi = transitionMatrix<1>(A, dt);
+    CovarianceM Q_manifold = Qc * dt;
+    Base::predict(xi_next, Phi, Q_manifold);
+  }
+
+  /**
    * Measurement update: Corrects the state and covariance using a
    * pre-calculated predicted measurement and its Jacobian.
    *
