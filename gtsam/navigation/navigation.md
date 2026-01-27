@@ -33,6 +33,7 @@ The `navigation` module in GTSAM provides specialized tools for inertial navigat
 
 - **[GPSFactor](doc/GPSFactor.ipynb)**: Factor for incorporating GPS position measurements.
 - **[BarometricFactor](doc/BarometricFactor.ipynb)**: Incorporates barometric altitude measurements.
+- **[PseudorangeFactor](doc/PseudorangeFactor.ipynb)**: Precise GNSS positioning.
 
 ### Magnetic Field Integration
 
