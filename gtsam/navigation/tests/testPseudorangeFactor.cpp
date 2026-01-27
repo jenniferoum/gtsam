@@ -24,16 +24,39 @@ TEST(TestPseudorangeFactor, Constructor) {
       factor.evaluateError(Point3::Zero(), 0.0, Hpos, Hbias)[0];
   EXPECT_DOUBLES_EQUAL(0.0, error, 1e-9);
 
-  // Jacobians are technically undefined if the receiver and satellite positions
-  // are the same. So make sure this corner-case does not numerically explode:
-  CHECK(!Hpos.array().isNaN().any());
-  CHECK(!Hbias.array().isNaN().any());
+  // Derivatives are technically undefined if the receiver and satellite
+  // positions are the same (hopefully that's never the case in reality). But
+  // for all intents and purposes, zero-valued derivatives can substitute for
+  // undefined gradient at that singularity. So make sure this corner-case does
+  // not numerically explode:
+  EXPECT(!Hpos.array().isNaN().any());
+  EXPECT(!Hbias.array().isNaN().any());
   EXPECT_DOUBLES_EQUAL(Hpos.norm(), 0.0, 1e-9);
-  // Clock bias should always be speed-of-light in vacuum:
+  // Clock bias derivative should always be speed-of-light in vacuum:
   EXPECT_DOUBLES_EQUAL(Hbias.norm(), 299792458.0, 1e-9);
 }
 
-TEST(TestPseudorangeFactor, Jacobians) {
+// *************************************************************************
+TEST(TestPseudorangeFactor, Jacobians1) {
+  // Synthetic example with exact error/derivatives:
+  const auto factor = PseudorangeFactor(
+      Key(0), Key(1),  // Receiver position and clock bias keys.
+      4.0,             // Measured pseudorange.
+      // Satellite position:
+      Vector3(0.0, 0.0, 3.0),
+      0.0  // Sat clock drift bias.
+  );
+  const double error = factor.evaluateError(Vector3::Zero(), 0.0)[0];
+  EXPECT_DOUBLES_EQUAL(-1.0, error, 1e-6);
+
+  Values values;
+  values.insert(Key(0), Vector3(1.0, 2.0, 3.0));
+  values.insert(Key(1), 0.0);
+  EXPECT_CORRECT_FACTOR_JACOBIANS(factor, values, 1e-3, 1e-5);
+}
+
+// *************************************************************************
+TEST(TestPseudorangeFactor, Jacobians2) {
   // Example values borrowed from `SinglePointPositioningExample.ipynb`:
   const auto factor = PseudorangeFactor(
       Key(0), Key(1),  // Receiver position and clock bias keys.
@@ -48,6 +71,30 @@ TEST(TestPseudorangeFactor, Jacobians) {
       Key(0), Vector3(-2684418.91084688, -4293361.08683296, 3865365.45451951));
   values.insert(Key(1), 5.377885093511699e-07);
   EXPECT_CORRECT_FACTOR_JACOBIANS(factor, values, 1e-3, 1e-5);
+}
+
+// *************************************************************************
+TEST(TestPseudorangeFactor, print) {
+  // Just make sure `print()` doesn't throw errors
+  // since there's no elegant way to check stdout.
+  const auto factor = PseudorangeFactor();
+  factor.print();
+}
+
+// *************************************************************************
+TEST(TestPseudorangeFactor, equals) {
+  const auto factor1 = PseudorangeFactor();
+  const auto factor2 = PseudorangeFactor(1, 2, 0.0, Point3::Zero(), 0.0);
+  const auto factor3 =
+      PseudorangeFactor(1, 2, 10.0, Point3(1.0, 2.0, 3.0), 20.0);
+
+  CHECK(factor1.equals(factor1));
+  CHECK(factor2.equals(factor2));
+  CHECK(!factor1.equals(factor2));
+  CHECK(factor2.equals(factor3, 1e99));
+
+  // Test print:
+  factor2.print("factor2");
 }
 
 // *************************************************************************

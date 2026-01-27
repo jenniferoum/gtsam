@@ -33,14 +33,10 @@ PseudorangeFactor::PseudorangeFactor(Key receiverPositionKey,
 //***************************************************************************
 void PseudorangeFactor::print(const std::string& s,
                               const KeyFormatter& keyFormatter) const {
-  std::cout << (s.empty() ? "" : s + " ") << "PseudorangeFactor on "
-            << keyFormatter(this->key<1>()) << ", "
-            << keyFormatter(this->key<2>()) << "\n";
-  std::cout << "  Pseudorange: " << pseudorange_ << " meters\n";
-  std::cout << "  Satellite Position: " << satPos_.transpose()
-            << " meters (ECEF)\n";
-  std::cout << "  Satellite clock bias: " << satClkBias_ << " seconds\n";
-  noiseModel_->print("  noise model: ");
+  Base::print(s, keyFormatter);
+  gtsam::print(pseudorange_, "pseudorange (m): ");
+  gtsam::print(Vector(satPos_), "sat position (ECEF meters): ");
+  gtsam::print(satClkBias_, "sat clock bias (s): ");
 }
 
 //***************************************************************************

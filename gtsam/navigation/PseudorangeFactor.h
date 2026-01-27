@@ -41,10 +41,10 @@ class GTSAM_EXPORT PseudorangeFactor
  private:
   typedef NoiseModelFactorN<Point3, double> Base;
 
-  const double
-      pseudorange_;  ///< Receiver-reported pseudorange measurement in meters.
-  const Point3 satPos_;      ///< Satellite position in WGS84 ECEF meters.
-  const double satClkBias_;  ///< Satellite clock bias in seconds.
+  double
+      pseudorange_;    ///< Receiver-reported pseudorange measurement in meters.
+  Point3 satPos_;      ///< Satellite position in WGS84 ECEF meters.
+  double satClkBias_;  ///< Satellite clock bias in seconds.
 
  public:
   // Provide access to the Matrix& version of evaluateError:
@@ -72,11 +72,11 @@ class GTSAM_EXPORT PseudorangeFactor
    * @param satelliteClockBias Satellite clock bias in seconds.
    * @param model 1-D noise model.
    */
-  PseudorangeFactor(Key receiverPositionKey, Key receiverClockBiasKey,
-                    double measuredPseudorange, const Point3& satellitePosition,
-                    double satelliteClockBias,
-                    const SharedNoiseModel& model =
-                        noiseModel::Diagonal::Sigmas(Vector1(1.0)));
+  PseudorangeFactor(
+      Key receiverPositionKey, Key receiverClockBiasKey,
+      double measuredPseudorange, const Point3& satellitePosition,
+      double satelliteClockBias = 0.0,
+      const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
   /// @return a deep copy of this factor
   gtsam::NonlinearFactor::shared_ptr clone() const override {
@@ -111,5 +111,9 @@ class GTSAM_EXPORT PseudorangeFactor
   }
 #endif
 };
+
+/// traits
+template <>
+struct traits<PseudorangeFactor> : public Testable<PseudorangeFactor> {};
 
 }  // namespace gtsam
