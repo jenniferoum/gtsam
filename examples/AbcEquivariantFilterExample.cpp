@@ -283,7 +283,7 @@ void processDataWithEqF(AbcFilter& filter, const std::vector<Data>& data_list,
 
       try {
         filter.update(measurement.y, measurement.d, measurement.R,
-                     measurement.cal_idx);
+                      measurement.cal_idx);
         validMeasurements++;
       } catch (const std::exception& e) {
         std::cerr << "Error updating at t=" << data.t << ": " << e.what()
@@ -340,8 +340,9 @@ void processDataWithEqF(AbcFilter& filter, const std::vector<Data>& data_list,
   Rot3 final_att_est = filter.attitude();
   Vector3 final_bias_est = filter.bias();
   Rot3 final_cal_est = filter.calibration(0);
-  
-  Vector3 final_att_error = Rot3::Logmap(final_data.xi.R.between(final_att_est));
+
+  Vector3 final_att_error =
+      Rot3::Logmap(final_data.xi.R.between(final_att_est));
   Vector3 final_bias_error = final_bias_est - final_data.xi.b;
   Vector3 final_cal_error = Z_3x1;
   if (!final_data.xi.S.empty()) {
@@ -381,8 +382,7 @@ void processDataWithEqF(AbcFilter& filter, const std::vector<Data>& data_list,
 
   if (!final_data.xi.S.empty()) {
     std::cout << "Calibration (RPY) - Estimate: "
-              << (final_cal_est.rpy() * RAD_TO_DEG).transpose()
-              << "° | Truth: "
+              << (final_cal_est.rpy() * RAD_TO_DEG).transpose() << "° | Truth: "
               << (final_data.xi.S[0].rpy() * RAD_TO_DEG).transpose() << "°"
               << std::endl;
   }
