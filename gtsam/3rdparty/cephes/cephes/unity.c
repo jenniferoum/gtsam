@@ -50,7 +50,7 @@ static const double LQ[] = {
 };
 
 /* log(1 + x) - x */
-double log1pmx(double x)
+double gtsam_cephes_log1pmx(double x)
 {
     if (fabs(x) < 0.5) {
 	int n;
@@ -106,7 +106,7 @@ static double coscof[7] = {
     4.1666666666666666609054E-2,
 };
 
-double cosm1(double x)
+double gtsam_cephes_cosm1(double x)
 {
     double xx;
 
@@ -131,7 +131,7 @@ static double lgam1p_taylor(double x)
     xfac = -x;
     for (n = 2; n < 42; n++) {
         xfac *= -x;
-        coeff = zeta(n, 1) * xfac / n;
+        coeff = gtsam_cephes_zeta(n, 1) * xfac / n;
 	res += coeff;
 	if (fabs(coeff) < MACHEP * fabs(res)) {
             break;
@@ -143,13 +143,13 @@ static double lgam1p_taylor(double x)
 
 
 /* Compute lgam(x + 1). */
-double lgam1p(double x)
+double gtsam_cephes_lgam1p(double x)
 {
     if (fabs(x) <= 0.5) {
 	return lgam1p_taylor(x);
     } else if (fabs(x - 1) < 0.5) {
 	return log(x) + lgam1p_taylor(x - 1);
     } else {
-	return lgam(x + 1);
+	return gtsam_cephes_lgam(x + 1);
     }
 }

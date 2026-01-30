@@ -37,7 +37,7 @@ namespace internal {
  * @return double
  */
 inline double chiSquaredQuantile(const double dofs, const double alpha) {
-  return 2 * igami(dofs / 2, alpha);
+  return 2 * gtsam_cephes_igami(dofs / 2, alpha);
 }
 
 }  // namespace internal
