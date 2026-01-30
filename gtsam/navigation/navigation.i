@@ -500,7 +500,30 @@ virtual class PseudorangeFactor : gtsam::NonlinearFactor {
 
   // Standard Interface
   gtsam::Vector evaluateError(const gtsam::Point3& receiverPosition,
-                              const double& receiverClock_bias) const;
+                              const double& receiverClockBias) const;
+
+  // enable serialization functionality
+  void serialize() const;
+};
+
+virtual class DifferentialPseudorangeFactor : gtsam::NonlinearFactor {
+  DifferentialPseudorangeFactor(gtsam::Key receiverPositionKey,
+                                gtsam::Key receiverClockBiasKey,
+                                gtsam::Key differentialCorrectionKey,
+                                double measuredPseudorange,
+                                const gtsam::Point3& satellitePosition,
+                                double satelliteClockBias,
+                                const gtsam::noiseModel::Base* model);
+
+  // Testable
+  void print(string s = "", const gtsam::KeyFormatter& keyFormatter =
+                                gtsam::DefaultKeyFormatter) const;
+  bool equals(const gtsam::NonlinearFactor& expected, double tol);
+
+  // Standard Interface
+  gtsam::Vector evaluateError(const gtsam::Point3& receiverPosition,
+                              const double& receiverClockBias,
+                              const double& differentialCorrection) const;
 
   // enable serialization functionality
   void serialize() const;
