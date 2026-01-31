@@ -652,7 +652,7 @@ virtual class InvariantEKF : gtsam::LeftLinearEKF<G> {
 };
 
 // ---------------------------------------------------------------------------
-// ABC Equivariant Filter wrapper (N=1)
+// ABC Equivariant Filter
 #include <gtsam_unstable/geometry/ABCEquivariantFilter.h>
 namespace abc {
 template <N = {1, 2, 3}>

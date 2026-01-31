@@ -7,7 +7,7 @@
  * paper: "Overcoming Bias: Equivariant Filter Design for Biased Attitude
  * Estimation with Online Calibration" by Fornasier et al.
  *
- * This example uses the simplified AbcEquivariantFilter wrapper class which
+ * This example uses the simplified AbcEquivariantFilter class which
  * provides a clean interface for predict/update operations without requiring
  * manual computation of Jacobian matrices and innovation functions.
  *
