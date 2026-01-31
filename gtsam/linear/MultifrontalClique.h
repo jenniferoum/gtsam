@@ -51,8 +51,8 @@ class IndexedSymbolicFactor : public SymbolicFactor {
  public:
   size_t index_;
   size_t rows_;
-  IndexedSymbolicFactor(const KeyVector& keys, size_t index, size_t rows)
-      : SymbolicFactor(), index_(index), rows_(rows) {
+  IndexedSymbolicFactor(const KeyVector& keys, size_t index)
+      : SymbolicFactor(), index_(index) {
     keys_ = keys;
   }
 };

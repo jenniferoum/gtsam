@@ -65,9 +65,7 @@ SymbolicFactorGraph buildSymbolicGraph(
       }
     }
     if (keys.empty()) continue;
-    const size_t rows = graph[i]->dim();
-    symbolicGraph.emplace_shared<internal::IndexedSymbolicFactor>(keys, i,
-                                                                  rows);
+    symbolicGraph.emplace_shared<internal::IndexedSymbolicFactor>(keys, i);
   }
   return symbolicGraph;
 }
@@ -102,9 +100,15 @@ MultifrontalSolver::PrecomputedData NonlinearMultifrontalSolver::Precompute(
   SymbolicFactorGraph symbolicGraph = buildSymbolicGraph(graph, fixedKeys);
   SymbolicEliminationTree eliminationTree(symbolicGraph, reducedOrdering);
   SymbolicJunctionTree junctionTree(eliminationTree);
+  std::vector<size_t> rowCounts;
+  rowCounts.reserve(graph.size());
+  for (const auto& factor : graph) {
+    size_t dim = factor ? factor->dim() : 0;
+    rowCounts.push_back(dim);
+  }
 
   return MultifrontalSolver::PrecomputedData{
-      std::move(dims), std::move(fixedKeys), std::move(junctionTree)};
+      std::move(dims), std::move(fixedKeys), std::move(junctionTree), std::move(rowCounts)};
 }
 
 /* ************************************************************************* */

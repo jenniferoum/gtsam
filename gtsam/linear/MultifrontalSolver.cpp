@@ -134,8 +134,7 @@ PrecomputeScratch precomputeFromGraph(const GaussianFactorGraph& graph) {
 // Build SymbolicFactorGraph from GaussianFactorGraph
 SymbolicFactorGraph buildSymbolicGraph(
     const GaussianFactorGraph& graph,
-    const std::unordered_set<Key>& fixedKeys,
-    const std::vector<size_t>& rowCounts) {
+    const std::unordered_set<Key>& fixedKeys) {
   SymbolicFactorGraph symbolicGraph;
   symbolicGraph.reserve(graph.size());
   for (size_t i = 0; i < graph.size(); ++i) {
@@ -149,8 +148,7 @@ SymbolicFactorGraph buildSymbolicGraph(
     }
     // Skip factors that are fully constrained away.
     if (keys.empty()) continue;
-    symbolicGraph.emplace_shared<internal::IndexedSymbolicFactor>(
-        keys, i, rowCounts.at(i));
+    symbolicGraph.emplace_shared<internal::IndexedSymbolicFactor>(keys, i);
   }
   return symbolicGraph;
 }
@@ -455,6 +453,7 @@ struct CliqueBuilder {
   std::vector<MultifrontalSolver::CliquePtr>* cliques;
   const std::unordered_set<Key>* fixedKeys;
   const MultifrontalParameters* params;
+  const std::vector<size_t>* rowCounts;
   SymbolicJunctionTree::Cluster::KeySetMap separatorCache = {};
 
   BuiltClique build(const SymbolicJunctionTree::sharedNode& cluster,
@@ -472,7 +471,7 @@ struct CliqueBuilder {
       auto indexed =
           std::static_pointer_cast<internal::IndexedSymbolicFactor>(factor);
       factorIndices.push_back(indexed->index_);
-      vbmRows += indexed->rows_;
+      vbmRows += rowCounts->at(indexed->index_);
     }
 
     // Create the clique node and cache static structure.
@@ -557,7 +556,8 @@ MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
   }
 
   // Build the actual MultifrontalClique structure.
-  CliqueBuilder builder{dims_, &solution_, &cliques_, &fixedKeys_, &params_};
+  CliqueBuilder builder{dims_, &solution_, &cliques_, &fixedKeys_, &params_,
+                        &data.rowCounts};
   for (const auto& rootCluster : data.junctionTree.roots()) {
     if (rootCluster) {
       roots_.push_back(
@@ -583,13 +583,13 @@ MultifrontalSolver::PrecomputedData MultifrontalSolver::Precompute(
   }
 
   SymbolicFactorGraph symbolicGraph =
-      buildSymbolicGraph(graph, scratch.fixedKeys, scratch.rowCounts);
+      buildSymbolicGraph(graph, scratch.fixedKeys);
   SymbolicEliminationTree eliminationTree(symbolicGraph, reducedOrdering);
   SymbolicJunctionTree junctionTree(eliminationTree);
 
   return MultifrontalSolver::PrecomputedData{
       std::move(scratch.dims), std::move(scratch.fixedKeys),
-      std::move(junctionTree)};
+      std::move(junctionTree), std::move(scratch.rowCounts)};
 }
 
 /* ************************************************************************* */

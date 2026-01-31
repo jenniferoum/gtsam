@@ -86,6 +86,7 @@ class GTSAM_EXPORT MultifrontalSolver
     std::map<Key, size_t> dims;         ///< Map from variable key to dimension.
     std::unordered_set<Key> fixedKeys;  ///< Keys fixed by constrained factors.
     SymbolicJunctionTree junctionTree;  ///< Precomputed symbolic junction tree.
+    std::vector<size_t> rowCounts;      ///< Row counts indexed by factor index.
   };
 
   /// Shared pointer to a MultifrontalClique.
