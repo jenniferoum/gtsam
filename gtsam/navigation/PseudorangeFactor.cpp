@@ -70,7 +70,9 @@ Vector PseudorangeFactor::evaluateError(
   }
 
   if (Hreceiver_clock_bias) {
-    *Hreceiver_clock_bias = Matrix11(CLIGHT);
+    Hreceiver_clock_bias->resize(1, 1);
+    // Avoid Eigen assigning from Matrix11, which triggers SSE array-bounds warnings on 1x1 matrices.
+    (*Hreceiver_clock_bias)(0, 0) = CLIGHT;
   }
 
   return Vector1(error);
