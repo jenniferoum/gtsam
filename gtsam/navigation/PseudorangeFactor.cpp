@@ -70,7 +70,7 @@ Vector PseudorangeFactor::evaluateError(
   }
 
   if (Hreceiver_clock_bias) {
-    *Hreceiver_clock_bias = Matrix11(CLIGHT);
+    *Hreceiver_clock_bias = I_1x1 * CLIGHT;
   }
 
   return Vector1(error);
