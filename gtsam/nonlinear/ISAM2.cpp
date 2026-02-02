@@ -756,9 +756,9 @@ void ISAM2::updateDelta(bool forceFullSolve) const {
     const VectorValues gradAtZero = this->gradientAtZero();  // Compute gradient
     DeltaImpl::UpdateRgProd(roots_, deltaReplacedMask_, gradAtZero,
                             &RgProd_);  // Update RgProd
-    const VectorValues dx_u = DeltaImpl::ComputeGradientSearch(
-        gradAtZero, RgProd_);  // Compute gradient search point
-
+    const VectorValues dx_u =
+        VectorValues::Zero(deltaNewton_)
+            .update(DeltaImpl::ComputeGradientSearch(gradAtZero, RgProd_));
     // Clear replaced keys mask because now we've updated deltaNewton_ and
     // RgProd_
     deltaReplacedMask_.clear();
@@ -797,7 +797,8 @@ void ISAM2::updateDelta(bool forceFullSolve) const {
     const VectorValues gradAtZero = this->gradientAtZero();
     DeltaImpl::UpdateRgProd(roots_, deltaReplacedMask_, gradAtZero, &RgProd_);
     const VectorValues dx_u =
-        DeltaImpl::ComputeGradientSearch(gradAtZero, RgProd_);
+        VectorValues::Zero(deltaNewton_)
+            .update(DeltaImpl::ComputeGradientSearch(gradAtZero, RgProd_));
     deltaReplacedMask_.clear();
 
     // Do the DogLeg Line Search

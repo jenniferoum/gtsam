@@ -358,5 +358,51 @@ TEST(DogLegOptimizer, VariableUpdate) {
 }
 
 /* ************************************************************************* */
+/**
+ * Validate computeblend when Newton delta is mis-matched with gradient delta
+ * 
+ * To enable variable changes to smart factors the fix to issue:
+ * https://github.com/borglab/gtsam/issues/301
+ * ISAM2 was updated to add variables before updating the delta. 
+ * This however can cause a structural miss-match between dx_n and dx_u during
+ * ComputeBlend causing this test to crash with an error before the fix.
+ */
+TEST(DogLegOptimizer, ComputeBlend) {
+  auto model = noiseModel::Diagonal::Sigmas(Vector3(0.2, 0.2, 0.1));
+  ISAM2DoglegParams doglegparams = ISAM2DoglegParams();
+  doglegparams.initialDelta = 1e-2;
+  doglegparams.verbose = false;
+  ISAM2Params isam2_params;
+  isam2_params.evaluateNonlinearError = true;
+  isam2_params.relinearizeThreshold = 0.0;
+  isam2_params.enableRelinearization = true;
+  isam2_params.optimizationParams = doglegparams;
+  isam2_params.relinearizeSkip = 1;
+  ISAM2 isam2(isam2_params);
+
+  ISAM2UpdateParams update_params;
+  update_params.force_relinearize = true;
+
+  {
+    NonlinearFactorGraph graph;
+    graph.emplace_shared<PriorFactor<Pose2>>(0, Pose2(), model);
+    Values values;
+    values.insert(0, Pose2(5, 5, 3));
+    isam2.update(graph, values, update_params);
+  }
+  for (size_t i = 0; i < 3; i++) {
+    NonlinearFactorGraph graph;
+    graph.emplace_shared<BetweenFactor<Pose2>>(i, i+1, Pose2(1,0,0), model);
+    Values values;
+    values.insert(i+1, Pose2(i + 5, i + 5, 3));
+    isam2.update(graph, values, update_params);
+  }
+
+  // Check is trivial as test validates no runtime error
+  Values computed = isam2.calculateEstimate();
+  CHECK(computed.size() == 4);
+}
+
+/* ************************************************************************* */
 int main() { TestResult tr; return TestRegistry::runAllTests(tr); }
 /* ************************************************************************* */
