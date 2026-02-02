@@ -103,15 +103,19 @@ Values addSameTranslationNodes(const Values &result,
 // wants. Unfortunately, we are given Unit3 measurements and Point3 unknowns,
 // which is a mismatch in this class' setup.
 using noiseModel::Isotropic;
-Isotropic::shared_ptr convertNoiseModel(
-    const SharedNoiseModel &unit3NoiseModel) {
+SharedNoiseModel convertNoiseModel(const SharedNoiseModel &unit3NoiseModel) {
   if (auto isotropic = std::dynamic_pointer_cast<Isotropic>(unit3NoiseModel)) {
     return noiseModel::Isotropic::Sigma(3, isotropic->sigma());
-  } else {
-    throw std::runtime_error(
-        "TranslationRecovery::convertNoiseModel: only isotropic noise model "
-        "supported.");
   }
+  if (auto robust =
+          std::dynamic_pointer_cast<noiseModel::Robust>(unit3NoiseModel)) {
+    // Preserve the robust kernel while converting the wrapped noise model.
+    return noiseModel::Robust::Create(robust->robust(),
+                                      convertNoiseModel(robust->noise()));
+  }
+  throw std::runtime_error(
+      "TranslationRecovery::convertNoiseModel: only isotropic (optionally "
+      "robust-wrapped) noise model supported.");
 }
 }  // namespace
 
