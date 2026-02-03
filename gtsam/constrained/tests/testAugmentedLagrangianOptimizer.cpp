@@ -18,6 +18,8 @@
 
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/constrained/AugmentedLagrangianOptimizer.h>
+#include <gtsam/inference/Symbol.h>
+#include <gtsam/slam/expressions.h>
 
 #include "constrainedExample.h"
 #include "gtsam/constrained/NonlinearEqualityConstraint.h"
@@ -142,6 +144,53 @@ TEST(AugmentedLagrangianOptimizer, constrained_example2) {
 
   /// Check the result is correct within tolerance.
   EXPECT(assert_equal(optimal_values, results, 1e-4));
+}
+
+TEST(AugmentedLagrangian, VectorBiasUsesElementwiseSigmas) {
+  using namespace gtsam;
+
+  const Symbol x_key('x', 0);
+  const Vector3_ x(x_key);
+
+  // Non-uniform sigmas are essential to detect the bug in Release.
+  Vector sigmas(3);
+  sigmas << 1.0, 2.0, 4.0;
+
+  NonlinearEqualityConstraints eq;
+  eq.emplace_shared<ExpressionEqualityConstraint<Vector3>>(x, Vector3::Zero(),
+                                                           sigmas);
+
+  // Empty cost graph keeps the factor indexing simple.
+  NonlinearFactorGraph costs;
+  const auto problem =
+      ConstrainedOptProblem::EqConstrainedOptProblem(costs, eq);
+
+  Values values;
+  values.insert<Vector3>(
+      x_key,
+      Vector3::Zero());  // satisfy constraint => penalty factor error is zero
+
+  auto params = std::make_shared<AugmentedLagrangianParams>();
+  AugmentedLagrangianOptimizer optimizer(problem, values, params);
+
+  AugmentedLagrangianState state;
+  state.muEq = 0.2;
+  state.lambdaEq.emplace_back((Vector(3) << 0.3, -0.5, 1.2).finished());
+
+  // Buggy code aborts here in Debug (Eigen assert) and gives wrong bias in
+  // Release.
+  const NonlinearFactorGraph graph =
+      optimizer.augmentedLagrangianFunction(state);
+  EXPECT_LONGS_EQUAL(1, static_cast<long>(graph.size()));
+
+  auto nf = graph.at(0);
+  auto factor = std::dynamic_pointer_cast<NoiseModelFactor>(nf);
+  EXPECT(factor);
+
+  const Vector bias_from_factor = factor->unwhitenedError(values);
+  const Vector expected =
+      (state.lambdaEq.at(0) / state.muEq).cwiseProduct(sigmas);
+  EXPECT(assert_equal(expected, bias_from_factor, 1e-12));
 }
 
 /* ********************************************************************************************* */
