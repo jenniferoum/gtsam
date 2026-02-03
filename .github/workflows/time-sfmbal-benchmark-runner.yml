@@ -1,0 +1,254 @@
+name: timeSFMBAL Benchmark Runner
+run-name: timeSFMBAL worker ${{ inputs.group_id }} ${{ inputs.runner_id }} ${{ inputs.target_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      group_id:
+        description: Unique dispatch group ID used by orchestrator
+        required: true
+        type: string
+      runner_id:
+        description: Runner profile ID
+        required: true
+        type: string
+      os_name:
+        description: OS label used in cache key
+        required: true
+        type: string
+      arch:
+        description: Architecture label used in cache key
+        required: true
+        type: string
+      checkout_ref:
+        description: Git ref/SHA to checkout for benchmarking
+        required: true
+        type: string
+      target_sha:
+        description: Commit SHA used in cache key
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark_linux_x64:
+    if: inputs.runner_id == 'linux-x64'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          fetch-depth: 0
+
+      - name: Restore BAL dataset archive cache
+        id: dataset_cache_restore
+        uses: actions/cache/restore@v4
+        with:
+          path: examples/Data/problem-16-22106-pre.txt.bz2
+          key: bal-problem-16-22106-pre-txt-bz2-v1
+
+      - name: Download BAL dataset archive
+        if: steps.dataset_cache_restore.outputs.cache-hit != 'true'
+        run: |
+          curl --fail --location --show-error \
+            --output examples/Data/problem-16-22106-pre.txt.bz2 \
+            https://grail.cs.washington.edu/projects/bal/data/dubrovnik/problem-16-22106-pre.txt.bz2
+
+      - name: Save BAL dataset archive cache
+        if: steps.dataset_cache_restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: examples/Data/problem-16-22106-pre.txt.bz2
+          key: bal-problem-16-22106-pre-txt-bz2-v1
+
+      - name: Extract BAL dataset
+        run: |
+          bzip2 -dc examples/Data/problem-16-22106-pre.txt.bz2 > examples/Data/dubrovnik-16-22106-pre.txt
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-w" \
+            -DGTSAM_BUILD_TESTS=OFF \
+            -DGTSAM_BUILD_UNSTABLE=ON \
+            -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
+            -DGTSAM_BUILD_TIMING_ALWAYS=ON \
+            -DGTSAM_BUILD_WITH_MARCH_NATIVE=OFF \
+            -DGTSAM_USE_BOOST_FEATURES=OFF \
+            -DGTSAM_ENABLE_BOOST_SERIALIZATION=OFF
+
+      - name: Build timeSFMBAL
+        run: cmake --build build --target timeSFMBAL -j2
+
+      - name: Run benchmark
+        run: ./build/timing/timeSFMBAL --benchmark-action-json benchmark-results.json
+
+      - name: Prepare cache payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p benchmark-cache
+          cp benchmark-results.json "benchmark-cache/${{ inputs.os_name }}-${{ inputs.arch }}-${{ inputs.target_sha }}.json"
+
+      - name: Save benchmark cache
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: benchmark-cache/${{ inputs.os_name }}-${{ inputs.arch }}-${{ inputs.target_sha }}.json
+          key: timeSFMBAL-benchmark-v3-${{ inputs.os_name }}-${{ inputs.arch }}-${{ inputs.target_sha }}
+
+  benchmark_linux_arm64:
+    if: inputs.runner_id == 'linux-arm64'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout target ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          fetch-depth: 0
+
+      - name: Restore BAL dataset archive cache
+        id: dataset_cache_restore
+        uses: actions/cache/restore@v4
+        with:
+          path: examples/Data/problem-16-22106-pre.txt.bz2
+          key: bal-problem-16-22106-pre-txt-bz2-v1
+
+      - name: Download BAL dataset archive
+        if: steps.dataset_cache_restore.outputs.cache-hit != 'true'
+        run: |
+          curl --fail --location --show-error \
+            --output examples/Data/problem-16-22106-pre.txt.bz2 \
+            https://grail.cs.washington.edu/projects/bal/data/dubrovnik/problem-16-22106-pre.txt.bz2
+
+      - name: Save BAL dataset archive cache
+        if: steps.dataset_cache_restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: examples/Data/problem-16-22106-pre.txt.bz2
+          key: bal-problem-16-22106-pre-txt-bz2-v1
+
+      - name: Extract BAL dataset
+        run: |
+          bzip2 -dc examples/Data/problem-16-22106-pre.txt.bz2 > examples/Data/dubrovnik-16-22106-pre.txt
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-w" \
+            -DGTSAM_BUILD_TESTS=OFF \
+            -DGTSAM_BUILD_UNSTABLE=ON \
+            -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
+            -DGTSAM_BUILD_TIMING_ALWAYS=ON \
+            -DGTSAM_BUILD_WITH_MARCH_NATIVE=OFF \
+            -DGTSAM_USE_BOOST_FEATURES=OFF \
+            -DGTSAM_ENABLE_BOOST_SERIALIZATION=OFF
+
+      - name: Build timeSFMBAL
+        run: cmake --build build --target timeSFMBAL -j2
+
+      - name: Run benchmark
+        run: ./build/timing/timeSFMBAL --benchmark-action-json benchmark-results.json
+
+      - name: Prepare cache payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p benchmark-cache
+          cp benchmark-results.json "benchmark-cache/${{ inputs.os_name }}-${{ inputs.arch }}-${{ inputs.target_sha }}.json"
+
+      - name: Save benchmark cache
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: benchmark-cache/${{ inputs.os_name }}-${{ inputs.arch }}-${{ inputs.target_sha }}.json
+          key: timeSFMBAL-benchmark-v3-${{ inputs.os_name }}-${{ inputs.arch }}-${{ inputs.target_sha }}
+
+  benchmark_macos_arm64:
+    if: inputs.runner_id == 'macos-arm64'
+    runs-on: macos-14
+    steps:
+      - name: Checkout target ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          fetch-depth: 0
+
+      - name: Restore BAL dataset archive cache
+        id: dataset_cache_restore
+        uses: actions/cache/restore@v4
+        with:
+          path: examples/Data/problem-16-22106-pre.txt.bz2
+          key: bal-problem-16-22106-pre-txt-bz2-v1
+
+      - name: Download BAL dataset archive
+        if: steps.dataset_cache_restore.outputs.cache-hit != 'true'
+        run: |
+          curl --fail --location --show-error \
+            --output examples/Data/problem-16-22106-pre.txt.bz2 \
+            https://grail.cs.washington.edu/projects/bal/data/dubrovnik/problem-16-22106-pre.txt.bz2
+
+      - name: Save BAL dataset archive cache
+        if: steps.dataset_cache_restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: examples/Data/problem-16-22106-pre.txt.bz2
+          key: bal-problem-16-22106-pre-txt-bz2-v1
+
+      - name: Extract BAL dataset
+        run: |
+          bzip2 -dc examples/Data/problem-16-22106-pre.txt.bz2 > examples/Data/dubrovnik-16-22106-pre.txt
+
+      - name: Install dependencies
+        run: brew install ninja || true
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-w" \
+            -DGTSAM_BUILD_TESTS=OFF \
+            -DGTSAM_BUILD_UNSTABLE=ON \
+            -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
+            -DGTSAM_BUILD_TIMING_ALWAYS=ON \
+            -DGTSAM_BUILD_WITH_MARCH_NATIVE=OFF \
+            -DGTSAM_USE_BOOST_FEATURES=OFF \
+            -DGTSAM_ENABLE_BOOST_SERIALIZATION=OFF
+
+      - name: Build timeSFMBAL
+        run: cmake --build build --target timeSFMBAL -j2
+
+      - name: Run benchmark
+        run: ./build/timing/timeSFMBAL --benchmark-action-json benchmark-results.json
+
+      - name: Prepare cache payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p benchmark-cache
+          cp benchmark-results.json "benchmark-cache/${{ inputs.os_name }}-${{ inputs.arch }}-${{ inputs.target_sha }}.json"
+
+      - name: Save benchmark cache
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: benchmark-cache/${{ inputs.os_name }}-${{ inputs.arch }}-${{ inputs.target_sha }}.json
+          key: timeSFMBAL-benchmark-v3-${{ inputs.os_name }}-${{ inputs.arch }}-${{ inputs.target_sha }}
