@@ -360,12 +360,12 @@ TEST(DogLegOptimizer, VariableUpdate) {
 /* ************************************************************************* */
 /**
  * Validate computeblend when Newton delta is mis-matched with gradient delta
- * 
- * To enable variable changes to smart factors the fix to issue:
- * https://github.com/borglab/gtsam/issues/301
- * ISAM2 was updated to add variables before updating the delta. 
- * This however can cause a structural miss-match between dx_n and dx_u during
- * ComputeBlend causing this test to crash with an error before the fix.
+ *
+ * To enable variable changes to smart factors, ISAM2 was updated to add
+ * variables before updating the delta. This however can cause a structural
+ * miss-match between dx_n and dx_u during ComputeBlend causing this test to
+ * crash with an error before the fix. 
+ * ref: https://github.com/borglab/gtsam/issues/301
  */
 TEST(DogLegOptimizer, ComputeBlend) {
   auto model = noiseModel::Diagonal::Sigmas(Vector3(0.2, 0.2, 0.1));
