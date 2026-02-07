@@ -5,34 +5,34 @@ It includes classes for representing constraints, building constrained problems,
 
 ## Core Problem Model
 
-- `ConstrainedOptProblem`: Holds objective costs, equality constraints, and inequality constraints.
-- `ConstrainedOptProblem::AuxiliaryKeyGenerator`: Generates keys for auxiliary variables used when transforming inequality constraints.
-- `NonlinearConstraint`: Base class for nonlinear constraints represented as constrained `NoiseModelFactor` objects.
+- [`ConstrainedOptProblem`](doc/ConstrainedOptProblem.ipynb): Holds objective costs, equality constraints, and inequality constraints.
+- [`ConstrainedOptProblem::AuxiliaryKeyGenerator`](doc/ConstrainedOptProblem.ipynb): Generates keys for auxiliary variables used when transforming inequality constraints.
+- [`NonlinearConstraint`](doc/NonlinearConstraint.ipynb): Base class for nonlinear constraints represented as constrained `NoiseModelFactor` objects.
 
 ## Equality Constraints
 
-- `NonlinearEqualityConstraint`: Base class for constraints of the form `h(x) = 0`.
-- `ExpressionEqualityConstraint<T>`: Equality constraint from an expression and right-hand side.
-- `ZeroCostConstraint`: Equality constraint that enforces zero residual on a cost factor.
-- `NonlinearEqualityConstraints`: Container graph for equality constraints.
+- [`NonlinearEqualityConstraint`](doc/NonlinearEqualityConstraint.ipynb): Base class for constraints of the form `h(x) = 0`.
+- [`ExpressionEqualityConstraint<T>`](doc/NonlinearEqualityConstraint.ipynb): Equality constraint from an expression and right-hand side.
+- [`ZeroCostConstraint`](doc/NonlinearEqualityConstraint.ipynb): Equality constraint that enforces zero residual on a cost factor.
+- [`NonlinearEqualityConstraints`](doc/NonlinearEqualityConstraint.ipynb): Container graph for equality constraints.
 
 ## Inequality Constraints
 
-- `NonlinearInequalityConstraint`: Base class for constraints of the form `g(x) <= 0`.
-- `ScalarExpressionInequalityConstraint`: Scalar expression-based inequality constraint.
-- `NonlinearInequalityConstraints`: Container graph for inequality constraints.
-- `InequalityPenaltyFunction`: Interface for ramp-like penalty mappings used with inequality constraints.
+- [`NonlinearInequalityConstraint`](doc/NonlinearInequalityConstraint.ipynb): Base class for constraints of the form `g(x) <= 0`.
+- [`ScalarExpressionInequalityConstraint`](doc/NonlinearInequalityConstraint.ipynb): Scalar expression-based inequality constraint.
+- [`NonlinearInequalityConstraints`](doc/NonlinearInequalityConstraint.ipynb): Container graph for inequality constraints.
+- [`InequalityPenaltyFunction`](doc/InequalityPenaltyFunction.ipynb): Interface for ramp-like penalty mappings used with inequality constraints.
   Derived classes:
-  - `RampFunction`
-  - `SmoothRampPoly2`
-  - `SmoothRampPoly3`
-  - `SoftPlusFunction`
+  - [`RampFunction`](doc/InequalityPenaltyFunction.ipynb)
+  - [`SmoothRampPoly2`](doc/InequalityPenaltyFunction.ipynb)
+  - [`SmoothRampPoly3`](doc/InequalityPenaltyFunction.ipynb)
+  - [`SoftPlusFunction`](doc/InequalityPenaltyFunction.ipynb)
 
 ## Optimizers
 
-- `ConstrainedOptimizerParams`, `ConstrainedOptimizerState`, `ConstrainedOptimizer`: Shared base interfaces and iteration state for constrained solvers.
-- `PenaltyOptimizerParams`, `PenaltyOptimizerState`, `PenaltyOptimizer`: Penalty method solver and its parameters/state.
-- `AugmentedLagrangianParams`, `AugmentedLagrangianState`, `AugmentedLagrangianOptimizer`: Augmented Lagrangian solver and its parameters/state.
+- [`ConstrainedOptimizerParams`](doc/ConstrainedOptimizer.ipynb), [`ConstrainedOptimizerState`](doc/ConstrainedOptimizer.ipynb), [`ConstrainedOptimizer`](doc/ConstrainedOptimizer.ipynb): Shared base interfaces and iteration state for constrained solvers.
+- [`PenaltyOptimizerParams`](doc/PenaltyOptimizer.ipynb), [`PenaltyOptimizerState`](doc/PenaltyOptimizer.ipynb), [`PenaltyOptimizer`](doc/PenaltyOptimizer.ipynb): Penalty method solver and its parameters/state.
+- [`AugmentedLagrangianParams`](doc/AugmentedLagrangianOptimizer.ipynb), [`AugmentedLagrangianState`](doc/AugmentedLagrangianOptimizer.ipynb), [`AugmentedLagrangianOptimizer`](doc/AugmentedLagrangianOptimizer.ipynb): Augmented Lagrangian solver and its parameters/state.
 
 ## How the Pieces Fit Together
 
