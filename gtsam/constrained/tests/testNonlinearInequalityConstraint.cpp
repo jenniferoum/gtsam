@@ -30,6 +30,7 @@ using constrained_example::pow;
 using constrained_example::x1, constrained_example::x2;
 using constrained_example::x1_key, constrained_example::x2_key;
 
+/* ************************************************************************* */
 // Test methods of DoubleExpressionEquality.
 TEST(NonlinearInequalityConstraint, ScalarExpressionInequalityConstraint) {
   // create constraint from double expression
@@ -111,6 +112,7 @@ TEST(NonlinearInequalityConstraint, ScalarExpressionInequalityConstraint) {
   EXPECT(assert_equal(3200.0, constraint_eq2->error(values3)));
 }
 
+/* ************************************************************************* */
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);

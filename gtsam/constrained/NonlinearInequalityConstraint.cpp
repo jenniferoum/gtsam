@@ -21,14 +21,12 @@
 
 namespace gtsam {
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 Vector NonlinearInequalityConstraint::whitenedExpr(const Values& x) const {
   return noiseModel()->whiten(unwhitenedExpr(x));
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 Vector NonlinearInequalityConstraint::unwhitenedError(
     const Values& x, OptionalMatrixVecType H) const {
   Vector error = unwhitenedExpr(x, H);
@@ -45,45 +43,39 @@ Vector NonlinearInequalityConstraint::unwhitenedError(
   return error;
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 bool NonlinearInequalityConstraint::active(const Values& x) const {
   return (unwhitenedExpr(x).array() >= 0).any();
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 NoiseModelFactor::shared_ptr NonlinearInequalityConstraint::penaltyFactorCustom(
     InequalityPenaltyFunction::shared_ptr func, const double mu) const {
   /// Default behavior, this function should be overriden.
   return penaltyFactor(mu);
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 NonlinearEqualityConstraint::shared_ptr
 NonlinearInequalityConstraint::createEqualityConstraint() const {
   /// Default behavior, this function should be overriden.
   return nullptr;
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 NoiseModelFactor::shared_ptr
 NonlinearInequalityConstraint::penaltyFactorEquality(const double mu) const {
   return createEqualityConstraint()->penaltyFactor(mu);
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 ScalarExpressionInequalityConstraint::ScalarExpressionInequalityConstraint(
     const Double_& expression, const double& sigma)
     : Base(constrainedNoise(Vector1(sigma)), expression.keysAndDims().first),
       expression_(expression),
       dims_(expression.keysAndDims().second) {}
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 ScalarExpressionInequalityConstraint::shared_ptr
 ScalarExpressionInequalityConstraint::GeqZero(const Double_& expression,
                                               const double& sigma) {
@@ -92,8 +84,7 @@ ScalarExpressionInequalityConstraint::GeqZero(const Double_& expression,
                                                                 sigma);
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 ScalarExpressionInequalityConstraint::shared_ptr
 ScalarExpressionInequalityConstraint::LeqZero(const Double_& expression,
                                               const double& sigma) {
@@ -101,8 +92,7 @@ ScalarExpressionInequalityConstraint::LeqZero(const Double_& expression,
                                                                 sigma);
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 Vector ScalarExpressionInequalityConstraint::unwhitenedExpr(
     const Values& x, OptionalMatrixVecType H) const {
   // Copy-paste from ExpressionFactor.
@@ -113,16 +103,14 @@ Vector ScalarExpressionInequalityConstraint::unwhitenedExpr(
   }
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 NonlinearEqualityConstraint::shared_ptr
 ScalarExpressionInequalityConstraint::createEqualityConstraint() const {
   return std::make_shared<ExpressionEqualityConstraint<double>>(
       expression_, 0.0, noiseModel()->sigmas());
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 NoiseModelFactor::shared_ptr
 ScalarExpressionInequalityConstraint::penaltyFactor(const double mu) const {
   Double_ penalty_expression(RampFunction::Ramp, expression_);
@@ -130,8 +118,7 @@ ScalarExpressionInequalityConstraint::penaltyFactor(const double mu) const {
                                                     penalty_expression);
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 NoiseModelFactor::shared_ptr
 ScalarExpressionInequalityConstraint::penaltyFactorCustom(
     InequalityPenaltyFunction::shared_ptr func, const double mu) const {
@@ -144,8 +131,7 @@ ScalarExpressionInequalityConstraint::penaltyFactorCustom(
                                                     error);
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 NoiseModelFactor::shared_ptr
 ScalarExpressionInequalityConstraint::penaltyFactorEquality(
     const double mu) const {
@@ -153,8 +139,7 @@ ScalarExpressionInequalityConstraint::penaltyFactorEquality(
                                                     expression_);
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 size_t NonlinearInequalityConstraints::dim() const {
   size_t dimension = 0;
   for (const auto& constraint : *this) {
@@ -163,8 +148,7 @@ size_t NonlinearInequalityConstraints::dim() const {
   return dimension;
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 Vector NonlinearInequalityConstraints::violationVector(const Values& values,
                                                        bool whiten) const {
   Vector violation(dim());
@@ -179,15 +163,13 @@ Vector NonlinearInequalityConstraints::violationVector(const Values& values,
   return violation;
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 double NonlinearInequalityConstraints::violationNorm(
     const Values& values) const {
   return violationVector(values, true).norm();
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 NonlinearFactorGraph NonlinearInequalityConstraints::penaltyGraph(
     const double mu) const {
   NonlinearFactorGraph graph;
@@ -197,8 +179,7 @@ NonlinearFactorGraph NonlinearInequalityConstraints::penaltyGraph(
   return graph;
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 NonlinearFactorGraph NonlinearInequalityConstraints::penaltyGraphCustom(
     InequalityPenaltyFunction::shared_ptr func, const double mu) const {
   NonlinearFactorGraph graph;

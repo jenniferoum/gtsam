@@ -67,6 +67,7 @@ TEST(PenaltyOptimizer, constrained_example2) {
   }
 }
 
+/* ************************************************************************* */
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);

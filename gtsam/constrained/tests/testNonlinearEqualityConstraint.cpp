@@ -38,6 +38,7 @@ using constrained_example::pow;
 using constrained_example::x1, constrained_example::x2;
 using constrained_example::x1_key, constrained_example::x2_key;
 
+/* ************************************************************************* */
 // Test methods of DoubleExpressionEquality.
 TEST(ExpressionEqualityConstraint, double) {
   // create constraint from double expression
@@ -101,6 +102,7 @@ TEST(ExpressionEqualityConstraint, double) {
   EXPECT_CORRECT_FACTOR_JACOBIANS(*merit_factor, values2, 1e-7, 1e-5);
 }
 
+/* ************************************************************************* */
 // Test methods of VectorExpressionEquality.
 TEST(ExpressionEqualityConstraint, Vector2) {
   // g(v1, v2) = v1 + v2, our own example.
@@ -167,6 +169,7 @@ TEST(ExpressionEqualityConstraint, Vector2) {
   EXPECT_CORRECT_FACTOR_JACOBIANS(*merit_factor, values2, 1e-7, 1e-5);
 }
 
+/* ************************************************************************* */
 // Test methods of FactorZeroErrorConstraint.
 TEST(ZeroCostConstraint, BetweenFactor) {
   Key x1_key = 1;
@@ -234,6 +237,7 @@ TEST(ZeroCostConstraint, BetweenFactor) {
   EXPECT_CORRECT_FACTOR_JACOBIANS(*merit_factor, values2, 1e-7, 1e-5);
 }
 
+/* ************************************************************************* */
 TEST(NonlinearEqualityConstraints, Container) {
   NonlinearEqualityConstraints constraints;
 
@@ -320,6 +324,7 @@ TEST(GtsamConstrained, VectorEqualityViolationVectorMixedDims) {
   }
 }
 
+/* ************************************************************************* */
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);

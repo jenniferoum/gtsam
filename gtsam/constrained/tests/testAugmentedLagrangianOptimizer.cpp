@@ -26,8 +26,7 @@
 
 using namespace gtsam;
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 double EvaluateLagrangeTerm(const std::vector<Vector>& lambdas,
                             const NonlinearEqualityConstraints& constraints,
                             const Values& values) {
@@ -39,8 +38,7 @@ double EvaluateLagrangeTerm(const std::vector<Vector>& lambdas,
   return s;
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 double EvaluateLagrangeTerm(const std::vector<double>& lambdas,
                             const NonlinearInequalityConstraints& constraints,
                             const Values& values) {
@@ -52,8 +50,7 @@ double EvaluateLagrangeTerm(const std::vector<double>& lambdas,
   return s;
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 double ComputeBias(const std::vector<Vector>& lambdas, double mu) {
   double norm_squared = 0;
   for (const auto& lambda : lambdas) {
@@ -62,8 +59,7 @@ double ComputeBias(const std::vector<Vector>& lambdas, double mu) {
   return 0.5 / mu * norm_squared;
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 double ComputeBias(const std::vector<double>& lambdas, double epsilon) {
   double norm_squared = 0;
   for (const auto& lambda : lambdas) {
@@ -72,8 +68,7 @@ double ComputeBias(const std::vector<double>& lambdas, double epsilon) {
   return 0.5 / epsilon * norm_squared;
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 TEST(AugmentedLagrangian, constrained_example1) {
   using namespace constrained_example1;
 
@@ -99,8 +94,7 @@ TEST(AugmentedLagrangian, constrained_example1) {
   EXPECT_DOUBLES_EQUAL(expected_error, augmentedLagrangian.error(values), 1e-6);
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 TEST(AugmentedLagrangian, constrained_example2) {
   using namespace constrained_example2;
 
@@ -136,8 +130,7 @@ TEST(AugmentedLagrangian, constrained_example2) {
   EXPECT_DOUBLES_EQUAL(expected_error, augmentedLagrangian.error(values), 1e-6);
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 TEST(AugmentedLagrangianOptimizer, constrained_example1) {
   using namespace constrained_example1;
 
@@ -150,8 +143,7 @@ TEST(AugmentedLagrangianOptimizer, constrained_example1) {
   EXPECT(assert_equal(optimal_values, results, 1e-4));
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 TEST(AugmentedLagrangianOptimizer, constrained_example2) {
   using namespace constrained_example2;
 
@@ -211,8 +203,7 @@ TEST(AugmentedLagrangian, VectorBiasUsesElementwiseSigmas) {
   EXPECT(assert_equal(expected, bias_from_factor, 1e-12));
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);

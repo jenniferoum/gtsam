@@ -24,8 +24,7 @@
 
 using namespace gtsam;
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 TEST(RampFunction, error_and_jacobian) {
   /// Helper function for numerical Jacobian computation.
   auto ramp_helper = [&](const double& x) { return RampFunction::Ramp(x); };
@@ -52,8 +51,7 @@ TEST(RampFunction, error_and_jacobian) {
   }
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 TEST(RampFunctionPoly2, error_and_jacobian) {
   /// Helper function for numerical Jacobian computation.
   SmoothRampPoly2 p_ramp(2.0);
@@ -78,8 +76,7 @@ TEST(RampFunctionPoly2, error_and_jacobian) {
   }
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 TEST(RampFunctionPoly3, error_and_jacobian) {
   /// Helper function for numerical Jacobian computation.
   SmoothRampPoly3 p_ramp(2.0);
@@ -104,8 +101,7 @@ TEST(RampFunctionPoly3, error_and_jacobian) {
   }
 }
 
-/* *********************************************************************************************
- */
+/* ************************************************************************* */
 TEST(SoftPlusFunction, error_and_jacobian) {
   /// Helper function for numerical Jacobian computation.
   SoftPlusFunction soft_plus(0.5);
