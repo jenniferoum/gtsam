@@ -124,7 +124,7 @@ class GTSAM_EXPORT ScalarExpressionInequalityConstraint
   NoiseModelFactor::shared_ptr penaltyFactor(
       const double mu = 1.0) const override;
 
-  /** Penalty function using a smooth approxiamtion of the ramp funciton. */
+  /** Penalty function using a smooth approximation of the ramp function. */
   NoiseModelFactor::shared_ptr penaltyFactorCustom(
       InequalityPenaltyFunction::shared_ptr func,
       const double mu = 1.0) const override;

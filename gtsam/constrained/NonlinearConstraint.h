@@ -73,7 +73,7 @@ class GTSAM_EXPORT NonlinearConstraint : public NoiseModelFactor {
     return noiseModel::Diagonal::Sigmas(noiseModel()->sigmas() / sqrt(mu));
   }
 
-  /** Default constrained noisemodel used for construction of constraint. */
+  /** Default constrained noise model used for construction of constraint. */
   static SharedNoiseModel constrainedNoise(const Vector& sigmas) {
     return noiseModel::Constrained::MixedSigmas(1.0, sigmas);
   }

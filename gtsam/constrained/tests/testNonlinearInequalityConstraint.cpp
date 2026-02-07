@@ -33,7 +33,7 @@ using constrained_example::x1_key, constrained_example::x2_key;
 // Test methods of DoubleExpressionEquality.
 TEST(NonlinearInequalityConstraint, ScalarExpressionInequalityConstraint) {
   // create constraint from double expression
-  // g(x1, x2) = x1 + x1^3 + x2 + x2^2, from Vanderbergh slides
+  // g(x1, x2) = x1 + x1^3 + x2 + x2^2, from Vandenberghe slides
   double sigma = 0.1;
   auto g = x1 + pow(x1, 3) + x2 + pow(x2, 2);
   auto constraint_geq = ScalarExpressionInequalityConstraint::GeqZero(g, sigma);

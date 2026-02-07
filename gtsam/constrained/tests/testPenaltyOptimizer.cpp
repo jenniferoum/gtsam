@@ -10,8 +10,8 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file  testPenaltyOptimizr.cpp
- * @brief Test penalty method optimzier for constrained optimization.
+ * @file  testPenaltyOptimizer.cpp
+ * @brief Test penalty method optimizer for constrained optimization.
  * @author: Yetong Zhang
  */
 
