@@ -56,6 +56,7 @@ class NavState {
   gtsam::Rot3 attitude() const;
   gtsam::Point3 position() const;
   gtsam::Vector velocity() const;
+  gtsam::Vector bodyVelocity() const;
   gtsam::Pose3 pose() const;
 
   // Standard Interface
@@ -65,6 +66,15 @@ class NavState {
   gtsam::Unit3 bearing(const gtsam::Point3& point) const;
   gtsam::Unit3 bearing(const gtsam::Point3& point, Eigen::Ref<Eigen::MatrixXd> Hself,
                        Eigen::Ref<Eigen::MatrixXd> Hpoint) const;
+
+  // Group
+  static gtsam::NavState Identity();
+  gtsam::NavState inverse();
+  gtsam::NavState compose(const gtsam::NavState& p2) const;
+  gtsam::NavState between(const gtsam::NavState& p2) const;
+
+  // Operator Overloads
+  gtsam::NavState operator*(const gtsam::NavState& p2) const;
 
   // Manifold
   gtsam::NavState retract(const gtsam::Vector& v) const;
@@ -81,6 +91,10 @@ class NavState {
   gtsam::Vector logmap(const gtsam::NavState& p, Eigen::Ref<Eigen::MatrixXd> H1, Eigen::Ref<Eigen::MatrixXd> H2);
   gtsam::Matrix AdjointMap() const;
   gtsam::Vector Adjoint(gtsam::Vector xi_b) const;
+
+  // Matrix Lie Group
+  gtsam::Vector vec() const;
+  gtsam::Matrix matrix() const;
   static gtsam::Matrix Hat(const gtsam::Vector& xi);
   static gtsam::Vector Vee(const gtsam::Matrix& X);
 
