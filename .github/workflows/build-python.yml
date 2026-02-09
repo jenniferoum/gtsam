@@ -61,6 +61,7 @@ jobs:
         name:
           [
             ubuntu-22.04-gcc-11,
+            ubuntu-22.04-gcc-11-noboost,
             ubuntu-22.04-clang-11,
             macos-14-xcode-15.4,
             macos-15-xcode-16,
@@ -71,6 +72,11 @@ jobs:
         python_version: [3]
         include:
           - name: ubuntu-22.04-gcc-11
+            os: ubuntu-22.04
+            compiler: gcc
+            version: "11"
+
+          - name: ubuntu-22.04-gcc-11-noboost
             os: ubuntu-22.04
             compiler: gcc
             version: "11"
@@ -113,7 +119,11 @@ jobs:
           fi
 
           sudo apt-get -y update
-          sudo apt-get -y install cmake build-essential pkg-config libpython3-dev python3-numpy libboost-all-dev ninja-build
+          if [ "${{ matrix.name }}" = "ubuntu-22.04-gcc-11-noboost" ]; then
+            sudo apt-get -y install cmake build-essential pkg-config libpython3-dev python3-numpy ninja-build
+          else
+            sudo apt-get -y install cmake build-essential pkg-config libpython3-dev python3-numpy libboost-all-dev ninja-build
+          fi
 
           if [ "${{ matrix.compiler }}" = "gcc" ]; then
             sudo apt-get install -y g++-${{ matrix.version }} g++-${{ matrix.version }}-multilib
@@ -220,10 +230,24 @@ jobs:
 
       - name: Build
         shell: bash
+        if: matrix.name != 'ubuntu-22.04-gcc-11-noboost'
         run: |
           bash .github/scripts/python.sh -b
 
-      - name: Test
+      - name: Build (No Boost Wrapper Check)
+        if: matrix.name == 'ubuntu-22.04-gcc-11-noboost'
         shell: bash
         run: |
+          bash .github/scripts/python.sh -b --no-boost
+
+      - name: Test
+        shell: bash
+        if: matrix.name != 'ubuntu-22.04-gcc-11-noboost'
+        run: |
           bash .github/scripts/python.sh -t
+
+      - name: Test (No Boost Wrapper Check)
+        if: matrix.name == 'ubuntu-22.04-gcc-11-noboost'
+        shell: bash
+        run: |
+          bash .github/scripts/python.sh -t --no-boost
