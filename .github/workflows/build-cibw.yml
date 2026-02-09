@@ -131,9 +131,9 @@ jobs:
         run: |
           python3 -m pip install -r python/dev_requirements.txt
           if [ "$RUNNER_OS" == "Linux" ]; then
-            sudo apt-get install -y wget libicu-dev python3-pip python3-setuptools libboost-all-dev ninja-build
+            sudo apt-get install -y wget libicu-dev python3-pip python3-setuptools libboost-all-dev
           elif [ "$RUNNER_OS" == "macOS" ]; then
-            brew install wget icu4c boost ninja python-setuptools
+            brew install wget icu4c boost python-setuptools
           else
             echo "$RUNNER_OS not supported"
             exit 1

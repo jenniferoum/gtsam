@@ -85,10 +85,8 @@ jobs:
           # (optional) Show outdated without failing the job
           brew outdated || true
 
-      - name: Install Dependencies
+      - name: Set up compilers
         run: |
-          brew upgrade cmake --quiet || brew install cmake --quiet
-          brew upgrade ninja --quiet || brew install ninja --quiet
           sudo xcode-select -switch /Applications/Xcode.app
           echo "CC=clang" >> $GITHUB_ENV
           echo "CXX=clang++" >> $GITHUB_ENV

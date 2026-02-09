@@ -65,18 +65,6 @@ jobs:
         shell: cmd
         run: cl
 
-      - name: Install Dependencies
-        shell: powershell
-        run: |
-          iwr -useb get.scoop.sh -outfile 'install_scoop.ps1'
-          .\install_scoop.ps1 -RunAsAdmin
-
-          scoop install cmake --global  # So we don't get issues with CMP0074 policy
-          scoop install ninja --global
-
-          # Scoop modifies the PATH so we make the modified PATH global.
-          echo "$env:PATH" >> $env:GITHUB_PATH
-
       - name: Install Boost
         if: matrix.build_type == 'Release'
         shell: powershell
