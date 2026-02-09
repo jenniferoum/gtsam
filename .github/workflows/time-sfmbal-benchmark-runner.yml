@@ -77,7 +77,7 @@ jobs:
       # ── TBB=ON ──
       - name: Configure (TBB=ON)
         run: |
-          cmake -S . -B build -GNinja \
+          cmake -B build -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS="-w" \
             -DGTSAM_BUILD_TESTS=OFF \
@@ -115,7 +115,7 @@ jobs:
 
       - name: Configure (TBB=OFF)
         run: |
-          cmake -S . -B build -GNinja \
+          cmake -B build -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS="-w" \
             -DGTSAM_BUILD_TESTS=OFF \
@@ -191,7 +191,7 @@ jobs:
       # ── TBB=ON ──
       - name: Configure (TBB=ON)
         run: |
-          cmake -S . -B build -GNinja \
+          cmake -B build -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS="-w" \
             -DGTSAM_BUILD_TESTS=OFF \
@@ -229,7 +229,7 @@ jobs:
 
       - name: Configure (TBB=OFF)
         run: |
-          cmake -S . -B build -GNinja \
+          cmake -B build -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS="-w" \
             -DGTSAM_BUILD_TESTS=OFF \
@@ -303,7 +303,7 @@ jobs:
       # ── TBB=ON ──
       - name: Configure (TBB=ON)
         run: |
-          cmake -S . -B build -GNinja \
+          cmake -B build -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS="-w" \
             -DGTSAM_BUILD_TESTS=OFF \
@@ -341,7 +341,7 @@ jobs:
 
       - name: Configure (TBB=OFF)
         run: |
-          cmake -S . -B build -GNinja \
+          cmake -B build -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS="-w" \
             -DGTSAM_BUILD_TESTS=OFF \

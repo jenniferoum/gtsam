@@ -336,7 +336,7 @@ Go to your gtsam folder `cd gtsam`:
 Cmake config:   
 In gtsam folder   
 ```bash
-cmake . -B build -G Ninja \
+cmake -B build -G Ninja \
     -DCMAKE_TOOLCHAIN_FILE=../scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_INSTALLED_DIR=../installed \
     -DVCPKG_TARGET_TRIPLET=x64-linux \

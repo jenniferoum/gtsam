@@ -158,7 +158,7 @@ jobs:
         run: |
           export CL=-openmp
 
-          cmake . -B build -G Ninja \
+          cmake -B build -G Ninja \
               -DCMAKE_TOOLCHAIN_FILE=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake \
               -DCMAKE_C_COMPILER_LAUNCHER=sccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
