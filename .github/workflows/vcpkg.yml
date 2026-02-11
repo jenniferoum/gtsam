@@ -89,7 +89,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: pierotofy/set-swap-space@master
         with:
-          swap-size-gb: 6
+          swap-size-gb: 7
 
       - name: cmake config
         shell: bash
