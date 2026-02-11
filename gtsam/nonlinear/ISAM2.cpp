@@ -431,7 +431,7 @@ ISAM2Result ISAM2::update(const NonlinearFactorGraph& newFactors,
   addVariables(newTheta, result.details());
 
   // Update delta if we need it to check relinearization later
-  if (update.relinarizationNeeded(update_count_))
+  if (update.relinarizationNeeded(update_count_) && !deltaReplacedMask_.empty())
     updateDelta(updateParams.forceFullSolve);
 
   // 1. Add any new factors \Factors:=\Factors\cup\Factors'.
