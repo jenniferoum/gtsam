@@ -263,7 +263,7 @@ jobs:
 
   benchmark_macos_arm64:
     if: inputs.runner_id == 'macos-arm64'
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout target ref
         uses: actions/checkout@v4
