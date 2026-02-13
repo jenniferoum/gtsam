@@ -18,11 +18,6 @@ jobs:
         include:
           # Linux x86_64
           - os: ubuntu-latest
-            python_version: "3.10"
-            cibw_python_version: 310
-            platform_id: manylinux_x86_64
-            manylinux_image: manylinux2014
-          - os: ubuntu-latest
             python_version: "3.11"
             cibw_python_version: 311
             platform_id: manylinux_x86_64
@@ -35,16 +30,16 @@ jobs:
           - os: ubuntu-latest
             python_version: "3.13"
             cibw_python_version: 313
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux2014
+          - os: ubuntu-latest
+            python_version: "3.14"
+            cibw_python_version: 314
             platform_id: manylinux_x86_64
             manylinux_image: manylinux2014
 
           # Linux aarch64
           - os: ubuntu-24.04-arm
-            python_version: "3.10"
-            cibw_python_version: 310
-            platform_id: manylinux_aarch64
-            manylinux_image: manylinux2014
-          - os: ubuntu-24.04-arm
             python_version: "3.11"
             cibw_python_version: 311
             platform_id: manylinux_aarch64
@@ -57,15 +52,16 @@ jobs:
           - os: ubuntu-24.04-arm
             python_version: "3.13"
             cibw_python_version: 313
+            platform_id: manylinux_aarch64
+            manylinux_image: manylinux2014
+          - os: ubuntu-24.04-arm
+            python_version: "3.14"
+            cibw_python_version: 314
             platform_id: manylinux_aarch64
             manylinux_image: manylinux2014
 
           # MacOS arm64
           - os: macos-latest
-            python_version: "3.10"
-            cibw_python_version: 310
-            platform_id: macosx_universal2
-          - os: macos-latest
             python_version: "3.11"
             cibw_python_version: 311
             platform_id: macosx_universal2
@@ -76,6 +72,10 @@ jobs:
           - os: macos-latest
             python_version: "3.13"
             cibw_python_version: 313
+            platform_id: macosx_universal2
+          - os: macos-latest
+            python_version: "3.14"
+            cibw_python_version: 314
             platform_id: macosx_universal2
 
     steps:
@@ -144,6 +144,16 @@ jobs:
           CIBW_BUILD_VERBOSITY: 1
 
         run: bash .github/scripts/python_wheels/build_wheels.sh
+
+      - name: Test wheel
+        run: |
+          python3 -m pip install wheelhouse/*.whl
+          python3 -c "import platform; print(platform.machine()); import gtsam"
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            arch -x86_64 python3 -m pip uninstall -y numpy
+            arch -x86_64 python3 -m pip install wheelhouse/*.whl
+            arch -x86_64 python3 -c "import platform; print(platform.machine()); import gtsam;"
+          fi
 
       - name: Store artifacts
         uses: actions/upload-artifact@v4
