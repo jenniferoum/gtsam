@@ -324,7 +324,7 @@ TEST(ISAM2, slamlike_solution_dogleglinesearch) {
   NonlinearFactorGraph fullgraph;
   ISAM2 isam = createSlamlikeISAM2(
       &fullinit, &fullgraph,
-      ISAM2Params(ISAM2DoglegLineSearchParams(0.1, 1.0, 3, 1e-3, 1e-4, false),
+      ISAM2Params(ISAM2DoglegLineSearchParams(0.1, 1.0, 3, 1e-4, 1e-3, false),
                   0.0, 0, false));
 
   // Compare solutions
@@ -362,7 +362,7 @@ TEST(ISAM2, slamlike_solution_dogleglinesearch_qr) {
   NonlinearFactorGraph fullgraph;
   ISAM2 isam = createSlamlikeISAM2(
       &fullinit, &fullgraph,
-      ISAM2Params(ISAM2DoglegLineSearchParams(0.1, 10.0, 3, 1e-3, 1e-4, false),
+      ISAM2Params(ISAM2DoglegLineSearchParams(0.1, 10.0, 3, 1e-4, 1e-3, false),
                   0.0, 0, false, false, ISAM2Params::QR));
 
   // Compare solutions
@@ -1068,7 +1068,7 @@ TEST(ISAM2, predict_update_info) {
 
     // Validate
     if (result.details()->variableStatus.size() == size_t(i + 1)) {
-      EXPECT(predicted.second)
+      EXPECT(predicted.second);
     } else {
       for (auto kvp : result.details()->variableStatus) {
         if (kvp.second.isReeliminated) {

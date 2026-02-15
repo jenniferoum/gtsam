@@ -329,6 +329,11 @@ typename DoglegOptimizerImpl::IterationResult DoglegLineSearchImpl::Iterate(
   if (verbose)
     std::cout << "Initial Step Error: " << result.f_error << std::endl;
 
+  // Validate Step size will terminate search
+  if (step < 1e-12 || step_size < 1.0)
+    throw std::runtime_error(
+        "Invalid DoglegLineSearch configuration. Would cause infinite search.");
+
   // Search Increase delta
   double eps = std::numeric_limits<double>::epsilon();
   while (step < max_step - eps) {

@@ -144,15 +144,21 @@ struct GTSAM_EXPORT ISAM2DoglegLineSearchParams {
   /** Specify parameters as constructor arguments */
   ISAM2DoglegLineSearchParams(double min_delta = 0.02, double max_delta = 0.5,
                               double step_size = 1.5,
-                              double wildfire_threshold = 1e-4,
                               double sufficient_decrease_coeff = 1e-3,
+                              double wildfire_threshold = 1e-4,
                               bool verbose = false)
       : _min_delta(min_delta),
         _max_delta(max_delta),
         _step_size(step_size),
         _sufficient_decrease_coeff(sufficient_decrease_coeff),
         _wildfire_threshold(wildfire_threshold),
-        _verbose(verbose) {}
+        _verbose(verbose) {
+    if (min_delta < 1e-12 || max_delta < 1e-12 || step_size < 1.0) {
+      throw std::invalid_argument(
+          "ISAM2DoglegLineSearchParams constructed with invalid configuration. "
+          "Search Bounds [min_delta, max_delta] ~ 0 or step_size < 1.0");
+    }
+  }
 
   void print(const std::string str = "") const {
     using std::cout;

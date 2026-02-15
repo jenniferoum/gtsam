@@ -900,7 +900,7 @@ std::pair<KeySet, bool> ISAM2::predictUpdateInfo(
   // Add the new keys to get the entire set of keys affected by the update
   KeySet newKeys = newFactors.keys();
   affectedKeys.insert(newKeys.begin(), newKeys.end());
-  // Return the affected keys and wether or not this will be a batch update
+  // Return the affected keys and whether or not this will be a batch update
   return std::make_pair(affectedKeys,
                         affectedKeys.size() >= theta_.size() * 0.65);
 }

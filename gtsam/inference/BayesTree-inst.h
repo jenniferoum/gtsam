@@ -590,8 +590,7 @@ namespace gtsam {
       // traverse me
       this->traverseClique(traversedKeys, clique);
       // traverse path above me
-      this->traversePath(traversedKeys, typename sharedClique::shared_ptr(
-                                            clique->parent_.lock()));
+      this->traversePath(traversedKeys, clique->parent_.lock());
     }
   }
 
