@@ -65,12 +65,24 @@ class GncOptimizer {
     for (size_t i = 0; i < graph.size(); i++) {
       if (graph[i]) {
         NoiseModelFactor::shared_ptr factor = graph.at<NoiseModelFactor>(i);
+        if (!factor) {
+          // Non-NoiseModelFactor (e.g. KarcherMeanFactorPose3).
+          nfg_[i] = graph[i];
+          params_.knownInliers.push_back(i);
+          continue;
+        }
         auto robust =
             std::dynamic_pointer_cast<noiseModel::Robust>(factor->noiseModel());
         // if the factor has a robust loss, we remove the robust loss
         nfg_[i] = robust ? factor-> cloneWithNewNoiseModel(robust->noise()) : factor;
       }
     }
+
+    // Ensure known inliers are sorted/unique before set operations.
+    std::sort(params_.knownInliers.begin(), params_.knownInliers.end());
+    params_.knownInliers.erase(
+        std::unique(params_.knownInliers.begin(), params_.knownInliers.end()),
+        params_.knownInliers.end());
 
     // check that known inliers and outliers make sense:
     std::vector<size_t> inconsistentlySpecifiedWeights; // measurements the user has incorrectly specified
@@ -131,6 +143,12 @@ class GncOptimizer {
     barcSq_  = Vector::Ones(nfg_.size()); // initialize
     for (size_t k = 0; k < nfg_.size(); k++) {
       if (nfg_[k]) {
+        auto nf = std::dynamic_pointer_cast<NoiseModelFactor>(nfg_[k]);
+        if (!nf) {
+          // Non-NoiseModelFactor: exclude from GNC thresholding.
+          barcSq_[k] = 0.0;
+          continue;
+        }
         barcSq_[k] = 0.5 * Chi2inv(alpha, nfg_[k]->dim()); // 0.5 derives from the error definition in gtsam
       }
     }
@@ -280,6 +298,10 @@ class GncOptimizer {
          */
         for (size_t k = 0; k < nfg_.size(); k++) {
           if (nfg_[k]) {
+            auto nf = std::dynamic_pointer_cast<NoiseModelFactor>(nfg_[k]);
+            if (!nf) {
+              continue;
+            }
             mu_init = std::max(mu_init, 2 * nfg_[k]->error(state_) / barcSq_[k]);
           }
         }
@@ -294,6 +316,10 @@ class GncOptimizer {
         mu_init = std::numeric_limits<double>::infinity();
         for (size_t k = 0; k < nfg_.size(); k++) {
           if (nfg_[k]) {
+            auto nf = std::dynamic_pointer_cast<NoiseModelFactor>(nfg_[k]);
+            if (!nf) {
+              continue;
+            }
             double rk = nfg_[k]->error(state_);
             mu_init = (2 * rk - barcSq_[k]) > 0 ? // if positive, update mu, otherwise keep same
                 std::min(mu_init, barcSq_[k] / (2 * rk - barcSq_[k]) ) : mu_init;
@@ -400,6 +426,11 @@ class GncOptimizer {
     for (size_t i = 0; i < nfg_.size(); i++) {
       if (nfg_[i]) {
         auto factor = nfg_.at<NoiseModelFactor>(i);
+        if (!factor) {
+          // Keep non-NoiseModel factors as-is.
+          newGraph[i] = nfg_[i];
+          continue;
+        }
         auto noiseModel = std::dynamic_pointer_cast<noiseModel::Gaussian>(
             factor->noiseModel());
         if (noiseModel) {
