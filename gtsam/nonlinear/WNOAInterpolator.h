@@ -22,8 +22,8 @@
 #pragma once
 
 #include <gtsam/nonlinear/Marginals.h>
-#include <gtsam/nonlinear/StateData.h>
 #include <gtsam/nonlinear/WNOAFactor.h>
+#include <gtsam/nonlinear/WNOAStateData.h>
 
 #include <algorithm>
 #include <fstream>
@@ -113,7 +113,7 @@ class Interpolator {
   using Vector2N = Eigen::Matrix<double, 2 * dim, 1>;
   using MatrixNx2N = Eigen::Matrix<double, dim, 2 * dim>;
 
-  VectorN Q_psd_;            // Diagonal power Spectral Density for WNOA
+  VectorN Q_psd_;  // Diagonal power Spectral Density for WNOA
   std::function<Matrix(double dt)> transitionFunction_;
   std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction_;
   std::function<Matrix(double dt, const VectorN& Q_psd)>
@@ -156,8 +156,7 @@ class Interpolator {
    * interpolated state with respect to the next bordering state.
    */
   Interpolator(
-      const VectorN& Q_psd,
-      std::function<Matrix(double dt)> transitionFunction,
+      const VectorN& Q_psd, std::function<Matrix(double dt)> transitionFunction,
       std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction,
       std::function<Matrix(double dt, const VectorN& Q_psd)>
           inverseCovarianceFunction,
