@@ -61,16 +61,30 @@ struct StateData {
       : pose(pose_in), vel(vel_in), time(time_in) {};
 
   /**
-   * @brief Compare by timestamp (ascending).
+   * @brief Strict-weak ordering: (time, pose, vel) ascending.
    *
-   * Useful to sort state lists in chronological order. Allows sets to be ordered by time.
+   * Primarily orders states chronologically by time. When timestamps are
+   * equal, pose and then vel keys are used as tie-breakers to provide a
+   * strict-weak ordering suitable for ordered containers such as std::set.
    */
-  bool operator<(const StateData& other) const { return this->time < other.time; }
+  bool operator<(const StateData& other) const {
+    if (this->time < other.time) return true;
+    if (this->time > other.time) return false;
+    if (this->pose < other.pose) return true;
+    if (this->pose > other.pose) return false;
+    return this->vel < other.vel;
+  }
 
   /**
    * @brief Compare by timestamp (descending).
    */
-  bool operator>(const StateData& other) const { return this->time > other.time; }
+  bool operator>(const StateData& other) const { 
+    if (this->time > other.time) return true;
+    if (this->time < other.time) return false;
+    if (this->pose > other.pose) return true;
+    if (this->pose < other.pose) return false;
+    return this->vel > other.vel;
+   }
 
   /**
    * @brief Compare this state's timestamp with a raw time value.

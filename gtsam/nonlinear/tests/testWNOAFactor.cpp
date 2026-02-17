@@ -635,9 +635,7 @@ TEST(WNOAFactor, OptimizeSE3Pert) {
   optimizer.optimize();
   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-6);
 }
-
 /* ************************************************************************* */
-
 
 int main() {
   TestResult tr;

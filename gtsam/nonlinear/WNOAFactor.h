@@ -401,11 +401,5 @@ template <class Pose>
 struct traits<WNOAMotionFactor<Pose>>
     : public Testable<WNOAMotionFactor<Pose>> {};
 
-// Explicit Instantiation.
-template class WNOAMotionFactor<Point1>;
-template class WNOAMotionFactor<Point2>;
-template class WNOAMotionFactor<Point3>;
-template class WNOAMotionFactor<Pose2>;
-template class WNOAMotionFactor<Pose3>;
 
 }  // namespace gtsam

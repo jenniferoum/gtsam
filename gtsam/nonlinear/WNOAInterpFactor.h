@@ -111,7 +111,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
   // map keys to interpolated state
   std::unordered_map<Key, StateData> key_to_interp;
   // map interpolated state to border states.
-  std::unordered_map<StateData, std::pair<StateData, StateData>> interp_to_borders;
+  std::unordered_map<StateData, std::pair<StateData, StateData>>
+      interp_to_borders;
   // map outer key to outer key index (for Jacobians)
   std::unordered_map<Key, int> outer_key_to_index;
   // vector of precomputed matrices for interpolation
@@ -182,7 +183,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
   WNOAInterpFactor(const NoiseModelFactor::shared_ptr inner_factor,
                    const std::set<StateData> estimated_states,
                    const std::set<StateData> interp_states,
-                   const Eigen::Vector<double, dim> Q_psd,
+                   const Eigen::Matrix<double, dim, 1> Q_psd,
                    const bool fixed_noise_model = false,
                    const bool precomp_interp_mats = true)
       : Base(inner_factor->noiseModel()),
@@ -190,16 +191,13 @@ class WNOAInterpFactor : public NoiseModelFactor {
         interpolator_(Q_psd),
         fixed_noise_model_(fixed_noise_model) {
     // PROCESS INTERPOLATED STATES
-    // estimated state iterator
-    auto iter_est_state = estimated_states.begin();
     // loop through interpolated states
     for (const StateData& state : interp_states) {
       // search for estimated state that upper bound current interpolated state
       // Note: lower_bound finds the least upper bound using time-based
       // comparator of StateData. We can use it to find the right border state
       // for interpolation.
-      iter_est_state =
-          std::lower_bound(iter_est_state, estimated_states.end(), state);
+      auto iter_est_state = estimated_states.lower_bound(state);
       // Check if right border state is out of bounds (i.e., interp time is
       // outside the range of estimated times)
       if (iter_est_state == estimated_states.begin()) {
@@ -212,7 +210,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
         // decrement iterator (points to left border state)
         iter_est_state--;
         // map interpolated state to borderstates
-        interp_to_borders[state] = std::pair(*iter_est_state, *std::next(iter_est_state));
+        interp_to_borders[state] =
+            std::pair(*iter_est_state, *std::next(iter_est_state));
         // Keep track of the inner keys corresponding to a given interpolated
         // state for easy lookup when building outer keys and mapping jacobians
         // later
@@ -543,7 +542,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
   SharedGaussian noiseModel(Values& x) const {
     // if fixed noise then just return the standard gaussian model
     if (fixed_noise_model_) {
-      return std::dynamic_pointer_cast<noiseModel::Gaussian>(Base::noiseModel());
+      return std::dynamic_pointer_cast<noiseModel::Gaussian>(
+          Base::noiseModel());
     }
     // Call evaluate error to get inner Jacobians and convariances
     std::vector<Matrix> JacInner(inner_factor_->size());
@@ -568,8 +568,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * states.
    * @return unordered_map<StateData, pair<StateData, StateData>>
    */
-  std::unordered_map<StateData, std::pair<StateData, StateData>> getInterpToBorders()
-      const {
+  std::unordered_map<StateData, std::pair<StateData, StateData>>
+  getInterpToBorders() const {
     return interp_to_borders;
   }
 
@@ -820,7 +820,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
       const std::unordered_map<StateData, Matrix2N>& InterpCondCovs) const {
     // Get noise model of inner factor
     noiseModel::Gaussian::shared_ptr noise_model_ptr =
-        std::dynamic_pointer_cast<noiseModel::Gaussian>(inner_factor_->noiseModel());
+        std::dynamic_pointer_cast<noiseModel::Gaussian>(
+            inner_factor_->noiseModel());
     // Check that the measurement noise is set up as a gaussian
     assert(noise_model_ptr &&
            "Noise model of inner factor must be noiseModel::Gaussian or "
@@ -888,7 +889,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
  */
 template <class PoseType>
 NonlinearFactorGraph interpolateFactorGraph(
-    const NonlinearFactorGraph& graph, const std::set<StateData>& estimated_states,
+    const NonlinearFactorGraph& graph,
+    const std::set<StateData>& estimated_states,
     const std::set<StateData>& interp_states, Vector Q_psd,
     bool fixed_noise = false) {
   // assert that the pose is the right kind of variable
@@ -918,12 +920,11 @@ NonlinearFactorGraph interpolateFactorGraph(
   // Get map from keys to interpolated state, and interpolated state to
   // estimated state.
   std::unordered_map<Key, StateData> key_to_interp;
-  std::unordered_map<StateData, std::pair<StateData, StateData>> interp_to_borders;
-  auto iter_est_state = estimated_states.begin();
+  std::unordered_map<StateData, std::pair<StateData, StateData>>
+      interp_to_borders;
   for (const StateData& state : interp_states) {
     // search for estimated state that upper bound current interpolated state
-    iter_est_state =
-        std::lower_bound(iter_est_state, estimated_states.end(), state);
+    auto iter_est_state = estimated_states.lower_bound(state);
     if (iter_est_state == estimated_states.begin()) {
       throw std::runtime_error(
           "Interpolated state time is before all estimated state times");
@@ -934,7 +935,8 @@ NonlinearFactorGraph interpolateFactorGraph(
       // decrement iterator (point to left border)
       iter_est_state--;
       // map interp to left border index
-      interp_to_borders[state] = std::pair(*iter_est_state, *std::next(iter_est_state));
+      interp_to_borders[state] =
+          std::pair(*iter_est_state, *std::next(iter_est_state));
       // map keys to interp state
       key_to_interp[state.pose] = state;
       key_to_interp[state.vel] = state;
@@ -1003,8 +1005,8 @@ NonlinearFactorGraph interpolateFactorGraph(
 template <class PoseType>
 Values updateInterpValues(
     const NonlinearFactorGraph& interp_graph, const Values& values,
-    const std::set<StateData>& estim_states, const std::set<StateData>& interp_states,
-    const Vector Q_psd,
+    const std::set<StateData>& estim_states,
+    const std::set<StateData>& interp_states, const Vector Q_psd,
     std::shared_ptr<typename Interpolator<PoseType>::CovarianceMap>
         covarianceMapOut = nullptr) {
   // assert that the pose is the right kind of variable
