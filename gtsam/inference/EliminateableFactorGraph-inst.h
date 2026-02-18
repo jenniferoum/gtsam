@@ -23,6 +23,9 @@
 #include <gtsam/base/treeTraversal-inst.h>
 #include <gtsam/symbolic/IndexedJunctionTree.h>
 
+#ifdef GTSAM_USE_TBB
+#include <mutex>
+#endif
 #include <unordered_set>
 
 namespace gtsam {
@@ -169,73 +172,114 @@ namespace gtsam {
     using BayesTreeNode = typename BayesTreeType::Node;
     using SharedFactor = typename FactorGraphType::sharedFactor;
 
-    // Helper struct for cluster elimination traversal.
+    // Elimination traversal data - stores a pointer to the parent data and collects
+    // the factors resulting from elimination of the children.  Also sets up BayesTree
+    // cliques with parent and child pointers.
     struct ClusterEliminationData {
       ClusterEliminationData* const parentData;
       size_t myIndexInParent;
       FastVector<SharedFactor> childFactors;
       std::shared_ptr<BayesTreeNode> bayesTreeNode;
+#ifdef GTSAM_USE_TBB
+      std::shared_ptr<std::mutex> writeLock;
+#endif
 
-      explicit ClusterEliminationData(ClusterEliminationData* p)
-          : parentData(p), bayesTreeNode(std::make_shared<BayesTreeNode>()) {
+      ClusterEliminationData(ClusterEliminationData* _parentData, size_t nChildren)
+          : parentData(_parentData), bayesTreeNode(std::make_shared<BayesTreeNode>())
+#ifdef GTSAM_USE_TBB
+            , writeLock(std::make_shared<std::mutex>())
+#endif
+      {
         if (parentData) {
+#ifdef GTSAM_USE_TBB
+          parentData->writeLock->lock();
+#endif
           myIndexInParent = parentData->childFactors.size();
           parentData->childFactors.push_back(SharedFactor());
-          if (parentData->parentData)
-            bayesTreeNode->parent_ = parentData->bayesTreeNode;
-          parentData->bayesTreeNode->children.push_back(bayesTreeNode);
+#ifdef GTSAM_USE_TBB
+          parentData->writeLock->unlock();
+#endif
         } else {
           myIndexInParent = 0;
         }
+        if (parentData) {
+          if (parentData->parentData)
+            bayesTreeNode->parent_ = parentData->bayesTreeNode;
+          parentData->bayesTreeNode->children.push_back(bayesTreeNode);
+        }
+      }
+
+      static ClusterEliminationData EliminationPreOrderVisitor(
+          const SymbolicJunctionTree::sharedNode& node,
+          ClusterEliminationData& parentData) {
+        assert(node);
+        ClusterEliminationData myData(&parentData, node->nrChildren());
+        myData.bayesTreeNode->problemSize_ = node->problemSize();
+        return myData;
       }
     };
 
-    // Post-order visitor functor for elimination.
+    // Elimination post-order visitor - gather factors, eliminate, store results.
     class EliminationPostOrderVisitor {
       const FactorGraphType& graph_;
-      const Eliminate& function_;
+      const Eliminate& eliminationFunction_;
 
      public:
-      EliminationPostOrderVisitor(const FactorGraphType& graph,
-                                  const Eliminate& function)
-          : graph_(graph), function_(function) {}
+      EliminationPostOrderVisitor(
+          const FactorGraphType& graph,
+          const Eliminate& eliminationFunction)
+          : graph_(graph), eliminationFunction_(eliminationFunction) {}
 
-      void operator()(const SymbolicJunctionTree::sharedNode& cluster,
+      void operator()(const SymbolicJunctionTree::sharedNode& node,
                       ClusterEliminationData& myData) {
-        FactorGraphType gatheredFactors;
-        gatheredFactors.reserve(cluster->factors.size() + myData.childFactors.size());
+        assert(node);
 
-        // Gather factors from IndexedSymbolicFactor.
-        for (const auto& factor : cluster->factors) {
+        FactorGraphType gatheredFactors;
+        gatheredFactors.reserve(node->factors.size() + node->nrChildren());
+
+        for (const auto& factor : node->factors) {
           auto indexed =
               std::static_pointer_cast<internal::IndexedSymbolicFactor>(factor);
           gatheredFactors.push_back(graph_.at(indexed->index_));
         }
+        gatheredFactors.push_back(myData.childFactors);
 
-        for (const auto& childFactor : myData.childFactors)
-          if (childFactor) gatheredFactors.push_back(childFactor);
+        auto eliminationResult =
+            eliminationFunction_(gatheredFactors, node->orderedFrontalKeys);
 
-        auto result = function_(gatheredFactors, cluster->orderedFrontalKeys);
-        myData.bayesTreeNode->setEliminationResult(result);
+        myData.bayesTreeNode->setEliminationResult(eliminationResult);
 
-        if (myData.parentData && !result.second->empty())
-          myData.parentData->childFactors[myData.myIndexInParent] = result.second;
+        if (!eliminationResult.second->empty()) {
+#ifdef GTSAM_USE_TBB
+          myData.parentData->writeLock->lock();
+#endif
+          myData.parentData->childFactors[myData.myIndexInParent] =
+              eliminationResult.second;
+#ifdef GTSAM_USE_TBB
+          myData.parentData->writeLock->unlock();
+#endif
+        }
       }
     };
 
-    // Run depth-first traversal.
-    ClusterEliminationData rootsContainer(nullptr);
+    // Do elimination (depth-first traversal).  The rootsContainer stores a 'dummy'
+    // BayesTree node that contains all of the roots as its children.  rootsContainer
+    // also stores the remaining un-eliminated factors passed up from the roots.
+    std::shared_ptr<BayesTreeType> result = std::make_shared<BayesTreeType>();
+
+    ClusterEliminationData rootsContainer(0, indexedJunctionTree.nrRoots());
+
     EliminationPostOrderVisitor visitorPost(asDerived(), function);
+    {
+      TbbOpenMPMixedScope threadLimiter;
+      treeTraversal::DepthFirstForestParallel(
+          indexedJunctionTree, rootsContainer,
+          ClusterEliminationData::EliminationPreOrderVisitor, visitorPost, 10);
+    }
 
-    auto visitorPre = [](const SymbolicJunctionTree::sharedNode& node,
-                         ClusterEliminationData& parentData) {
-      ClusterEliminationData myData(&parentData);
-      myData.bayesTreeNode->problemSize_ = node->problemSize_;
-      return myData;
-    };
-
-    treeTraversal::DepthFirstForest(indexedJunctionTree, rootsContainer, visitorPre,
-                                    visitorPost);
+    // Create BayesTree from roots stored in the dummy BayesTree node.
+    for (const auto& rootClique : rootsContainer.bayesTreeNode->children)
+      result->insertRoot(rootClique);
 
     // If any factors are remaining, the ordering was incomplete.
     KeySet remainingKeys;
@@ -247,12 +291,7 @@ namespace gtsam {
       throw InconsistentEliminationRequested(remainingKeys);
     }
 
-    // Create BayesTree from roots stored in the dummy BayesTree node.
-    auto bayesTree = std::make_shared<BayesTreeType>();
-    for (const auto& rootClique : rootsContainer.bayesTreeNode->children)
-      bayesTree->insertRoot(rootClique);
-
-    return bayesTree;
+    return result;
   }
 
   /* ************************************************************************* */
