@@ -72,7 +72,7 @@ class GncParams {
   double relativeCostTol = 1e-5;  ///< If relative cost change is below this threshold, stop iterating
   double weightsTol = 1e-4;  ///< If the weights are within weightsTol from being binary, stop iterating (only for TLS)
   Verbosity verbosity = SILENT;  ///< Verbosity level
-  bool allow_non_noisemodel_factors = false;  ///< If true, factors without noise model are not reweighted and not not included in mu calculation
+  bool allowNonNoiseModelFactors = false;  ///< If true, factors without noise model are not reweighted and not not included in mu calculation
 
   /// Use IndexVector for inliers and outliers since it is fast
   using IndexVector = FastVector<uint64_t>;
@@ -139,7 +139,7 @@ class GncParams {
   }
 
   void setAllowNonNoiseModelFactors(bool allow) {
-    allow_non_noisemodel_factors = allow;
+    allowNonNoiseModelFactors = allow;
   }
 
   /// Equals.
@@ -149,7 +149,7 @@ class GncParams {
         && std::fabs(muStep - other.muStep) <= tol
         && verbosity == other.verbosity && knownInliers == other.knownInliers
         && knownOutliers == other.knownOutliers
-        && allow_non_noisemodel_factors == other.allow_non_noisemodel_factors;
+        && allowNonNoiseModelFactors == other.allowNonNoiseModelFactors;
   }
 
   /// Print.
@@ -174,7 +174,7 @@ class GncParams {
       std::cout << "knownInliers: " << knownInliers[i] << "\n";
     for (size_t i = 0; i < knownOutliers.size(); i++)
       std::cout << "knownOutliers: " << knownOutliers[i] << "\n";
-    std::cout << "allow_non_noisemodel_factors: " << allow_non_noisemodel_factors << "\n";
+    std::cout << "allowNonNoiseModelFactors: " << allowNonNoiseModelFactors << "\n";
     baseOptimizerParams.print("Base optimizer params: ");
   }
 };
