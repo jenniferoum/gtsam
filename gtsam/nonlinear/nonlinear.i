@@ -313,6 +313,7 @@ virtual class GncParams {
   gtsam::This::Verbosity verbosity;
   gtsam::This::IndexVector knownInliers;
   gtsam::This::IndexVector knownOutliers;
+  bool allowNonNoiseModelFactors;
 
   void setLossType(const gtsam::GncLossType type);
   void setMaxIterations(const size_t maxIter);
@@ -322,6 +323,7 @@ virtual class GncParams {
   void setVerbosityGNC(const gtsam::This::Verbosity value);
   void setKnownInliers(const gtsam::This::IndexVector& knownIn);
   void setKnownOutliers(const gtsam::This::IndexVector& knownOut);
+  void setAllowNonNoiseModelFactors(bool allow);
   void print(const string& str = "GncParams: ") const;
   
   enum Verbosity {
