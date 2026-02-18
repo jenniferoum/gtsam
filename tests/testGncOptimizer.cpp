@@ -704,10 +704,16 @@ TEST(GncOptimizer, nonNoiseFactorBehavior) {
   GncParams<LevenbergMarquardtParams> gncParams;
   gncParams.setLossType(GncLossType::GM);
   gncParams.setAllowNonNoiseModelFactors(true);
+  GncParams<LevenbergMarquardtParams>::IndexVector knownInliers;
+  knownInliers.push_back(1);
+  knownInliers.push_back(
+      1);  // duplicate should still keep factor 1 as non-noise
+  gncParams.setKnownInliers(knownInliers);
   auto gnc = GncOptimizer<GncParams<LevenbergMarquardtParams>>(nfg, initial,
                                                                gncParams);
 
-  // check if the weight is carried correctly and non noise model factor is unchanged
+  // check if the weight is carried correctly and non noise model factor is
+  // unchanged
   Vector weights = Vector::Ones(nfg.size());
   weights[1] = 0.0;
   NonlinearFactorGraph weighted = gnc.makeWeightedGraph(weights);
@@ -717,18 +723,19 @@ TEST(GncOptimizer, nonNoiseFactorBehavior) {
 
   // checks if knownInliers (our non noise model factor) is not reweighted
   double mu = 1.5;
-  double expected_weight = 1.0;
+  double expectedWeight = 1.0;
   Vector w = gnc.calculateWeights(initial, mu);
-  DOUBLES_EQUAL(expected_weight, w[1], tol);
+  DOUBLES_EQUAL(expectedWeight, w[1], tol);
   CHECK(w[0] < 1.0);
 
   // checks if non noise model factors are ignored is calculating mu
   double err0 = gnc.getFactors().at(0)->error(initial);
   Vector barcSq = gnc.getInlierCostThresholds();
-  double expected_mu = 2.0 * err0 / barcSq[0];
-  EXPECT_DOUBLES_EQUAL(expected_mu, gnc.initializeMu(), 1e-6);
+  double expectedMu = 2.0 * err0 / barcSq[0];
+  EXPECT_DOUBLES_EQUAL(expectedMu, gnc.initializeMu(), 1e-6);
 
-  // checks if gnc optimization runs and keeps the non noise model factor weight fixed at 1
+  // checks if gnc optimization runs and keeps the non noise model factor weight
+  // fixed at 1
   Values result = gnc.optimize();
   CHECK(result.exists(X(0)));
   Vector finalWeights = gnc.getWeights();

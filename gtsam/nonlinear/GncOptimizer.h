@@ -48,8 +48,7 @@ enum class Type {
   Inlier,         ///< Factor is a known inlier.
   Outlier,        ///< Factor is a known outlier.
   NonNoiseModel,  ///< Factor does not have a noise model
-  NullPointer,     ///< Factor pointer is null.
-  InlierNonNoiseModel ///< Factor is an inlier and does not have a noise model
+  NullPointer      ///< Factor pointer is null.
 };
 
 bool isNullType(Type type) {
@@ -76,12 +75,24 @@ class GncOptimizer {
   typedef typename GncParameters::OptimizerType BaseOptimizer;
 
  private:
-  NonlinearFactorGraph nfg_; ///< Original factor graph to be solved by GNC.
-  Values state_; ///< Initial values to be used at each iteration by GNC.
-  GncParameters params_; ///< GNC parameters.
-  Vector weights_;  ///< Weights associated to each factor in GNC (this could be a local variable in optimize, but it is useful to make it accessible from outside).
-  Vector barcSq_;  ///< Inlier thresholds. A factor is considered an inlier if factor.error() < barcSq_[i] (where i is the position of the factor in the factor graph. Note that factor.error() whitens by the covariance.
-  std::vector<Type> factorTypes_;  ///< Cached factor types for GNC.
+  /// Original factor graph to be solved by GNC.
+  NonlinearFactorGraph nfg_;
+
+  /// Initial values to be used at each iteration by GNC.
+  Values state_;
+
+  /// GNC parameters.
+  GncParameters params_;
+
+  /// Weights associated to each factor in GNC (accessible from outside).
+  Vector weights_;
+
+  /// Inlier thresholds. A factor is considered an inlier if factor.error() <
+  /// barcSq_[i]. Note: factor.error() whitens by the covariance.
+  Vector barcSq_;
+
+  /// Cached factor types for GNC.
+  std::vector<Type> factorTypes_;
 
  public:
   /// Constructor.
@@ -121,10 +132,7 @@ class GncOptimizer {
         throw std::runtime_error("GncOptimizer::constructor: the user has selected one or more measurements"
                   "that are not in the factor graph to be known inliers.");
       }
-      if (isNonNoiseModelType(factorTypes_[params.knownInliers[i]])) {
-        factorTypes_[params.knownInliers[i]] = Type::InlierNonNoiseModel;
-      }
-      else {
+      if (!isNonNoiseModelType(factorTypes_[params.knownInliers[i]])) {
         factorTypes_[params.knownInliers[i]] = Type::Inlier;
       }
     }
@@ -135,7 +143,7 @@ class GncOptimizer {
                   "that are not in the factor graph to be known outliers.");
       }
       if (!needsWeightUpdate(factorTypes_[params.knownOutliers[i]])) {
-        // it can only be normal, InlierNonNoiseModel, Inlier or NonNoiseModel here so this statement works
+        // it can only be Normal, Inlier, or NonNoiseModel here so this works
         throw std::runtime_error("GncOptimizer::constructor: the user has selected one or more measurements"
                   " to be an outlier that is either an inlier or a non noise model factor.");
       }
