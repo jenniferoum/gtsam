@@ -324,6 +324,13 @@ double GemanMcClure::weight(double distance) const {
   return c4/(c2error*c2error);
 }
 
+double GemanMcClure::Weight(double distance, double c) {
+  const double c2 = c*c;
+  const double c4 = c2*c2;
+  const double c2error = c2 + distance*distance;
+  return c4/(c2error*c2error);
+}
+
 double GemanMcClure::loss(double distance) const {
   const double c2 = c_*c_;
   const double error2 = distance*distance;

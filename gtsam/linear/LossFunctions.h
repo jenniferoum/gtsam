@@ -373,6 +373,7 @@ class GTSAM_EXPORT GemanMcClure : public Base {
   double loss(double distance) const override;
   void print(const std::string &s) const override;
   bool equals(const Base &expected, double tol = 1e-8) const override;
+  static double Weight(double distance, double c);
   static shared_ptr Create(double k, const ReweightScheme reweight = Block);
   double modelParameter() const { return c_; }
 
