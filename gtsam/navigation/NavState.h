@@ -126,7 +126,7 @@ public:
   }
   /// Return position as Vector3
   Vector3 t() const {
-    return x_.col(0);
+    return t_.col(0);
   }
   /// Return velocity as Vector3. Computation-free.
   const Vector3& v() const {

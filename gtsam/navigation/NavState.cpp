@@ -64,7 +64,7 @@ const Vector3& NavState::velocity(OptionalJacobian<3, 9> H) const {
 //------------------------------------------------------------------------------
 Vector3 NavState::bodyVelocity(OptionalJacobian<3, 9> H) const {
   const Rot3& nRb = R_;
-  const Vector3 n_v = x_.col(1);
+  const Vector3 n_v = t_.col(1);
   Matrix3 D_bv_nRb;
   Vector3 b_v = nRb.unrotate(n_v, H ? &D_bv_nRb : 0);
   if (H)
@@ -75,7 +75,7 @@ Vector3 NavState::bodyVelocity(OptionalJacobian<3, 9> H) const {
 //------------------------------------------------------------------------------
 double NavState::range(const Point3& point, OptionalJacobian<1, 9> Hself,
                        OptionalJacobian<1, 3> Hpoint) const {
-  const Vector3 delta = point - x_.col(0);
+  const Vector3 delta = point - t_.col(0);
   const double r = delta.norm();
   if (!Hself && !Hpoint) return r;
 
@@ -121,15 +121,15 @@ void NavState::print(const std::string& s) const {
 //------------------------------------------------------------------------------
 bool NavState::equals(const NavState& other, double tol) const {
   return R_.equals(other.R_, tol) &&
-      traits<Point3>::Equals(x_.col(0), other.x_.col(0), tol) &&
-      equal_with_abs_tol(x_.col(1), other.x_.col(1), tol);
+      traits<Point3>::Equals(t_.col(0), other.t_.col(0), tol) &&
+      equal_with_abs_tol(t_.col(1), other.t_.col(1), tol);
 }
 
 //------------------------------------------------------------------------------
 NavState NavState::retract(const Vector9& xi, //
     OptionalJacobian<9, 9> H1, OptionalJacobian<9, 9> H2) const {
   Rot3 nRb = R_;
-  Point3 n_t = x_.col(0), n_v = x_.col(1);
+  Point3 n_t = t_.col(0), n_v = t_.col(1);
   Matrix3 D_bRc_xi, D_R_nRb, D_t_nRb, D_v_nRb;
   const Rot3 bRc = Rot3::Expmap(dR(xi), H2 ? &D_bRc_xi : 0);
   const Rot3 nRc = nRb.compose(bRc, H1 ? &D_R_nRb : 0);
@@ -157,8 +157,8 @@ Vector9 NavState::localCoordinates(const NavState& g, //
     OptionalJacobian<9, 9> H1, OptionalJacobian<9, 9> H2) const {
   Matrix3 D_dR_R, D_dt_R, D_dv_R;
   const Rot3 dR = R_.between(g.R_, H1 ? &D_dR_R : 0);
-  const Point3 dP = R_.unrotate(g.x_.col(0) - x_.col(0), H1 ? &D_dt_R : 0);
-  const Vector dV = R_.unrotate(g.x_.col(1) - x_.col(1), H1 ? &D_dv_R : 0);
+  const Point3 dP = R_.unrotate(g.t_.col(0) - t_.col(0), H1 ? &D_dt_R : 0);
+  const Vector dV = R_.unrotate(g.t_.col(1) - t_.col(1), H1 ? &D_dv_R : 0);
 
   Vector9 xi;
   Matrix3 D_xi_R;
@@ -244,7 +244,7 @@ NavState NavState::update(const Vector3& b_acceleration, const Vector3& b_omega,
 Vector9 NavState::coriolis(double dt, const Vector3& omega, bool secondOrder,
     OptionalJacobian<9, 9> H) const {
   Rot3 nRb = R_;
-  Point3 n_t = x_.col(0), n_v = x_.col(1);
+  Point3 n_t = t_.col(0), n_v = t_.col(1);
 
   const double dt2 = dt * dt;
   const Vector3 omega_cross_vel = omega.cross(n_v);
@@ -296,7 +296,7 @@ Vector9 NavState::correctPIM(const Vector9& pim, double dt,
     bool use2ndOrderCoriolis, OptionalJacobian<9, 9> H1,
     OptionalJacobian<9, 9> H2) const {
   const Rot3& nRb = R_;
-  const Velocity3 n_v = x_.col(1); // derivative is Ri !
+  const Velocity3 n_v = t_.col(1); // derivative is Ri !
   const double dt22 = 0.5 * dt * dt;
 
   Vector9 xi;

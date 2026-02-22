@@ -75,7 +75,7 @@ class GTSAM_EXPORT ExtendedPose3
 
  protected:
   Rot3 R_;      ///< Rotation component.
-  Matrix3K x_;  ///< K translation-like columns in world frame.
+  Matrix3K t_;  ///< K translation-like columns in world frame.
 
   template <int K_>
   using IsDynamic = typename std::enable_if<K_ == Eigen::Dynamic, void>::type;
@@ -140,7 +140,7 @@ class GTSAM_EXPORT ExtendedPose3
   static size_t Dimension(size_t k) { return 3 + 3 * k; }
 
   /** @return Number of R^3 blocks, k. */
-  size_t k() const { return static_cast<size_t>(x_.cols()); }
+  size_t k() const { return static_cast<size_t>(t_.cols()); }
 
   /** @return Runtime manifold dimension, 3+3k. */
   size_t dim() const { return Dimension(k()); }
@@ -370,7 +370,7 @@ class GTSAM_EXPORT ExtendedPose3
 
   friend std::ostream& operator<<(std::ostream& os, const ExtendedPose3& p) {
     os << "R: " << p.R_ << "\n";
-    os << "x: " << p.x_;
+    os << "x: " << p.t_;
     return os;
   }
 
@@ -400,7 +400,7 @@ class GTSAM_EXPORT ExtendedPose3
   template <class Archive>
   void serialize(Archive& ar, const unsigned int /*version*/) {
     ar& BOOST_SERIALIZATION_NVP(R_);
-    ar& BOOST_SERIALIZATION_NVP(x_);
+    ar& BOOST_SERIALIZATION_NVP(t_);
   }
 #endif
 };

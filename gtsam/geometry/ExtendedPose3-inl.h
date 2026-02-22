@@ -46,18 +46,18 @@ void ExtendedPose3<K, Derived>::ZeroJacobian(ChartJacobian H, size_t d) {
 template <int K, class Derived>
 template <int K_, typename>
 ExtendedPose3<K, Derived>::ExtendedPose3()
-    : R_(Rot3::Identity()), x_(Matrix3K::Zero()) {}
+    : R_(Rot3::Identity()), t_(Matrix3K::Zero()) {}
 
 template <int K, class Derived>
 template <int K_, typename>
 ExtendedPose3<K, Derived>::ExtendedPose3(size_t k)
-    : R_(Rot3::Identity()), x_(3, k) {
-  x_.setZero();
+    : R_(Rot3::Identity()), t_(3, k) {
+  t_.setZero();
 }
 
 template <int K, class Derived>
 ExtendedPose3<K, Derived>::ExtendedPose3(const Rot3& R, const Matrix3K& x)
-    : R_(R), x_(x) {}
+    : R_(R), t_(x) {}
 
 template <int K, class Derived>
 ExtendedPose3<K, Derived>::ExtendedPose3(const LieAlgebra& T) {
@@ -67,8 +67,8 @@ ExtendedPose3<K, Derived>::ExtendedPose3(const LieAlgebra& T) {
       throw std::invalid_argument("ExtendedPose3: invalid matrix shape.");
     }
     const auto k = n - 3;
-    x_.resize(3, k);
-    x_.setZero();
+    t_.resize(3, k);
+    t_.setZero();
   }
 
   const auto n = T.rows();
@@ -83,7 +83,7 @@ ExtendedPose3<K, Derived>::ExtendedPose3(const LieAlgebra& T) {
   }
 
   R_ = Rot3(T.template block<3, 3>(0, 0));
-  x_ = T.block(0, 3, 3, n - 3);
+  t_ = T.block(0, 3, 3, n - 3);
 }
 
 template <int K, class Derived>
@@ -111,19 +111,19 @@ Point3 ExtendedPose3<K, Derived>::x(size_t i, ComponentJacobian H) const {
     const Eigen::Index idx = 3 + 3 * static_cast<Eigen::Index>(i);
     H->block(0, idx, 3, 3) = R_.matrix();
   }
-  return x_.col(static_cast<Eigen::Index>(i));
+  return t_.col(static_cast<Eigen::Index>(i));
 }
 
 template <int K, class Derived>
 const typename ExtendedPose3<K, Derived>::Matrix3K&
 ExtendedPose3<K, Derived>::xMatrix() const {
-  return x_;
+  return t_;
 }
 
 template <int K, class Derived>
 typename ExtendedPose3<K, Derived>::Matrix3K&
 ExtendedPose3<K, Derived>::xMatrix() {
-  return x_;
+  return t_;
 }
 
 template <int K, class Derived>
@@ -134,7 +134,7 @@ void ExtendedPose3<K, Derived>::print(const std::string& s) const {
 template <int K, class Derived>
 bool ExtendedPose3<K, Derived>::equals(const ExtendedPose3& other,
                                        double tol) const {
-  return R_.equals(other.R_, tol) && equal_with_abs_tol(x_, other.x_, tol);
+  return R_.equals(other.R_, tol) && equal_with_abs_tol(t_, other.t_, tol);
 }
 
 template <int K, class Derived>
@@ -154,7 +154,7 @@ template <int K, class Derived>
 typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::inverse()
     const {
   const Rot3 Rt = R_.inverse();
-  const Matrix3K x = -(Rt.matrix() * x_);
+  const Matrix3K x = -(Rt.matrix() * t_);
   return MakeReturn(ExtendedPose3(Rt, x));
 }
 
@@ -165,7 +165,7 @@ typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::operator*(
   if (k() != otherBase.k()) {
     throw std::invalid_argument("ExtendedPose3: compose requires matching k.");
   }
-  Matrix3K x = x_ + R_.matrix() * otherBase.x_;
+  Matrix3K x = t_ + R_.matrix() * otherBase.t_;
   return MakeReturn(ExtendedPose3(R_ * otherBase.R_, x));
 }
 
@@ -185,7 +185,8 @@ typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::Expmap(
 
   // Compute rotation using Expmap
 #ifdef GTSAM_USE_QUATERNIONS
-  const Rot3 R = traits<gtsam::Quaternion>::Expmap(w);
+  // Reuse any quaternion-specific validation inside Rot3::Expmap.
+  const Rot3 R = Rot3::Expmap(w);
 #else
   const Rot3 R(local.expmap());
 #endif
@@ -245,7 +246,7 @@ ExtendedPose3<K, Derived>::Logmap(const This& pose, ChartJacobian H) {
   for (size_t i = 0; i < poseBase.k(); ++i) {
     const Eigen::Index idx = 3 + 3 * static_cast<Eigen::Index>(i);
     xi.template segment<3>(idx) = local.InvJacobian().applyLeft(
-        poseBase.x_.col(static_cast<Eigen::Index>(i)));
+        poseBase.t_.col(static_cast<Eigen::Index>(i)));
   }
 
   if (H) *H = LogmapDerivative(xi);
@@ -267,7 +268,7 @@ ExtendedPose3<K, Derived>::AdjointMap() const {
   for (size_t i = 0; i < k(); ++i) {
     const Eigen::Index idx = 3 + 3 * static_cast<Eigen::Index>(i);
     adj.block(idx, 0, 3, 3) =
-        skewSymmetric(x_.col(static_cast<Eigen::Index>(i))) * R;
+        skewSymmetric(t_.col(static_cast<Eigen::Index>(i))) * R;
     adj.block(idx, idx, 3, 3) = R;
   }
   return adj;
@@ -404,7 +405,7 @@ ExtendedPose3<K, Derived>::matrix() const {
     M = LieAlgebra::Identity();
   }
   M.template block<3, 3>(0, 0) = R_.matrix();
-  M.block(0, 3, 3, static_cast<Eigen::Index>(k())) = x_;
+  M.block(0, 3, 3, static_cast<Eigen::Index>(k())) = t_;
   return M;
 }
 
@@ -438,7 +439,8 @@ ExtendedPose3<K, Derived>::Vee(const LieAlgebra& X) {
       return X.cols() - 3;
     } else {
       if (X.rows() != matrix_dim) {
-        throw std::invalid_argument("ExtendedPose3::Vee: invalid matrix shape.");
+        throw std::invalid_argument(
+            "ExtendedPose3::Vee: invalid matrix shape.");
       }
       return static_cast<Eigen::Index>(K);
     }
