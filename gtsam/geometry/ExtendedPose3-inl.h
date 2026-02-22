@@ -97,7 +97,6 @@ size_t ExtendedPose3<K, Derived>::k() const {
 }
 
 template <int K, class Derived>
-template <int K_, typename>
 size_t ExtendedPose3<K, Derived>::dim() const {
   return Dimension(k());
 }

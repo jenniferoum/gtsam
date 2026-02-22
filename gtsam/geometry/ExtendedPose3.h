@@ -156,7 +156,6 @@ class GTSAM_EXPORT ExtendedPose3
   size_t k() const;
 
   /// Runtime manifold dimension.
-  template <int K_ = K, typename = IsDynamic<K_>>
   size_t dim() const;
 
   /// Rotation component.

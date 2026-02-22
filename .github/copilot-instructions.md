@@ -8,4 +8,11 @@ For reviewing PRs:
 * Classes are Uppercase, methods and functions lowerMixedCase.
 * Public fields in structs keep plain names (no trailing underscore).
 * Apart from those naming conventions, we adopt Google C++ style.
+* Notebooks in `*/doc/*.ipynb` and `*/examples/*.ipynb` should follow the standard preamble:
+  1) title/introduction markdown cell,
+  2) copyright markdown cell tagged `remove-cell`,
+  3) Colab badge markdown cell,
+  4) Colab install code cell tagged `remove-cell`,
+  5) imports/setup code cell.
+  Use the same `remove-cell` tagging convention as existing notebooks so docs build and Colab behavior stay consistent.
 * After any code change, always run relevant tests via `make -j6 testXXX.run` in the build folder $WORKSPACE/build. If in VS code, ask for escalated permissions if needed.
