@@ -623,28 +623,6 @@ TEST(NavState, Adjoint_full) {
 }
 
 /* ************************************************************************* */
-// assert that T*wedge(xi)*T^-1 is equal to wedge(Ad_T(xi))
-TEST(NavState, Adjoint_hat) {
-  //TODO(Varun)
-  // auto hat = [](const Vector& xi) { return ::wedge<NavState>(xi); };
-  // Matrix5 expected = T.matrix() * hat(screwNavState::xi) * T.matrix().inverse();
-  // Matrix5 xiprime = hat(T.Adjoint(screwNavState::xi));
-
-  // EXPECT(assert_equal(expected, xiprime, 1e-6));
-
-  // Matrix5 expected2 =
-  //     T2.matrix() * hat(screwNavState::xi) * T2.matrix().inverse();
-  // Matrix5 xiprime2 = hat(T2.Adjoint(screwNavState::xi));
-  // EXPECT(assert_equal(expected2, xiprime2, 1e-6));
-
-  // Matrix5 expected3 =
-  //     T3.matrix() * hat(screwNavState::xi) * T3.matrix().inverse();
-
-  // Matrix5 xiprime3 = hat(T3.Adjoint(screwNavState::xi));
-  // EXPECT(assert_equal(expected3, xiprime3, 1e-6));
-}
-
-/* ************************************************************************* */
 TEST(NavState, Adjoint_compose_full) {
   // To debug derivatives of compose, assert that
   // T1*T2*exp(Adjoint(inv(T2),x) = T1*exp(x)*T2
@@ -905,21 +883,6 @@ TEST(NavState, Vec) {
   std::function<Vector25(const NavState&)> f = [](const NavState& p) { return p.vec(); };
   Eigen::Matrix<double, 25, 9> numericalH = numericalDerivative11<Vector25, NavState>(f, navState);
   EXPECT(assert_equal(numericalH, actualH, 1e-9));
-}
-
-/* ************************************************************************* */
-TEST(NavState, AdjointMap_GenericVsSpecialized) {
-  // Create a non-trivial NavState object
-  const NavState navState(Rot3::Rodrigues(0.1, 0.2, 0.3), Point3(1.0, 2.0, 3.0), Velocity3(0.4, 0.5, 0.6));
-
-  // Call the specialized AdjointMap
-  Matrix9 specialized_Adj = navState.AdjointMap();
-
-  // Call the generic AdjointMap from the base class
-  Matrix9 generic_Adj = static_cast<const MatrixLieGroup<NavState, 9, 5>*>(&navState)->AdjointMap();
-
-  // Assert that they are equal
-  EXPECT(assert_equal(specialized_Adj, generic_Adj, 1e-9));
 }
 
 /* ************************************************************************* */

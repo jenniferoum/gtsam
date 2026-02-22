@@ -76,6 +76,20 @@ TEST(Pose2, retract) {
 }
 
 /* ************************************************************************* */
+TEST(Pose2, retractJacobian) {
+  Pose2 pose(M_PI / 2.0, Point2(1, 2));
+  Vector3 v(0.01, -0.015, 0.99);
+
+  Matrix3 actualH;
+  traits<Pose2>::Retract(pose, v, {}, &actualH);
+
+  auto retract_from_pose = [&](const Vector3& delta) { return pose.retract(delta); };
+  Matrix3 expectedH = numericalDerivative11<Pose2, Vector3, 3>(retract_from_pose, v, 1e-6);
+
+  EXPECT(assert_equal(expectedH, actualH, 1e-5));
+}
+
+/* ************************************************************************* */
 TEST(Pose2, expmap) {
   Pose2 pose(M_PI/2.0, Point2(1, 2));
   Pose2 expected(1.00811, 2.01528, 2.5608);
@@ -997,4 +1011,3 @@ int main() {
   return TestRegistry::runAllTests(tr);
 }
 /* ************************************************************************* */
-

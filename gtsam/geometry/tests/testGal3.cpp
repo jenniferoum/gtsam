@@ -83,6 +83,27 @@ TEST(Gal3, ChartDerivatives) {
   CHECK_CHART_DERIVATIVES(kTestGal3_Lie1, kTestGal3_Lie2);
 }
 
+/* ************************************************************************* */
+TEST(Gal3, RetractJacobians) {
+  const Gal3 g = kTestGal3_Lie1;
+  const Vector10 v = (Vector10() << 0.01, -0.02, 0.03, 0.1, -0.05, 0.2, 0.4,
+                     -0.3, 0.2, 0.01)
+                        .finished();
+
+  Matrix actualH1, actualH2;
+  traits<Gal3>::Retract(g, v, &actualH1, &actualH2);
+
+  std::function<Gal3(const Gal3&, const Vector10&)> retract_proxy =
+      [](const Gal3& g_, const Vector10& v_) { return g_.retract(v_); };
+  Matrix expectedH1 =
+      numericalDerivative21<Gal3, Gal3, Vector10>(retract_proxy, g, v);
+  Matrix expectedH2 =
+      numericalDerivative22<Gal3, Gal3, Vector10>(retract_proxy, g, v);
+
+  EXPECT(assert_equal(expectedH1, actualH1, 1e-5));
+  EXPECT(assert_equal(expectedH2, actualH2, 1e-5));
+}
+
 
 /* ************************************************************************* */
 TEST(Gal3, StaticConstructorsValue) {

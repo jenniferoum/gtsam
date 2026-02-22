@@ -686,6 +686,61 @@ class Pose3 {
   void serialize() const;
 };
 
+#include <gtsam/geometry/ExtendedPose3.h>
+template <K = {2, 3, 4, 6}>
+class ExtendedPose3 {
+  // Standard Constructors
+  ExtendedPose3();
+  ExtendedPose3(const This& other);
+  ExtendedPose3(const gtsam::Rot3& R, const gtsam::Matrix& x);
+  ExtendedPose3(const gtsam::Matrix& T);
+
+  // Testable
+  void print(string s = "") const;
+  bool equals(const This& other, double tol = 1e-9) const;
+
+  // Access
+  size_t k() const;
+  gtsam::Rot3 rotation() const;
+  gtsam::Point3 x(size_t i) const;
+  gtsam::Matrix xMatrix() const;
+
+  // Group
+  static This Identity();
+  This inverse() const;
+  This compose(const This& g) const;
+  This between(const This& g) const;
+
+  // Operator Overloads
+  This operator*(const This& other) const;
+
+  // Manifold
+  static size_t Dim();
+  size_t dim() const;
+  This retract(gtsam::Vector v) const;
+  gtsam::Vector localCoordinates(const This& g) const;
+
+  // Lie Group
+  static This Expmap(gtsam::Vector xi);
+  static gtsam::Vector Logmap(const This& pose);
+  gtsam::Matrix AdjointMap() const;
+  gtsam::Vector Adjoint(gtsam::Vector xi_b) const;
+  static gtsam::Matrix adjointMap(gtsam::Vector xi);
+  static gtsam::Vector adjoint(gtsam::Vector xi, gtsam::Vector y);
+  static gtsam::Matrix ExpmapDerivative(gtsam::Vector xi);
+  static gtsam::Matrix LogmapDerivative(gtsam::Vector xi);
+  static gtsam::Matrix LogmapDerivative(const This& pose);
+
+  // Matrix Lie Group
+  gtsam::Vector vec() const;
+  gtsam::Matrix matrix() const;
+  static gtsam::Matrix Hat(const gtsam::Vector& xi);
+  static gtsam::Vector Vee(const gtsam::Matrix& X);
+
+  // enabling serialization functionality
+  void serialize() const;
+};
+
 #include <gtsam/geometry/SL4.h>
 class SL4 {
   // Standard constructors

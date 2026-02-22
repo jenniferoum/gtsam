@@ -80,6 +80,28 @@ TEST(SymmetricBlockMatrix, WriteBlocks)
 }
 
 /* ************************************************************************* */
+TEST(SymmetricBlockMatrix, setZeroColumns) {
+  // Expected: columns 3 and 4 are zero
+  Matrix expected = testBlockMatrix.selfadjointView().toDenseMatrix().eval();
+  expected.col(3).setZero();
+  expected.col(4).setZero();
+  expected = expected.triangularView<Eigen::Upper>().toDenseMatrix().eval();
+
+  SymmetricBlockMatrix bm = testBlockMatrix;
+
+  // Zero out the middle block (block 1, columns 3-4)
+  bm.setZeroColumns(1, 2);
+
+  Matrix result = bm.selfadjointView()
+                      .toDenseMatrix()
+                      .triangularView<Eigen::Upper>()
+                      .toDenseMatrix()
+                      .eval();
+
+  EXPECT(assert_equal(expected, result));
+}
+
+/* ************************************************************************* */
 // Verify block range access.
 TEST(SymmetricBlockMatrix, Ranges)
 {
@@ -153,6 +175,32 @@ TEST(SymmetricBlockMatrix, expressions)
   bm6.setZero();
   bm6.updateOffDiagonalBlock(1, 0, expected2.aboveDiagonalBlock(0, 1).transpose());
   EXPECT(assert_equal(Matrix(expected2.selfadjointView()), bm6.selfadjointView()));
+}
+
+/* ************************************************************************* */
+// Verify diagonal-only update helpers.
+TEST(SymmetricBlockMatrix, AddDiagonal) {
+  const std::vector<size_t> dimensions{2, 1};
+  SymmetricBlockMatrix bm(dimensions);
+  bm.setZero();
+
+  bm.addScaledIdentity(0, 2.0);
+  bm.addScaledIdentity(1, 3.0);
+
+  Vector delta0(2);
+  delta0 << 1.0, 4.0;
+  bm.addToDiagonalBlock(0, delta0);
+
+  Vector delta1(1);
+  delta1 << -1.0;
+  bm.addToDiagonalBlock(1, delta1);
+
+  Matrix expected = Matrix::Zero(3, 3);
+  expected(0, 0) = 3.0;
+  expected(1, 1) = 6.0;
+  expected(2, 2) = 2.0;
+
+  EXPECT(assert_equal(expected, Matrix(bm.selfadjointView())));
 }
 
 /* ************************************************************************* */
