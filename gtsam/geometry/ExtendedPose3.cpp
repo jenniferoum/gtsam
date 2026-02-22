@@ -19,11 +19,11 @@
 
 namespace gtsam {
 
-template class ExtendedPose3<1>;
-template class ExtendedPose3<2>;
-template class ExtendedPose3<3>;
-template class ExtendedPose3<4>;
-template class ExtendedPose3<6>;
-template class ExtendedPose3<Eigen::Dynamic>;
+template class GTSAM_EXPORT ExtendedPose3<1>;
+template class GTSAM_EXPORT ExtendedPose3<2>;
+template class GTSAM_EXPORT ExtendedPose3<3>;
+template class GTSAM_EXPORT ExtendedPose3<4>;
+template class GTSAM_EXPORT ExtendedPose3<6>;
+template class GTSAM_EXPORT ExtendedPose3<Eigen::Dynamic>;
 
 }  // namespace gtsam
