@@ -89,8 +89,8 @@ public:
   /// @{
 
   const Rot3& attitude(OptionalJacobian<3, 9> H = {}) const;
-  const Point3& position(OptionalJacobian<3, 9> H = {}) const;
-  const Velocity3& velocity(OptionalJacobian<3, 9> H = {}) const;
+  Point3 position(OptionalJacobian<3, 9> H = {}) const;
+  Velocity3 velocity(OptionalJacobian<3, 9> H = {}) const;
 
   const Pose3 pose() const {
     return Pose3(attitude(), position());
@@ -128,8 +128,8 @@ public:
   Vector3 t() const {
     return t_.col(0);
   }
-  /// Return velocity as Vector3. Computation-free.
-  const Vector3& v() const {
+  /// Return velocity as Vector3.
+  Vector3 v() const {
     return velocity();
   }
   // Return velocity in body frame
@@ -234,9 +234,6 @@ public:
   /// @}
 
 private:
-  mutable Point3 p_cache_ = Point3::Zero();
-  mutable Velocity3 v_cache_ = Velocity3::Zero();
-
   /// @{
   /// serialization
 #if GTSAM_ENABLE_BOOST_SERIALIZATION  ///

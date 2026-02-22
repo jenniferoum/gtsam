@@ -50,15 +50,13 @@ const Rot3& NavState::attitude(OptionalJacobian<3, 9> H) const {
 }
 
 //------------------------------------------------------------------------------
-const Point3& NavState::position(OptionalJacobian<3, 9> H) const {
-  p_cache_ = Base::x(0, H);
-  return p_cache_;
+Point3 NavState::position(OptionalJacobian<3, 9> H) const {
+  return Base::x(0, H);
 }
 
 //------------------------------------------------------------------------------
-const Vector3& NavState::velocity(OptionalJacobian<3, 9> H) const {
-  v_cache_ = Base::x(1, H);
-  return v_cache_;
+Vector3 NavState::velocity(OptionalJacobian<3, 9> H) const {
+  return Base::x(1, H);
 }
 
 //------------------------------------------------------------------------------
