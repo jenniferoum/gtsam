@@ -490,9 +490,7 @@ class GncOptimizer {
         for (size_t k = 0; k < nfg_.size(); k++) {
           if (needsWeightUpdate(factorTypes_[k])) {
             double u2_k = nfg_[k]->error(currentEstimate);  // squared (and whitened) residual
-            const double distance2_k = 2.0 * u2_k;
-            const double c2_k = 2.0 * mu * barcSq_[k];
-            weights[k] = noiseModel::mEstimator::GemanMcClure::Weight(distance2_k, c2_k);
+            weights[k] = noiseModel::mEstimator::GemanMcClure::Weight(u2_k, mu * barcSq_[k]);
           }
         }
         return weights;
