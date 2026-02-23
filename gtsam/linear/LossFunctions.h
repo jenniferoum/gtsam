@@ -373,9 +373,21 @@ class GTSAM_EXPORT GemanMcClure : public Base {
   double loss(double distance) const override;
   void print(const std::string &s) const override;
   bool equals(const Base &expected, double tol = 1e-8) const override;
-  static double Weight(double distance2, double c2);
   static shared_ptr Create(double k, const ReweightScheme reweight = Block);
   double modelParameter() const { return c_; }
+  /** @brief A static helper function to compute the Geman-McClure robust weight.
+   * The static function takes the squared value of the residual and the scale parameter.
+   * The weight member function now calls the this function, while the member function takes the residual as input, 
+   * it passes r² and c² to the static helper.
+   * 
+   *w(d², c²) = \phi(d)/d = c⁴/(c²+d²)²
+   * 
+   * 
+   * @param distance2 Squared residual magnitude.
+   * @param c2 Squared scale parameter.
+   * @return Weight w(x) in (0, 1]
+   */
+  static double Weight(double distance2, double c2);
 
  protected:
   double c_;
