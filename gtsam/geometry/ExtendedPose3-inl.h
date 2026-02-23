@@ -179,20 +179,6 @@ typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::Expmap(
   const Rot3 R(local.expmap());
 #endif
 
-  if constexpr (K == 1) {
-    Matrix3 H;
-    const Vector3 v = xi.template tail<3>();
-    const Vector3 t = local.Jacobian().applyLeft(v, Hxi ? &H : nullptr);
-    if (Hxi) {
-      const Matrix3 Jr = local.Jacobian().right();
-      const Matrix3 Rt = R.transpose();
-      *Hxi << Jr, Z_3x3, Rt * H, Jr;
-    }
-    Matrix3K x;
-    x.col(0) = t;
-    return MakeReturn(ExtendedPose3(R, x));
-  }
-
   const Eigen::Index k = static_cast<Eigen::Index>(RuntimeK(xi));
 
   // The translation t = local.Jacobian().left() * v.

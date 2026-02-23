@@ -137,6 +137,9 @@ public:
 
   using LieAlgebra = Matrix4;
 
+  /// Exponential map at identity.
+  static Pose3 Expmap(const Vector6& xi, OptionalJacobian<6, 6> Hxi = {});
+
   /// The dual version of Adjoint
   Vector6 AdjointTranspose(const Vector6& x,
                            OptionalJacobian<6, 6> H_this = {},

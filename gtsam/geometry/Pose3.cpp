@@ -133,6 +133,37 @@ Pose3 Pose3::interpolateRt(const Pose3& T, double t,
 }
 
 /* ************************************************************************* */
+Pose3 Pose3::Expmap(const Vector6& xi, OptionalJacobian<6, 6> Hxi) {
+  // Get angular velocity omega and translational velocity v from twist xi
+  const Vector3 w = xi.head<3>(), v = xi.tail<3>();
+
+  // Instantiate functor for Dexp-related operations:
+  const so3::DexpFunctor local(w);
+
+  // Compute rotation using Expmap
+#ifdef GTSAM_USE_QUATERNIONS
+  const Rot3 R = traits<gtsam::Quaternion>::Expmap(w);
+#else
+  const Rot3 R(local.expmap());
+#endif
+
+  // The translation t = local.Jacobian().left() * v.
+  Matrix3 H;
+  const Vector3 t = local.Jacobian().applyLeft(v, Hxi ? &H : nullptr);
+
+  if (Hxi) {
+    // The Jacobian of expmap is given by the right Jacobian of SO(3):
+    const Matrix3 Jr = local.Jacobian().right();
+    // Chain H with R^T, the Jacobian of Pose3::Create with respect to t.
+    const Matrix3 Rt = R.transpose();
+    *Hxi << Jr, Z_3x3,  // Jr here *is* the Jacobian of expmap
+        Rt * H, Jr;     // Jr = R^T * Jl, with Jl Jacobian of t in v.
+  }
+
+  return Pose3(R, t);
+}
+
+/* ************************************************************************* */
 Pose3 Pose3::ChartAtOrigin::Retract(const Vector6& xi, ChartJacobian Hxi) {
 #ifdef GTSAM_POSE3_EXPMAP
   return Expmap(xi, Hxi);
