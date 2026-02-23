@@ -22,10 +22,7 @@ namespace gtsam {
 template <int K, class Derived>
 size_t ExtendedPose3<K, Derived>::RuntimeK(const TangentVector& xi) {
   if constexpr (K == Eigen::Dynamic) {
-    if (xi.size() < 3 || (xi.size() - 3) % 3 != 0) {
-      throw std::invalid_argument(
-          "ExtendedPose3: tangent vector size must be 3 + 3*k.");
-    }
+    assert(xi.size() >= 3 && (xi.size() - 3) % 3 == 0);
     return static_cast<size_t>((xi.size() - 3) / 3);
   } else {
     return static_cast<size_t>(K);
@@ -153,8 +150,10 @@ template <int K, class Derived>
 typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::operator*(
     const This& other) const {
   const ExtendedPose3& otherBase = AsBase(other);
-  if (k() != otherBase.k()) {
-    throw std::invalid_argument("ExtendedPose3: compose requires matching k.");
+  if constexpr (K == Eigen::Dynamic) {
+    if (k() != otherBase.k()) {
+      throw std::invalid_argument("ExtendedPose3: compose requires matching k.");
+    }
   }
   Matrix3K x = t_ + R_.matrix() * otherBase.t_;
   return MakeReturn(ExtendedPose3(R_ * otherBase.R_, x));

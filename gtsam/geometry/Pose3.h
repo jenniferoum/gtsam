@@ -126,6 +126,11 @@ public:
                       OptionalJacobian<6, 6> Harg = {},
                       OptionalJacobian<6, 1> Ht = {}) const;
 
+  /// Compose syntactic sugar.
+  Pose3 operator*(const Pose3& T) const {
+    return Pose3(R_ * T.R_, t_ + R_ * T.t_);
+  }
+
   /// @}
   /// @name Lie Group
   /// @{
