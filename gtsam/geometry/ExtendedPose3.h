@@ -56,10 +56,10 @@ class ExtendedPose3
                                   ExtendedPose3<K, void>, Derived>;
   inline constexpr static int dimension =
       (K == Eigen::Dynamic) ? Eigen::Dynamic : 3 + 3 * K;
-  inline constexpr static int matrix_dim =
+  inline constexpr static int matrixDim =
       (K == Eigen::Dynamic) ? Eigen::Dynamic : 3 + K;
 
-  using Base = MatrixLieGroup<This, dimension, matrix_dim>;
+  using Base = MatrixLieGroup<This, dimension, matrixDim>;
   using TangentVector = typename Base::TangentVector;
   using Jacobian = typename Base::Jacobian;
   using ChartJacobian = typename Base::ChartJacobian;
@@ -67,7 +67,10 @@ class ExtendedPose3
       std::conditional_t<dimension == Eigen::Dynamic,
                          OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic>,
                          OptionalJacobian<3, dimension>>;
-  using LieAlgebra = Eigen::Matrix<double, matrix_dim, matrix_dim>;
+  /// Homogeneous matrix representation in the group.
+  using MatrixRep = Eigen::Matrix<double, matrixDim, matrixDim>;
+  /// Lie algebra matrix type used by Hat/Vee.
+  using LieAlgebra = Eigen::Matrix<double, matrixDim, matrixDim>;
   using Matrix3K = Eigen::Matrix<double, 3, K>;
 
   static_assert(K == Eigen::Dynamic || K >= 1,
@@ -93,7 +96,7 @@ class ExtendedPose3
    * The manifold dimension is 3+3k and matrix size is (3+k)x(3+k).
    */
   template <int K_ = K, typename = IsFixed<K_>>
-  ExtendedPose3();
+  ExtendedPose3() : R_(Rot3::Identity()), t_(Matrix3K::Zero()) {}
 
   /**
    * Construct a dynamic-size identity element.
@@ -103,7 +106,10 @@ class ExtendedPose3
    * The manifold dimension is 3+3k and matrix size is (3+k)x(3+k).
    */
   template <int K_ = K, typename = IsDynamic<K_>>
-  explicit ExtendedPose3(size_t k = 0);
+  explicit ExtendedPose3(size_t k = 0)
+      : R_(Rot3::Identity()), t_(3, static_cast<Eigen::Index>(k)) {
+    t_.setZero();
+  }
 
   /** Copy constructor. */
   ExtendedPose3(const ExtendedPose3&) = default;
@@ -125,7 +131,7 @@ class ExtendedPose3
    * @param T Homogeneous matrix in R^((3+k)x(3+k)).
    * Top-left 3x3 is R, top-right 3xk stores x_1..x_k.
    */
-  explicit ExtendedPose3(const LieAlgebra& T);
+  explicit ExtendedPose3(const MatrixRep& T);
 
   /// @}
   /// @name Access
@@ -206,7 +212,9 @@ class ExtendedPose3
    * @return Identity with manifold dimension 3+3k and matrix size 3+k.
    */
   template <int K_ = K, typename = IsFixed<K_>>
-  static This Identity();
+  static This Identity() {
+    return MakeReturn(ExtendedPose3());
+  }
 
   /**
    * Identity element for dynamic-size K.
@@ -215,7 +223,9 @@ class ExtendedPose3
    * @return Identity with manifold dimension 3+3k and matrix size 3+k.
    */
   template <int K_ = K, typename = IsDynamic<K_>>
-  static This Identity(size_t k = 0);
+  static This Identity(size_t k = 0) {
+    return MakeReturn(ExtendedPose3(k));
+  }
 
   /**
    * Group inverse.
@@ -348,7 +358,7 @@ class ExtendedPose3
    *
    * @return Matrix in R^((3+k)x(3+k)).
    */
-  LieAlgebra matrix() const;
+  MatrixRep matrix() const;
 
   /**
    * Hat operator from tangent to Lie algebra.
@@ -411,12 +421,12 @@ using ExtendedPose3Dynamic = ExtendedPose3<Eigen::Dynamic>;
 template <int K, class Derived>
 struct traits<ExtendedPose3<K, Derived>>
     : public internal::MatrixLieGroup<ExtendedPose3<K, Derived>,
-                                      ExtendedPose3<K, Derived>::matrix_dim> {};
+                                      ExtendedPose3<K, Derived>::matrixDim> {};
 
 template <int K, class Derived>
 struct traits<const ExtendedPose3<K, Derived>>
     : public internal::MatrixLieGroup<ExtendedPose3<K, Derived>,
-                                      ExtendedPose3<K, Derived>::matrix_dim> {};
+                                      ExtendedPose3<K, Derived>::matrixDim> {};
 
 }  // namespace gtsam
 

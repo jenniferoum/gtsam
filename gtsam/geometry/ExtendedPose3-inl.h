@@ -41,23 +41,11 @@ void ExtendedPose3<K, Derived>::ZeroJacobian(ChartJacobian H, Eigen::Index d) {
 }
 
 template <int K, class Derived>
-template <int K_, typename>
-ExtendedPose3<K, Derived>::ExtendedPose3()
-    : R_(Rot3::Identity()), t_(Matrix3K::Zero()) {}
-
-template <int K, class Derived>
-template <int K_, typename>
-ExtendedPose3<K, Derived>::ExtendedPose3(size_t k)
-    : R_(Rot3::Identity()), t_(3, static_cast<Eigen::Index>(k)) {
-  t_.setZero();
-}
-
-template <int K, class Derived>
 ExtendedPose3<K, Derived>::ExtendedPose3(const Rot3& R, const Matrix3K& x)
     : R_(R), t_(x) {}
 
 template <int K, class Derived>
-ExtendedPose3<K, Derived>::ExtendedPose3(const LieAlgebra& T) {
+ExtendedPose3<K, Derived>::ExtendedPose3(const MatrixRep& T) {
   const Eigen::Index n = T.rows();
   if constexpr (K == Eigen::Dynamic) {
     if (T.cols() != n || n < 3) {
@@ -65,7 +53,7 @@ ExtendedPose3<K, Derived>::ExtendedPose3(const LieAlgebra& T) {
     }
     t_.resize(3, n - 3);
   } else {
-    if (n != matrix_dim || T.cols() != matrix_dim) {
+    if (n != matrixDim || T.cols() != matrixDim) {
       throw std::invalid_argument("ExtendedPose3: invalid matrix shape.");
     }
   }
@@ -123,19 +111,6 @@ template <int K, class Derived>
 bool ExtendedPose3<K, Derived>::equals(const ExtendedPose3& other,
                                        double tol) const {
   return R_.equals(other.R_, tol) && equal_with_abs_tol(t_, other.t_, tol);
-}
-
-template <int K, class Derived>
-template <int K_, typename>
-typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::Identity() {
-  return MakeReturn(ExtendedPose3());
-}
-
-template <int K, class Derived>
-template <int K_, typename>
-typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::Identity(
-    size_t k) {
-  return MakeReturn(ExtendedPose3(k));
 }
 
 template <int K, class Derived>
@@ -386,15 +361,15 @@ ExtendedPose3<K, Derived>::ChartAtOrigin::Local(const This& pose,
 }
 
 template <int K, class Derived>
-typename ExtendedPose3<K, Derived>::LieAlgebra
+typename ExtendedPose3<K, Derived>::MatrixRep
 ExtendedPose3<K, Derived>::matrix() const {
-  LieAlgebra M;
-  if constexpr (matrix_dim == Eigen::Dynamic) {
+  MatrixRep M;
+  if constexpr (matrixDim == Eigen::Dynamic) {
     const Eigen::Index k = static_cast<Eigen::Index>(this->k());
     const Eigen::Index n = 3 + k;
-    M = LieAlgebra::Identity(n, n);
+    M = MatrixRep::Identity(n, n);
   } else {
-    M = LieAlgebra::Identity();
+    M = MatrixRep::Identity();
   }
   M.template block<3, 3>(0, 0) = R_.matrix();
   M.block(0, 3, 3, static_cast<Eigen::Index>(this->k())) = t_;
@@ -406,7 +381,7 @@ typename ExtendedPose3<K, Derived>::LieAlgebra ExtendedPose3<K, Derived>::Hat(
     const TangentVector& xi) {
   const Eigen::Index k = static_cast<Eigen::Index>(RuntimeK(xi));
   LieAlgebra X;
-  if constexpr (matrix_dim == Eigen::Dynamic) {
+  if constexpr (matrixDim == Eigen::Dynamic) {
     X.setZero(3 + k, 3 + k);
   } else {
     X.setZero();
@@ -430,7 +405,7 @@ ExtendedPose3<K, Derived>::Vee(const LieAlgebra& X) {
     if constexpr (K == Eigen::Dynamic) {
       return X.cols() - 3;
     } else {
-      if (X.rows() != matrix_dim) {
+      if (X.rows() != matrixDim) {
         throw std::invalid_argument(
             "ExtendedPose3::Vee: invalid matrix shape.");
       }
