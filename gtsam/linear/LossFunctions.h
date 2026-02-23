@@ -406,6 +406,59 @@ class GTSAM_EXPORT GemanMcClure : public Base {
 #endif
 };
 
+/** Truncated Least Squares (TLS) robust error model.
+ *
+ *  This model has a scalar parameter "c" (threshold).
+ *
+ * - Loss       \rho(x) = 0.5 x^2  if |x|<=c, 0.5 c^2 otherwise
+ * - Derivative \phi(x) = x        if |x|<=c, 0 otherwise
+ * - Weight     w(x) = \phi(x)/x = 1 if |x|<=c, 0 otherwise
+ */
+class GTSAM_EXPORT TruncatedLeastSquares : public Base {
+ public:
+  typedef std::shared_ptr<TruncatedLeastSquares> shared_ptr;
+
+  TruncatedLeastSquares(double c = 1.0, const ReweightScheme reweight = Block);
+  double weight(double distance) const override;
+  double loss(double distance) const override;
+  void print(const std::string &s) const override;
+  bool equals(const Base &expected, double tol = 1e-8) const override;
+  static shared_ptr Create(double c, const ReweightScheme reweight = Block);
+  double modelParameter() const { return c_; }
+  /** @brief A static helper function to compute the TLS robust weight.
+   * The static function takes the squared value of the residual, the squared lower bound, the squared upper bound, 
+   * and the transition weight (used in GNC).
+   * This helper is mainly useful for GNC, where the weight is not strictly binary (0 or 1) 
+   * when the residual is within the transition region between inliers and outliers.
+   * The weight member function now calls the this function.
+   * While the member function takes the residual as input, it passes x², c², c² and 0 to the static helper.
+   * 
+   * 
+   * @param distance2 Squared residual magnitude.
+   * @param lowerbound Squared lower bound.
+   * @param upperbound Squared upper bound.
+   * @param transition_weight weight when residual within the transition region.
+   * @return Weight w(x) in [0, 1]
+   */
+   static double Weight(double distance2, double lowerbound, double upperbound, double transition_weight);
+
+ protected:
+  double c_;
+  double csquared_;
+
+ private:
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
+  /** Serialization function */
+  friend class boost::serialization::access;
+  template <class ARCHIVE>
+  void serialize(ARCHIVE &ar, const unsigned int /*version*/) {
+    ar &BOOST_SERIALIZATION_BASE_OBJECT_NVP(Base);
+    ar &BOOST_SERIALIZATION_NVP(c_);
+    ar &BOOST_SERIALIZATION_NVP(csquared_);
+  }
+#endif
+};
+
 /** DCS implements the Dynamic Covariance Scaling robust error model
  *  from the paper Robust Map Optimization (Agarwal13icra).
  *

@@ -347,6 +347,52 @@ GemanMcClure::shared_ptr GemanMcClure::Create(double c, const ReweightScheme rew
 }
 
 /* ************************************************************************* */
+// TruncatedLeastSquares
+/* ************************************************************************* */
+
+TruncatedLeastSquares::TruncatedLeastSquares(double c, const ReweightScheme reweight)
+  : Base(reweight), c_(c), csquared_(c * c) {
+  if (c_ <= 0) {
+    throw runtime_error("mEstimator TruncatedLeastSquares takes only positive double in constructor.");
+  }
+}
+
+double TruncatedLeastSquares::weight(double distance) const {
+  return Weight(distance * distance, csquared_, csquared_, 0.0);
+}
+
+double TruncatedLeastSquares::Weight(double distance2, double lowerbound, double upperbound, double transition_weight) {
+  if (distance2 <= lowerbound) return 1.0;
+  if (distance2 >= upperbound) return 0.0;
+
+  // Clamping
+  if (transition_weight < 0.0) return 0.0;
+  if (transition_weight > 1.0) return 1.0;
+  return transition_weight;
+}
+
+double TruncatedLeastSquares::loss(double distance) const {
+  if (std::abs(distance) <= c_) {
+    return 0.5 * distance * distance;
+  }
+  return 0.5 * csquared_;
+}
+
+void TruncatedLeastSquares::print(const std::string &s="") const {
+  std::cout << s << ": TLS (" << c_ << ")" << std::endl;
+}
+
+bool TruncatedLeastSquares::equals(const Base &expected, double tol) const {
+  const TruncatedLeastSquares* p = dynamic_cast<const TruncatedLeastSquares*>(&expected);
+  if (p == nullptr) return false;
+  return std::abs(c_ - p->c_) < tol;
+}
+
+TruncatedLeastSquares::shared_ptr TruncatedLeastSquares::Create(double c, const ReweightScheme reweight) {
+  return shared_ptr(new TruncatedLeastSquares(c, reweight));
+}
+
+/* ************************************************************************* */
 // DCS
 /* ************************************************************************* */
 DCS::DCS(double c, const ReweightScheme reweight)

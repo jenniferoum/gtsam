@@ -501,12 +501,8 @@ class GncOptimizer {
             double u2_k = nfg_[k]->error(currentEstimate);  // squared (and whitened) residual
             double upperbound = (mu + 1) / mu * barcSq_[k];
             double lowerbound = mu / (mu + 1) * barcSq_[k];
-            weights[k] = std::sqrt(barcSq_[k] * mu * (mu + 1) / u2_k) - mu;
-            if (u2_k >= upperbound || weights[k] < 0) {
-              weights[k] = 0;
-            } else if (u2_k <= lowerbound || weights[k] > 1) {
-              weights[k] = 1;
-            }
+            const double transition_weight = std::sqrt(barcSq_[k] * mu * (mu + 1) / u2_k) - mu;
+            weights[k] = noiseModel::mEstimator::TruncatedLeastSquares::Weight(u2_k, lowerbound, upperbound, transition_weight);
           }
         }
         return weights;
