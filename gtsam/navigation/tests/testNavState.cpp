@@ -256,7 +256,7 @@ TEST(NavState, Compose) {
 }
 
 /* ************************************************************************* */
-// Check compose and its push-forward, another case
+// Check compose and its pushforward, another case
 TEST(NavState, Compose2) {
   const NavState& T1 = T;
   Matrix actual = (T1 * T2).matrix();
@@ -385,7 +385,7 @@ TEST(NavState, Coriolis2) {
 
 TEST(NavState, Coriolis3) {
   /** Consider a massless planet with an attached nav frame at
-   *  n_omega = [0 0 1]', and a body at position n_t = [1 0 0]', travelling with
+   *  n_omega = [0 0 1]', and a body at position n_t = [1 0 0]', traveling with
    *  velocity n_v = [0 1 0]'. Orient the body so that it is not instantaneously
    *  aligned with the nav frame (i.e., nRb != I_3x3). Test that first and
    *  second order Coriolis corrections are as expected.
@@ -554,6 +554,15 @@ NavState expected(expectedR, expectedV, expectedP);
 }  // namespace screwNavState
 
 /* ************************************************************************* */
+// Checks correct exponential map (Expmap) with brute force matrix exponential
+TEST(NavState, Expmap_c_full) {
+  EXPECT(assert_equal(screwNavState::expected,
+                      expm<NavState>(screwNavState::xi), 1e-6));
+  EXPECT(assert_equal(screwNavState::expected,
+                      NavState::Expmap(screwNavState::xi), 1e-6));
+}
+
+/* ************************************************************************* */
 // assert that T*exp(xi)*T^-1 is equal to exp(Ad_T(xi))
 TEST(NavState, Adjoint_full) {
   NavState expected = T * NavState::Expmap(screwNavState::xi) * T.inverse();
@@ -574,12 +583,40 @@ TEST(NavState, Adjoint_compose_full) {
   // To debug derivatives of compose, assert that
   // T1*T2*exp(Adjoint(inv(T2),x) = T1*exp(x)*T2
   const NavState& T1 = T;
-  Vector x =
-      (Vector(9) << 0.1, 0.1, 0.1, 0.4, 0.2, 0.8, 0.4, 0.2, 0.8).finished();
+  Vector9 x;
+  x << 0.1, 0.1, 0.1, 0.4, 0.2, 0.8, 0.4, 0.2, 0.8;
   NavState expected = T1 * NavState::Expmap(x) * T2;
   Vector y = T2.inverse().Adjoint(x);
   NavState actual = T1 * T2 * NavState::Expmap(y);
   EXPECT(assert_equal(expected, actual, 1e-6));
+}
+
+/* ************************************************************************* */
+TEST(NavState, expmaps_galore_full) {
+  Vector xi;
+  NavState actual;
+  xi = (Vector(9) << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9).finished();
+  actual = NavState::Expmap(xi);
+  EXPECT(assert_equal(expm<NavState>(xi), actual, 1e-6));
+  EXPECT(assert_equal(xi, NavState::Logmap(actual), 1e-6));
+
+  xi = (Vector(9) << 0.1, -0.2, 0.3, -0.4, 0.5, -0.6, -0.7, -0.8, -0.9)
+           .finished();
+  for (double theta = 1.0; 0.3 * theta <= M_PI; theta *= 2) {
+    Vector txi = xi * theta;
+    actual = NavState::Expmap(txi);
+    EXPECT(assert_equal(expm<NavState>(txi, 30), actual, 1e-6));
+    Vector log = NavState::Logmap(actual);
+    EXPECT(assert_equal(actual, NavState::Expmap(log), 1e-6));
+    EXPECT(assert_equal(txi, log, 1e-6));  // not true once wraps
+  }
+
+  // Works with large v as well, but expm needs 10 iterations!
+  xi =
+      (Vector(9) << 0.2, 0.3, -0.8, 100.0, 120.0, -60.0, 12, 14, 45).finished();
+  actual = NavState::Expmap(xi);
+  EXPECT(assert_equal(expm<NavState>(xi, 10), actual, 1e-5));
+  EXPECT(assert_equal(xi, NavState::Logmap(actual), 1e-9));
 }
 
 /* ************************************************************************* */
@@ -692,8 +729,8 @@ TEST(NavState, manifold_expmap) {
 TEST(NavState, subgroups) {
   // Frank - Below only works for correct "Agrawal06iros style expmap
   // lines in canonical coordinates correspond to Abelian subgroups in SE(3)
-  Vector d =
-      (Vector(9) << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9).finished();
+  Vector9 d;
+  d << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9;
   // exp(-d)=inverse(exp(d))
   EXPECT(assert_equal(NavState::Expmap(-d), NavState::Expmap(d).inverse()));
   // exp(5d)=exp(2*d+3*d)=exp(2*d)exp(3*d)=exp(3*d)exp(2*d)

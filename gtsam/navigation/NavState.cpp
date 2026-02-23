@@ -122,8 +122,54 @@ bool NavState::equals(const NavState& other, double tol) const {
 }
 
 //------------------------------------------------------------------------------
+/// The dual version of Adjoint
+Vector9 NavState::AdjointTranspose(const Vector9& x, OptionalJacobian<9, 9> H_state,
+                                OptionalJacobian<9, 9> H_x) const {
+  const Matrix9 Ad = AdjointMap();
+  const Vector9 AdTx = Ad.transpose() * x;
+
+  // Jacobians
+  if (H_state) {
+    //TODO(Varun)
+    // const auto w_T_hat = skewSymmetric(AdTx.head<3>()),
+    //            v_T_hat = skewSymmetric(AdTx.segment<3>(3)),
+    //            a_T_hat = skewSymmetric(AdTx.tail<3>());
+    //   *H_state << w_T_hat, v_T_hat,  //
+    //       /*  */ v_T_hat, Z_3x3;
+    throw std::runtime_error(
+        "AdjointTranpose H_state Jacobian not implemented.");
+  }
+  if (H_x) {
+    *H_x = Ad.transpose();
+  }
+
+  return AdTx;
+}
+
+//------------------------------------------------------------------------------
+Vector9 NavState::adjointTranspose(const Vector9& xi, const Vector9& y,
+                                   OptionalJacobian<9, 9> Hxi,
+                                   OptionalJacobian<9, 9> H_y) {
+  if (Hxi) {
+    Hxi->setZero();
+    for (int i = 0; i < 9; ++i) {
+      Vector9 dxi;
+      dxi.setZero();
+      dxi(i) = 1.0;
+      Matrix9 GTi = adjointMap(dxi).transpose();
+      Hxi->col(i) = GTi * y;
+    }
+  }
+  const Matrix9& adT_xi = adjointMap(xi).transpose();
+  if (H_y) *H_y = adT_xi;
+  return adT_xi * y;
+}
+
+//------------------------------------------------------------------------------
 NavState NavState::retract(const Vector9& xi, //
     OptionalJacobian<9, 9> H1, OptionalJacobian<9, 9> H2) const {
+  // NOTE: This is an intentional custom chart for NavState manifold updates.
+  // It differs from the default LieGroup chart based on full Expmap/Logmap.
   Rot3 nRb = R_;
   Point3 n_t = t_.col(0), n_v = t_.col(1);
   Matrix3 D_bRc_xi, D_R_nRb, D_t_nRb, D_v_nRb;
@@ -151,6 +197,7 @@ NavState NavState::retract(const Vector9& xi, //
 //------------------------------------------------------------------------------
 Vector9 NavState::localCoordinates(const NavState& g, //
     OptionalJacobian<9, 9> H1, OptionalJacobian<9, 9> H2) const {
+  // Inverse of the custom component-wise chart used in retract().
   Matrix3 D_dR_R, D_dt_R, D_dv_R;
   const Rot3 dR = R_.between(g.R_, H1 ? &D_dR_R : 0);
   const Point3 dP = R_.unrotate(g.t_.col(0) - t_.col(0), H1 ? &D_dt_R : 0);
