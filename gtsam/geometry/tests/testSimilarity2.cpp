@@ -278,6 +278,23 @@ TEST(Similarity2, adjointTranspose) {
 }
 
 //******************************************************************************
+TEST(Similarity2, adjoint) {
+  const Vector4 xi(0.2, -0.4, 0.7, -0.1);
+  const Vector4 y(-0.3, 0.5, 0.9, -0.2);
+
+  std::function<Vector4(const Vector4&, const Vector4&)> f =
+      [](const Vector4& x, const Vector4& v) {
+        return Vector4(Similarity2::adjoint(x, v));
+      };
+
+  Matrix44 Hxi, Hy;
+  const Vector4 actual = Similarity2::adjoint(xi, y, Hxi, Hy);
+  EXPECT(assert_equal(f(xi, y), actual));
+  EXPECT(assert_equal(numericalDerivative21(f, xi, y, 1e-5), Hxi, 1e-5));
+  EXPECT(assert_equal(numericalDerivative22(f, xi, y, 1e-5), Hy, 1e-5));
+}
+
+//******************************************************************************
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);
