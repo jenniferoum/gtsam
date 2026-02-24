@@ -178,8 +178,20 @@ public:
   /**
    * The dual version of adjoint action, acting on the dual space of the Lie-algebra vector space.
    */
-  static Vector3 adjointTranspose(const Vector3& xi, const Vector3& y) {
-    return adjointMap(xi).transpose() * y;
+  static Vector3 adjointTranspose(const Vector3& xi, const Vector3& y,
+                                  OptionalJacobian<3, 3> Hxi = {},
+                                  OptionalJacobian<3, 3> H_y = {}) {
+    const Matrix3 adT = adjointMap(xi).transpose();
+    if (Hxi) {
+      Hxi->setZero();
+      for (int i = 0; i < 3; ++i) {
+        Vector3 dxi = Vector3::Zero();
+        dxi(i) = 1.0;
+        Hxi->col(i) = adjointMap(dxi).transpose() * y;
+      }
+    }
+    if (H_y) *H_y = adT;
+    return adT * y;
   }
 
   // temporary fix for wrappers until case issue is resolved
@@ -393,4 +405,3 @@ template <typename T>
 struct Range<Pose2, T> : HasRange<Pose2, T, double> {};
 
 } // namespace gtsam
-

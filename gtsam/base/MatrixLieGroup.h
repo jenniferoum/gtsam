@@ -130,7 +130,78 @@ namespace gtsam {
       return adj;
     }
 
+    /**
+     * Dual Adjoint action on a tangent covector.
+     *
+     * Returns Ad_g^T * x with optional Jacobians with respect to g and x.
+     */
+    TangentVector AdjointTranspose(const TangentVector& x,
+                                   ChartJacobian H_this = {},
+                                   ChartJacobian H_x = {}) const {
+      const auto& m = static_cast<const Class&>(*this);
+      const Jacobian Ad = m.AdjointMap();
+      const TangentVector AdTx = Ad.transpose() * x;
+
+      if (H_this) {
+        const Eigen::Index d =
+            (D == Eigen::Dynamic) ? static_cast<Eigen::Index>(m.dim()) : D;
+        if constexpr (D == Eigen::Dynamic) {
+          H_this->setZero(d, d);
+        } else {
+          H_this->setZero();
+        }
+        for (Eigen::Index i = 0; i < d; ++i) {
+          H_this->col(i) = Class::adjointTranspose(TangentVector::Unit(d, i), AdTx);
+        }
+      }
+
+      if (H_x) *H_x = Ad.transpose();
+      return AdTx;
+    }
+
+    /**
+     * Dual Lie algebra action ad_xi^T(y), with optional Jacobians.
+     */
+    static TangentVector adjointTranspose(const TangentVector& xi,
+                                          const TangentVector& y,
+                                          ChartJacobian Hxi = {},
+                                          ChartJacobian H_y = {}) {
+      const Jacobian adT_xi = AdjointMapFromHatVee(xi).transpose();
+      if (Hxi) {
+        const Eigen::Index d =
+            (D == Eigen::Dynamic) ? static_cast<Eigen::Index>(xi.size()) : D;
+        if constexpr (D == Eigen::Dynamic) {
+          Hxi->setZero(d, d);
+        } else {
+          Hxi->setZero();
+        }
+        for (Eigen::Index i = 0; i < d; ++i) {
+          Hxi->col(i) = AdjointMapFromHatVee(TangentVector::Unit(d, i)).transpose() * y;
+        }
+      }
+      if (H_y) *H_y = adT_xi;
+      return adT_xi * y;
+    }
+
   private:
+    /// Generic Lie algebra adjoint map from Hat/Vee via matrix commutator.
+    static Jacobian AdjointMapFromHatVee(const TangentVector& xi) {
+      const Eigen::Index d =
+          (D == Eigen::Dynamic) ? static_cast<Eigen::Index>(xi.size()) : D;
+      Jacobian ad;
+      if constexpr (D == Eigen::Dynamic) {
+        ad.setZero(d, d);
+      } else {
+        ad.setZero();
+      }
+      const auto Xi = Class::Hat(xi);
+      for (Eigen::Index i = 0; i < d; ++i) {
+        const auto Ei = Class::Hat(TangentVector::Unit(d, i));
+        ad.col(i) = Class::Vee(Xi * Ei - Ei * Xi);
+      }
+      return ad;
+    }
+
     /// Pre-compute and store vectorized generators for fixed-size groups.
     inline static const Eigen::Matrix<double, internal::product(N, N), D>&
       VectorizedGenerators() {
