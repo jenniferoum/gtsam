@@ -55,7 +55,7 @@ namespace gtsam {
  * if it is defined.
  * @ingroup geometry
  */
-class GTSAM_EXPORT Rot3 : public LieGroup<Rot3, 3> {
+class GTSAM_EXPORT Rot3 : public MatrixLieGroup<Rot3, 3, 3> {
  public:
   static constexpr size_t MatrixM = 3;
  private:
@@ -396,52 +396,8 @@ class GTSAM_EXPORT Rot3 : public LieGroup<Rot3, 3> {
     /** Calculate Adjoint map */
     Matrix3 AdjointMap() const { return matrix(); }
 
-    /// Apply this element's AdjointMap to a tangent vector.
-    Vector3 Adjoint(const Vector3& xi, OptionalJacobian<3, 3> H_this = {},
-                    OptionalJacobian<3, 3> H_xi = {}) const {
-      const Matrix3 Ad = AdjointMap();
-      if (H_this) *H_this = -Ad * adjointMap(xi);
-      if (H_xi) *H_xi = Ad;
-      return Ad * xi;
-    }
-
-    /// Apply the dual adjoint action to a tangent covector.
-    Vector3 AdjointTranspose(const Vector3& x,
-                             OptionalJacobian<3, 3> H_this = {},
-                             OptionalJacobian<3, 3> H_x = {}) const {
-      const Matrix3 AdT = AdjointMap().transpose();
-      if (H_this) {
-        H_this->setZero();
-        for (int i = 0; i < 3; ++i) {
-          H_this->col(i) = adjointMap(Vector3::Unit(i)).transpose() * (AdT * x);
-        }
-      }
-      if (H_x) *H_x = AdT;
-      return AdT * x;
-    }
-
     /// Matrix representation of the Lie-algebra adjoint operator ad_xi on so(3).
-    static Matrix3 adjointMap(const Vector3& xi);
-
-    /// Apply the Lie-algebra adjoint map to y with optional derivatives.
-    static Vector3 adjoint(const Vector3& xi, const Vector3& y,
-                           OptionalJacobian<3, 3> Hxi = {},
-                           OptionalJacobian<3, 3> Hy = {});
-
-    /// Apply the dual Lie-algebra adjoint map to y with optional derivatives.
-    static Vector3 adjointTranspose(const Vector3& xi, const Vector3& y,
-                                    OptionalJacobian<3, 3> Hxi = {},
-                                    OptionalJacobian<3, 3> H_y = {}) {
-      const Matrix3 adT = adjointMap(xi).transpose();
-      if (Hxi) {
-        Hxi->setZero();
-        for (int i = 0; i < 3; ++i) {
-          Hxi->col(i) = adjointMap(Vector3::Unit(i)).transpose() * y;
-        }
-      }
-      if (H_y) *H_y = adT;
-      return adT * y;
-    }
+    static Matrix3 adjointMap(const Vector3& xi) { return Hat(xi); }
 
     // Chart at origin, depends on compile-time flag ROT3_DEFAULT_COORDINATES_MODE
     struct GTSAM_EXPORT ChartAtOrigin {
