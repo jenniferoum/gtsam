@@ -431,7 +431,7 @@ class GTSAM_EXPORT TruncatedLeastSquares : public Base {
    * This helper returns a optional<double> because it is also used for GNC, and we encounter transition weight cases,
    * where the weight is not strictly binary (0 or 1) when the residual is within the transition region between inliers and outliers.
    * The weight member function now calls the this function.
-   * While the member function takes the residual as input, it passes x², c² and c²to the static helper.
+   * While the member function takes the residual as input, it passes x², c² and c² to the static helper.
    * 
    * @param distance2 Squared residual magnitude.
    * @param lowerbound Squared lower bound.

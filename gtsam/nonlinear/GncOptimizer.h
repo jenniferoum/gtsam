@@ -524,32 +524,29 @@ class GncOptimizer {
         for (size_t k = 0; k < nfg_.size(); k++) {
           if (needsWeightUpdate(factorTypes_[k])) {
             double u2_k = nfg_[k]->error(currentEstimate);  // squared (and whitened) residual
-            double lowerbound = 0.0;
-            double upperbound = 0.0;
-            double transition_weight = 0.0;
             switch (params_.scheduler) {
               case GncScheduler::SuperLinear: {
-                lowerbound = barcSq_[k];
-                upperbound = ((mu + 1.0) * (mu + 1.0) / (mu * mu)) * barcSq_[k];
+                double lowerbound = barcSq_[k];
+                double upperbound = ((mu + 1.0) * (mu + 1.0) / (mu * mu)) * barcSq_[k];
                 auto w = noiseModel::mEstimator::TruncatedLeastSquares::Weight(u2_k, lowerbound, upperbound);
                 if (w) {
                   weights[k] = *w;
                 }
                 else {
-                  transition_weight = std::sqrt(barcSq_[k] / u2_k) * (mu + 1.0)  - mu;
+                  double transition_weight = std::sqrt(barcSq_[k] / u2_k) * (mu + 1.0)  - mu;
                   weights[k] = std::clamp(transition_weight, 0.0, 1.0);
                 }
                 break;
               }
               case GncScheduler::Linear: {  // use eq (14) in GNC paper
-                upperbound = (mu + 1.0) / mu * barcSq_[k];
-                lowerbound = mu / (mu + 1.0) * barcSq_[k];
+                double upperbound = ((mu + 1.0) / mu) * barcSq_[k];
+                double lowerbound = (mu / (mu + 1.0)) * barcSq_[k];
                 auto w = noiseModel::mEstimator::TruncatedLeastSquares::Weight(u2_k, lowerbound, upperbound);
                 if (w) {
                   weights[k] = *w;
                 }
                 else {
-                  transition_weight = std::sqrt(barcSq_[k] * mu * (mu + 1.0) / u2_k) - mu;
+                  double transition_weight = std::sqrt(barcSq_[k] * mu * (mu + 1.0) / u2_k) - mu;
                   weights[k] = std::clamp(transition_weight, 0.0, 1.0);
                 }
                 break;
