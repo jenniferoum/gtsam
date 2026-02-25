@@ -245,7 +245,7 @@ namespace gtsam {
   private:
     static Eigen::Index tangentDim(const Class* m, const TangentVector* xi) {
       if constexpr (D == Eigen::Dynamic) {
-        return m ? static_cast<Eigen::Index>(m->dim())
+        return m ? static_cast<Eigen::Index>(traits<Class>::GetDimension(*m))
                  : static_cast<Eigen::Index>(xi->size());
       } else {
         (void)m;

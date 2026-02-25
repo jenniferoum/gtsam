@@ -660,7 +660,11 @@ class Pose3 {
   // Matrix Lie Group
   gtsam::Matrix AdjointMap() const;
   gtsam::Vector Adjoint(gtsam::Vector xi_b) const;
+  gtsam::Vector Adjoint(gtsam::Vector xi_b, Eigen::Ref<Eigen::MatrixXd> H_this,
+                 Eigen::Ref<Eigen::MatrixXd> H_xib) const;
   gtsam::Vector AdjointTranspose(gtsam::Vector x) const;
+  gtsam::Vector AdjointTranspose(gtsam::Vector x, Eigen::Ref<Eigen::MatrixXd> H_this,
+                          Eigen::Ref<Eigen::MatrixXd> H_x) const;
   static gtsam::Matrix adjointMap(gtsam::Vector xi);
   static gtsam::Vector adjoint(gtsam::Vector xi, gtsam::Vector y);
   static gtsam::Vector adjointTranspose(gtsam::Vector xi, gtsam::Vector y);

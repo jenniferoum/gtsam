@@ -33,6 +33,8 @@ By inheriting from `gtsam::MatrixLieGroup`, you get:
 *   **Default Lie algebra methods**: `adjointMap(xi)`, `adjoint(xi, y)`, and `adjointTranspose(xi, y)` are provided generically, including Jacobians for the latter two.
 *   **A `vec()` method**: This vectorizes the `N x N` matrix representation of your group element into an `(N*N) x 1` vector.
 
+**Performance Note:** The generic implementation of `AdjointMap()` is correct but may be slower because it is derived via the `Hat`/`Vee` mappings. If a closed-form expression for `AdjointMap()` is available for your group, consider overriding the default implementation for better performance.
+
 ### 4. Traits and Concept Checking
 
 Finally, the traits specialization in your header file must be updated to reflect that your class is now a `MatrixLieGroup`.
