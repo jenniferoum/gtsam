@@ -654,9 +654,61 @@ TEST(Similarity3, AdjointMap) {
 }
 
 //******************************************************************************
+TEST(Similarity3, AdjointTranspose) {
+  const Similarity3 sim(Rot3::Rodrigues(0.3, 0.2, 0.1), Point3(3.5, -8.2, 4.2),
+                        0.8);
+  const Vector7 xi(0.2, -0.4, 0.7, -0.1, 0.3, -0.6, 0.5);
+
+  EXPECT(assert_equal(Vector(sim.AdjointMap().transpose() * xi),
+                      Vector(sim.AdjointTranspose(xi))));
+
+  Matrix77 actualH1, actualH2;
+  std::function<Vector7(const Similarity3&, const Vector7&)> proxy =
+      [](const Similarity3& g, const Vector7& x) {
+        return Vector7(g.AdjointTranspose(x));
+      };
+  sim.AdjointTranspose(xi, actualH1, actualH2);
+  EXPECT(assert_equal(numericalDerivative21(proxy, sim, xi), actualH1, 1e-8));
+  EXPECT(assert_equal(numericalDerivative22(proxy, sim, xi), actualH2));
+}
+
+//******************************************************************************
+TEST(Similarity3, adjointTranspose) {
+  const Vector7 xi(0.2, -0.4, 0.7, -0.1, 0.3, -0.6, 0.5);
+  const Vector7 y(-0.3, 0.5, 0.9, -0.2, 0.4, -0.8, 0.1);
+
+  std::function<Vector7(const Vector7&, const Vector7&)> f =
+      [](const Vector7& x, const Vector7& v) {
+        return Vector7(Similarity3::adjointTranspose(x, v));
+      };
+
+  Matrix77 Hxi, Hy;
+  const Vector7 actual = Similarity3::adjointTranspose(xi, y, Hxi, Hy);
+  EXPECT(assert_equal(f(xi, y), actual));
+  EXPECT(assert_equal(numericalDerivative21(f, xi, y, 1e-5), Hxi, 1e-5));
+  EXPECT(assert_equal(numericalDerivative22(f, xi, y, 1e-5), Hy, 1e-5));
+}
+
+//******************************************************************************
+TEST(Similarity3, adjoint) {
+  const Vector7 xi(0.2, -0.4, 0.7, -0.1, 0.3, -0.6, 0.5);
+  const Vector7 y(-0.3, 0.5, 0.9, -0.2, 0.4, -0.8, 0.1);
+
+  std::function<Vector7(const Vector7&, const Vector7&)> f =
+      [](const Vector7& x, const Vector7& v) {
+        return Vector7(Similarity3::adjoint(x, v));
+      };
+
+  Matrix77 Hxi, Hy;
+  const Vector7 actual = Similarity3::adjoint(xi, y, Hxi, Hy);
+  EXPECT(assert_equal(f(xi, y), actual));
+  EXPECT(assert_equal(numericalDerivative21(f, xi, y, 1e-5), Hxi, 1e-5));
+  EXPECT(assert_equal(numericalDerivative22(f, xi, y, 1e-5), Hy, 1e-5));
+}
+
+//******************************************************************************
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);
 }
 //******************************************************************************
-

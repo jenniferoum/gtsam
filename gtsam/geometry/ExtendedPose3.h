@@ -272,61 +272,12 @@ class ExtendedPose3
   Jacobian AdjointMap() const;
 
   /**
-   * Adjoint action on a tangent vector.
-   *
-   * @param xi_b Tangent vector in R^dim.
-   * @param H_this Optional Jacobian in R^(dimxdim).
-   * @param H_xib Optional Jacobian in R^(dimxdim).
-   * @return Ad_X xi_b in R^dim.
-   */
-  TangentVector Adjoint(const TangentVector& xi_b, ChartJacobian H_this = {},
-                        ChartJacobian H_xib = {}) const;
-
-  /**
-   * Dual adjoint action on a tangent covector.
-   *
-   * @param x Tangent vector in R^dim.
-   * @param H_this Optional Jacobian in R^(dimxdim).
-   * @param H_x Optional Jacobian in R^(dimxdim).
-   * @return Ad_X^T x in R^dim.
-   */
-  TangentVector AdjointTranspose(const TangentVector& x,
-                                 ChartJacobian H_this = {},
-                                 ChartJacobian H_x = {}) const;
-
-  /**
    * Lie algebra adjoint map.
    *
    * @param xi Tangent vector in R^dim.
    * @return ad_xi matrix in R^(dimxdim).
    */
   static Jacobian adjointMap(const TangentVector& xi);
-
-  /**
-   * Lie bracket action ad_xi(y).
-   *
-   * @param xi Tangent vector in R^dim.
-   * @param y Tangent vector in R^dim.
-   * @param Hxi Optional Jacobian in R^(dimxdim).
-   * @param H_y Optional Jacobian in R^(dimxdim).
-   * @return ad_xi(y) in R^dim.
-   */
-  static TangentVector adjoint(const TangentVector& xi, const TangentVector& y,
-                               ChartJacobian Hxi = {}, ChartJacobian H_y = {});
-
-  /**
-   * Dual Lie bracket action ad_xi^T(y).
-   *
-   * @param xi Tangent vector in R^dim.
-   * @param y Tangent vector in R^dim.
-   * @param Hxi Optional Jacobian in R^(dimxdim).
-   * @param H_y Optional Jacobian in R^(dimxdim).
-   * @return ad_xi^T(y) in R^dim.
-   */
-  static TangentVector adjointTranspose(const TangentVector& xi,
-                                        const TangentVector& y,
-                                        ChartJacobian Hxi = {},
-                                        ChartJacobian H_y = {});
 
   /**
    * Jacobian of Expmap.

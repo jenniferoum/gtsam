@@ -240,46 +240,6 @@ ExtendedPose3<K, Derived>::AdjointMap() const {
 }
 
 template <int K, class Derived>
-typename ExtendedPose3<K, Derived>::TangentVector
-ExtendedPose3<K, Derived>::Adjoint(const TangentVector& xi_b,
-                                   ChartJacobian H_this,
-                                   ChartJacobian H_xib) const {
-  const Jacobian Ad = AdjointMap();
-  if (H_this) *H_this = -Ad * adjointMap(xi_b);
-  if (H_xib) *H_xib = Ad;
-  return Ad * xi_b;
-}
-
-template <int K, class Derived>
-typename ExtendedPose3<K, Derived>::TangentVector
-ExtendedPose3<K, Derived>::AdjointTranspose(const TangentVector& x,
-                                            ChartJacobian H_this,
-                                            ChartJacobian H_x) const {
-  const Jacobian Ad = AdjointMap();
-  const TangentVector AdTx = Ad.transpose() * x;
-
-  if (H_this) {
-    if constexpr (dimension == Eigen::Dynamic) {
-      H_this->setZero(x.size(), x.size());
-    } else {
-      H_this->setZero();
-    }
-
-    H_this->block(0, 0, 3, 3) = skewSymmetric(AdTx.template head<3>());
-    const Eigen::Index k = static_cast<Eigen::Index>(this->k());
-    for (Eigen::Index i = 0; i < k; ++i) {
-      const Eigen::Index idx = 3 + 3 * i;
-      const Matrix3 x_i_hat = skewSymmetric(AdTx.template segment<3>(idx));
-      H_this->block(0, idx, 3, 3) = x_i_hat;
-      H_this->block(idx, 0, 3, 3) = x_i_hat;
-    }
-  }
-
-  if (H_x) *H_x = Ad.transpose();
-  return AdTx;
-}
-
-template <int K, class Derived>
 typename ExtendedPose3<K, Derived>::Jacobian
 ExtendedPose3<K, Derived>::adjointMap(const TangentVector& xi) {
   const Matrix3 w_hat = skewSymmetric(xi(0), xi(1), xi(2));
@@ -301,61 +261,6 @@ ExtendedPose3<K, Derived>::adjointMap(const TangentVector& xi) {
     adj.block(idx, idx, 3, 3) = w_hat;
   }
   return adj;
-}
-
-template <int K, class Derived>
-typename ExtendedPose3<K, Derived>::TangentVector
-ExtendedPose3<K, Derived>::adjoint(const TangentVector& xi,
-                                   const TangentVector& y, ChartJacobian Hxi,
-                                   ChartJacobian H_y) {
-  const Jacobian ad_xi = adjointMap(xi);
-  if (Hxi) {
-    if constexpr (dimension == Eigen::Dynamic) {
-      Hxi->setZero(xi.size(), xi.size());
-    } else {
-      Hxi->setZero();
-    }
-    for (Eigen::Index i = 0; i < xi.size(); ++i) {
-      TangentVector dxi;
-      if constexpr (dimension == Eigen::Dynamic) {
-        dxi = TangentVector::Zero(xi.size());
-      } else {
-        dxi = TangentVector::Zero();
-      }
-      dxi(i) = 1.0;
-      Hxi->col(i) = adjointMap(dxi) * y;
-    }
-  }
-  if (H_y) *H_y = ad_xi;
-  return ad_xi * y;
-}
-
-template <int K, class Derived>
-typename ExtendedPose3<K, Derived>::TangentVector
-ExtendedPose3<K, Derived>::adjointTranspose(const TangentVector& xi,
-                                            const TangentVector& y,
-                                            ChartJacobian Hxi,
-                                            ChartJacobian H_y) {
-  if (Hxi) {
-    if constexpr (dimension == Eigen::Dynamic) {
-      Hxi->setZero(xi.size(), xi.size());
-    } else {
-      Hxi->setZero();
-    }
-    for (Eigen::Index i = 0; i < xi.size(); ++i) {
-      TangentVector dxi;
-      if constexpr (dimension == Eigen::Dynamic) {
-        dxi = TangentVector::Zero(xi.size());
-      } else {
-        dxi = TangentVector::Zero();
-      }
-      dxi(i) = 1.0;
-      Hxi->col(i) = adjointMap(dxi).transpose() * y;
-    }
-  }
-  const Jacobian adT_xi = adjointMap(xi).transpose();
-  if (H_y) *H_y = adT_xi;
-  return adT_xi * y;
 }
 
 template <int K, class Derived>
