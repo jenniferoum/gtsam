@@ -398,8 +398,8 @@ class GncOptimizer {
         // increases mu at each iteration (original cost is recovered for mu -> inf)
         switch (params_.scheduler) {
           case GncScheduler::SuperLinear: {
-            if (mu < 1) return std::min(std::sqrt(mu) * params_.muStep, 1e16);
-            return std::min(mu * params_.muStep, 1e16);
+            if (mu < 1) return std::min(std::sqrt(mu) * params_.muStep, params_.muMax);
+            return std::min(mu * params_.muStep, params_.muMax);
           }
           case GncScheduler::Linear: {
             return mu * params_.muStep;

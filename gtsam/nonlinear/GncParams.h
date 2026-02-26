@@ -79,6 +79,7 @@ class GncParams {
   double muStep = 1.4;  ///< Multiplicative factor to reduce/increase the mu in gnc
   double relativeCostTol = 1e-5;  ///< If relative cost change is below this threshold, stop iterating
   double weightsTol = 1e-4;  ///< If the weights are within weightsTol from being binary, stop iterating (only for TLS)
+  double muMax = 1e16;  ///< Maximum value of mu in GNC, acts as a cap (only for TLS)
   Verbosity verbosity = SILENT;  ///< Verbosity level
   bool allowNonNoiseModelFactors = false;  ///< If true, factors without noise model are not reweighted and not not included in mu calculation
 
