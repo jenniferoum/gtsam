@@ -54,6 +54,7 @@ class GTSAM_EXPORT TrajectoryAlignerSim3 {
   // Data members.
   ExpressionFactorGraph graph_;
   Values initial_;
+  bool use_gnc_optimizer_;
 
  public:
   /**
@@ -68,7 +69,7 @@ class GTSAM_EXPORT TrajectoryAlignerSim3 {
     const std::vector<std::vector<UnaryMeasurement<Pose3>>> &bTi_all, 
     const std::vector<Similarity3> &bSa_all = {},
     const std::vector<std::vector<std::pair<Point3, Point3>>> &overlapping_points = {},
-  );
+    const bool use_gnc_optimizer = false);
 
   /**
    * @brief Optimizes the graph and returns optimized poses and Sim3 transforms.
