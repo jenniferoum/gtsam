@@ -63,7 +63,8 @@ namespace gtsam {
 TrajectoryAlignerSim3::TrajectoryAlignerSim3(
     const std::vector<UnaryMeasurement<Pose3>> &aTi, 
     const std::vector<std::vector<UnaryMeasurement<Pose3>>> &bTi_all,
-    const std::vector<Similarity3> &bSa_all) {
+    const std::vector<Similarity3> &bSa_all,
+    const std::vector<std::vector<std::pair<Point3, Point3>>> &overlapping_points) {
   const size_t childCount = bTi_all.size();
   if (!bSa_all.empty() && bSa_all.size() != childCount) {
     throw std::invalid_argument(
@@ -100,14 +101,37 @@ TrajectoryAlignerSim3::TrajectoryAlignerSim3(
       graph_.addExpressionFactor(expected, meas.measured(), meas.noiseModel());
     }
   }
+
+  // Any point3-point3 constraints between overlapping points.
+  if (!overlapping_points.empty()) {
+    if (overlapping_points.size() != childCount) {
+      throw std::invalid_argument(
+          "TrajectoryAlignerSim3: overlapping_points and bTi_all sizes differ");
+    }
+    for (size_t childIdx = 0; childIdx < childCount; ++childIdx) {
+      const auto &overlap = overlapping_points[childIdx];
+      const Key simKey = Symbol('S', childIdx);
+      const Expression<Similarity3> bSa(simKey);
+      for (const auto &[p1, p2] : overlap) {
+        const Point3_ b_p2_(bSa, &Similarity3::transformFrom, p1);
+        graph_.addExpressionFactor(b_p2_, p2, noiseModel::Isotropic::Sigma(3, 3-2));
+      }
+    }
+
+
 }
 
 Values TrajectoryAlignerSim3::solve() const {
   if (graph_.empty() || initial_.empty()) {
     return initial_;
   }
-  LevenbergMarquardtOptimizer optimizer(graph_, initial_);
-  return optimizer.optimize();
+  if (use_gnc_optimizer_) {
+    GncOptimizer<GncParams<LevenbergMarquardtParams>> optimizer(graph_, initial_);
+    return optimizer.optimize();
+  } else {
+    LevenbergMarquardtOptimizer optimizer(graph_, initial_);
+    return optimizer.optimize();
+  }
 }
 
 Marginals TrajectoryAlignerSim3::marginalize(

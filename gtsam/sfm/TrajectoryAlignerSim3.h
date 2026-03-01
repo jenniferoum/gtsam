@@ -66,7 +66,9 @@ class GTSAM_EXPORT TrajectoryAlignerSim3 {
   TrajectoryAlignerSim3(
     const std::vector<UnaryMeasurement<Pose3>> &aTi, 
     const std::vector<std::vector<UnaryMeasurement<Pose3>>> &bTi_all, 
-    const std::vector<Similarity3> &bSa_all = {});
+    const std::vector<Similarity3> &bSa_all = {},
+    const std::vector<std::vector<std::pair<Point3, Point3>>> &overlapping_points = {},
+  );
 
   /**
    * @brief Optimizes the graph and returns optimized poses and Sim3 transforms.
