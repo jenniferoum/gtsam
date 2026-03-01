@@ -134,25 +134,18 @@ struct GTSAM_EXPORT ISAM2DoglegParams {
  * ISAM2(const ISAM2Params&).
  */
 struct GTSAM_EXPORT ISAM2DoglegLineSearchParams {
-  double minDelta;  ///< Minimum allowed small delta
-  double maxDelta;  ///< Maximum allowed delta
-  double stepSize;  ///< Increase of trust region for outward steps
-  double sufficientDecreaseCoeff;  ///< Coefficient for suff. decrease check
+  DoglegLineSearchImpl::Params dllsParams;  ///< Params for DoglegLineSearch
   double wildfireThreshold;  ///< Update delta when changes are above thresh
-  bool verbose;              ///< Whether to print debug information
 
   /** Specify parameters as constructor arguments */
   ISAM2DoglegLineSearchParams(double minDelta = 0.02, double maxDelta = 0.5,
                               double stepSize = 1.5,
                               double sufficientDecreaseCoeff = 1e-3,
-                              double wildfireThreshold = 1e-4,
-                              bool verbose = false)
-      : minDelta(minDelta),
-        maxDelta(maxDelta),
-        stepSize(stepSize),
-        sufficientDecreaseCoeff(sufficientDecreaseCoeff),
-        wildfireThreshold(wildfireThreshold),
-        verbose(verbose) {
+                              bool verbose = false,
+                              double wildfireThreshold = 1e-4)
+      : dllsParams{minDelta, maxDelta, stepSize, sufficientDecreaseCoeff,
+                   verbose},
+        wildfireThreshold(wildfireThreshold) {
     if (minDelta < 1e-12 || maxDelta < 1e-12 || stepSize < 1.0) {
       throw std::invalid_argument(
           "ISAM2DoglegLineSearchParams constructed with invalid configuration. "
@@ -163,33 +156,37 @@ struct GTSAM_EXPORT ISAM2DoglegLineSearchParams {
   void print(const std::string str = "") const {
     using std::cout;
     cout << str << "type:                      ISAM2DoglegLineSearchParams\n";
-    cout << str << "minDelta:                 " << minDelta << "\n";
-    cout << str << "maxDelta:                 " << maxDelta << "\n";
-    cout << str << "stepSize:                 " << stepSize << "\n";
-    cout << str << "sufficientDecreaseCoeff: " << sufficientDecreaseCoeff
+    cout << str << "minDelta:                 " << dllsParams.minDelta << "\n";
+    cout << str << "maxDelta:                 " << dllsParams.maxDelta << "\n";
+    cout << str << "stepSize:                 " << dllsParams.stepSize << "\n";
+    cout << str
+         << "sufficientDecreaseCoeff: " << dllsParams.sufficientDecreaseCoeff
          << "\n";
+    cout << str << "verbose:        " << dllsParams.verbose << "\n";
     cout << str << "wildfireThreshold:        " << wildfireThreshold << "\n";
     cout.flush();
   }
   /** Getters **/
-  double getMinDelta() const { return minDelta; }
-  double getMaxDelta() const { return maxDelta; }
-  double getStepSize() const { return stepSize; }
-  double getSufficientDecreaseCoeff() const { return sufficientDecreaseCoeff; }
+  double getMinDelta() const { return dllsParams.minDelta; }
+  double getMaxDelta() const { return dllsParams.maxDelta; }
+  double getStepSize() const { return dllsParams.stepSize; }
+  double getSufficientDecreaseCoeff() const {
+    return dllsParams.sufficientDecreaseCoeff;
+  }
+  bool isVerbose() const { return dllsParams.verbose; }
   double getWildfireThreshold() const { return wildfireThreshold; }
-  bool isVerbose() const { return verbose; }
 
   /** Setters */
-  void setMinDelta(double minDelta) { this->minDelta = minDelta; }
-  void setMaxDelta(double maxDelta) { this->maxDelta = maxDelta; }
-  void setStepSize(double stepSize) { this->stepSize = stepSize; }
+  void setMinDelta(double minDelta) { this->dllsParams.minDelta = minDelta; }
+  void setMaxDelta(double maxDelta) { this->dllsParams.maxDelta = maxDelta; }
+  void setStepSize(double stepSize) { this->dllsParams.stepSize = stepSize; }
   void setSufficientDecreaseCoeff(double sufficientDecreaseCoeff) {
-    this->sufficientDecreaseCoeff = sufficientDecreaseCoeff;
+    this->dllsParams.sufficientDecreaseCoeff = sufficientDecreaseCoeff;
   }
+  void setVerbose(bool verbose) { this->dllsParams.verbose = verbose; }
   void setWildfireThreshold(double wildfireThreshold) {
     this->wildfireThreshold = wildfireThreshold;
   }
-  void setVerbose(bool verbose) { this->verbose = verbose; }
 };
 
 /**

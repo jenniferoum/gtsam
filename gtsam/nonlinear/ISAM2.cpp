@@ -779,10 +779,10 @@ void ISAM2::updateDelta(bool forceFullSolve) const {
     gttoc(Copy_dx_d);
   } else if (std::holds_alternative<ISAM2DoglegLineSearchParams>(
                  params_.optimizationParams)) {
-    const ISAM2DoglegLineSearchParams& dlls_params =
+    const ISAM2DoglegLineSearchParams& isamDllsParams =
         std::get<ISAM2DoglegLineSearchParams>(params_.optimizationParams);
     const double effectiveWildfireThreshold =
-        forceFullSolve ? 0.0 : dlls_params.getWildfireThreshold();
+        forceFullSolve ? 0.0 : isamDllsParams.getWildfireThreshold();
 
     // Timer start
     gttic(DoglegLineSearch_Iterate);
@@ -803,11 +803,9 @@ void ISAM2::updateDelta(bool forceFullSolve) const {
 
     // Do the DogLeg Line Search
     DoglegOptimizerImpl::IterationResult doglegResult(
-        DoglegLineSearchImpl::Iterate(
-            dlls_params.getMinDelta(), dlls_params.getMaxDelta(),
-            dlls_params.getStepSize(), dlls_params.getSufficientDecreaseCoeff(),
-            dx_u, deltaNewton_, *this, nonlinearFactors_, theta_,
-            dlls_params.isVerbose()));
+        DoglegLineSearchImpl::Iterate(isamDllsParams.dllsParams, dx_u,
+                                      deltaNewton_, *this, nonlinearFactors_,
+                                      theta_));
 
     // Update Delta and linear step
     delta_ = doglegResult.dx_d;

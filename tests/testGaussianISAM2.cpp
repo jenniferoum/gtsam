@@ -318,13 +318,13 @@ TEST(ISAM2, slamlike_solution_dogleg)
 }
 
 /* ************************************************************************* */
-TEST(ISAM2, slamlikeSolutionDoglegLineSearch) {
+TEST(ISAM2, SlamlikeSolutionDoglegLineSearch) {
   // These variables will be reused and accumulate factors and values
   Values fullinit;
   NonlinearFactorGraph fullgraph;
   ISAM2 isam = createSlamlikeISAM2(
       &fullinit, &fullgraph,
-      ISAM2Params(ISAM2DoglegLineSearchParams(0.1, 1.0, 3, 1e-4, 1e-3, false),
+      ISAM2Params(ISAM2DoglegLineSearchParams(0.1, 1.0, 3, 1e-4, false, 1e-3),
                   0.0, 0, false));
 
   // Compare solutions
@@ -356,13 +356,13 @@ TEST(ISAM2, slamlike_solution_dogleg_qr)
 }
 
 /* ************************************************************************* */
-TEST(ISAM2, slamlikeSolutionDoglegLineSearchQr) {
+TEST(ISAM2, SlamlikeSolutionDoglegLineSearchQr) {
   // These variables will be reused and accumulate factors and values
   Values fullinit;
   NonlinearFactorGraph fullgraph;
   ISAM2 isam = createSlamlikeISAM2(
       &fullinit, &fullgraph,
-      ISAM2Params(ISAM2DoglegLineSearchParams(0.1, 10.0, 3, 1e-4, 1e-3, false),
+      ISAM2Params(ISAM2DoglegLineSearchParams(0.1, 10.0, 3, 1e-4, false, 1e-3),
                   0.0, 0, false, false, ISAM2Params::QR));
 
   // Compare solutions
@@ -1023,7 +1023,7 @@ TEST(ISAM2, calculate_nnz)
 }
 
 /* ************************************************************************* */
-TEST(ISAM2, predictUpdateInfo) {
+TEST(ISAM2, PredictUpdateInfo) {
   // Setup iSAM2
   ISAM2Params params;
   params.findUnusedFactorSlots = true;

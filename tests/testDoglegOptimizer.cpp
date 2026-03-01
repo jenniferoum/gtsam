@@ -186,7 +186,7 @@ TEST(DoglegOptimizer, IterateLineSearch) {
     VectorValues dx_u = gbn->optimizeGradientSearch();
     VectorValues dx_n = gbn->optimize();
     DoglegOptimizerImpl::IterationResult result = DoglegLineSearchImpl::Iterate(
-        0.02, 0.5, 1.5, 1e-3, dx_u, dx_n, *gbn, fg, config);
+        {0.02, 0.5, 1.5, 1e-3, false}, dx_u, dx_n, *gbn, fg, config);
     EXPECT(result.f_error < fg.error(config));  // Check that error decreases
 
     Values newConfig(config.retract(result.dx_d));

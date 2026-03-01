@@ -437,14 +437,14 @@ class ISAM2DoglegLineSearchParams {
   double getMaxDelta() const;
   double getStepSize() const;
   double getSufficientDecreaseCoeff() const;
-  double getWildfireThreshold() const;
   bool isVerbose() const;
+  double getWildfireThreshold() const;
   void setMinDelta(double min_delta);
   void setMaxDelta(double max_delta);
   void setStepSize(double step_size);
   void setSufficientDecreaseCoeff(double sufficient_decrease_coeff);
-  void setWildfireThreshold(double wildfire_threshold);
   void setVerbose(bool verbose);
+  void setWildfireThreshold(double wildfire_threshold);
 };
 
 class ISAM2ThresholdMapValue {
