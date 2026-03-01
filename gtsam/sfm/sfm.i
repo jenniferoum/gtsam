@@ -182,15 +182,20 @@ class TrajectoryAlignerSim3 {
   TrajectoryAlignerSim3(
     const std::vector<gtsam::UnaryMeasurement<gtsam::Pose3>>& aTi,
     const std::vector<std::vector<gtsam::UnaryMeasurement<gtsam::Pose3>>>& bTi_all,
-    const std::vector<gtsam::Similarity3>& bSa_all, 
-    const std::vector<std::vector<std::pair<gtsam::Point3, gtsam::Point3>>> &overlapping_points);
+    const std::vector<gtsam::Similarity3>& bSa_all, const bool use_gnc_optimizer);
 
   TrajectoryAlignerSim3(    
     const std::vector<gtsam::UnaryMeasurement<gtsam::Pose3>>& aTi,
     const std::vector<std::vector<gtsam::UnaryMeasurement<gtsam::Pose3>>>& bTi_all,
-    const std::vector<gtsam::Similarity3>& bSa_all, 
+    const std::vector<gtsam::Similarity3>& bSa_all, const bool use_gnc_optimizer,
+    const std::vector<std::vector<std::pair<gtsam::Point3, gtsam::Point3>>> &overlapping_points);
+
+  TrajectoryAlignerSim3(
+    const std::vector<gtsam::UnaryMeasurement<gtsam::Pose3>>& aTi,
+    const std::vector<std::vector<gtsam::UnaryMeasurement<gtsam::Pose3>>>& bTi_all,
+    const std::vector<gtsam::Similarity3>& bSa_all, const bool use_gnc_optimizer,
     const std::vector<std::vector<std::pair<gtsam::Point3, gtsam::Point3>>> &overlapping_points,
-    const bool use_gnc_optimizer);
+    const float point3_factor_sigma);
 
   gtsam::Values solve() const;
   gtsam::Marginals marginalize(
