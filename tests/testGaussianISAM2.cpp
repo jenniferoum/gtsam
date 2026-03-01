@@ -318,7 +318,7 @@ TEST(ISAM2, slamlike_solution_dogleg)
 }
 
 /* ************************************************************************* */
-TEST(ISAM2, slamlike_solution_dogleglinesearch) {
+TEST(ISAM2, slamlikeSolutionDoglegLineSearch) {
   // These variables will be reused and accumulate factors and values
   Values fullinit;
   NonlinearFactorGraph fullgraph;
@@ -356,7 +356,7 @@ TEST(ISAM2, slamlike_solution_dogleg_qr)
 }
 
 /* ************************************************************************* */
-TEST(ISAM2, slamlike_solution_dogleglinesearch_qr) {
+TEST(ISAM2, slamlikeSolutionDoglegLineSearchQr) {
   // These variables will be reused and accumulate factors and values
   Values fullinit;
   NonlinearFactorGraph fullgraph;
@@ -1023,7 +1023,7 @@ TEST(ISAM2, calculate_nnz)
 }
 
 /* ************************************************************************* */
-TEST(ISAM2, predict_update_info) {
+TEST(ISAM2, predictUpdateInfo) {
   // Setup iSAM2
   ISAM2Params params;
   params.findUnusedFactorSlots = true;
