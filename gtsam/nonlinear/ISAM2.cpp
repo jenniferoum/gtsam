@@ -431,7 +431,7 @@ ISAM2Result ISAM2::update(const NonlinearFactorGraph& newFactors,
   addVariables(newTheta, result.details());
 
   // Update delta if we need it to check relinearization later
-  if (update.relinarizationNeeded(update_count_))
+  if (update.relinarizationNeeded(update_count_) && !deltaReplacedMask_.empty())
     updateDelta(updateParams.forceFullSolve);
 
   // 1. Add any new factors \Factors:=\Factors\cup\Factors'.
@@ -756,9 +756,9 @@ void ISAM2::updateDelta(bool forceFullSolve) const {
     const VectorValues gradAtZero = this->gradientAtZero();  // Compute gradient
     DeltaImpl::UpdateRgProd(roots_, deltaReplacedMask_, gradAtZero,
                             &RgProd_);  // Update RgProd
-    const VectorValues dx_u = DeltaImpl::ComputeGradientSearch(
-        gradAtZero, RgProd_);  // Compute gradient search point
-
+    const VectorValues dx_u =
+        VectorValues::Zero(deltaNewton_)
+            .update(DeltaImpl::ComputeGradientSearch(gradAtZero, RgProd_));
     // Clear replaced keys mask because now we've updated deltaNewton_ and
     // RgProd_
     deltaReplacedMask_.clear();
@@ -777,6 +777,39 @@ void ISAM2::updateDelta(bool forceFullSolve) const {
     // Copy the VectorValues containing with the linear solution
     delta_ = doglegResult.dx_d;
     gttoc(Copy_dx_d);
+  } else if (std::holds_alternative<ISAM2DoglegLineSearchParams>(
+                 params_.optimizationParams)) {
+    const ISAM2DoglegLineSearchParams& isamDllsParams =
+        std::get<ISAM2DoglegLineSearchParams>(params_.optimizationParams);
+    const double effectiveWildfireThreshold =
+        forceFullSolve ? 0.0 : isamDllsParams.getWildfireThreshold();
+
+    // Timer start
+    gttic(DoglegLineSearch_Iterate);
+
+    // Compute Newton's method step
+    gttic(Wildfire_update);
+    DeltaImpl::UpdateGaussNewtonDelta(
+        roots_, deltaReplacedMask_, effectiveWildfireThreshold, &deltaNewton_);
+    gttoc(Wildfire_update);
+
+    // Compute steepest descent step
+    const VectorValues gradAtZero = this->gradientAtZero();
+    DeltaImpl::UpdateRgProd(roots_, deltaReplacedMask_, gradAtZero, &RgProd_);
+    const VectorValues dx_u =
+        VectorValues::Zero(deltaNewton_)
+            .update(DeltaImpl::ComputeGradientSearch(gradAtZero, RgProd_));
+    deltaReplacedMask_.clear();
+
+    // Do the DogLeg Line Search
+    DoglegOptimizerImpl::IterationResult doglegResult(
+        DoglegLineSearchImpl::Iterate(isamDllsParams.dllsParams, dx_u,
+                                      deltaNewton_, *this, nonlinearFactors_,
+                                      theta_));
+
+    // Update Delta and linear step
+    delta_ = doglegResult.dx_d;
+    gttoc(DoglegLineSearch_Iterate);
   } else {
     throw std::runtime_error("iSAM2: unknown ISAM2Params type");
   }
@@ -830,6 +863,43 @@ VectorValues ISAM2::gradientAtZero() const {
   for (const auto& root : this->roots()) root->addGradientAtZero(&g);
 
   return g;
+}
+
+/* ************************************************************************* */
+std::pair<KeySet, bool> ISAM2::predictUpdateInfo(
+    const NonlinearFactorGraph& newFactors, const Values& newTheta,
+    const ISAM2UpdateParams& updateParams) const {
+  // Temp variables required by inputs below
+  ISAM2Result result;
+  UpdateImpl update(params_, updateParams);
+
+  if (update.relinarizationNeeded(update_count_) && !deltaReplacedMask_.empty())
+    updateDelta(updateParams.forceFullSolve);
+
+  // Gather the Keys involved from update params
+  update.computeUnusedKeys(newFactors, variableIndex_,
+                           result.keysWithRemovedFactors, &result.unusedKeys);
+  update.gatherInvolvedKeys(newFactors, nonlinearFactors_,
+                            result.keysWithRemovedFactors, &result.markedKeys);
+  update.updateKeys(result.markedKeys, &result);
+
+  // Gather keys involved due to relinearization threshold
+  // Note: increment by one as we are performing a one step look ahead
+  KeySet relinKeys;
+  if (update.relinarizationNeeded(update_count_ + 1)) {
+    relinKeys = update.gatherRelinearizeKeys(roots_, delta_, fixedVariables_,
+                                             &result.markedKeys);
+    if (!relinKeys.empty())
+      update.findFluid(roots_, relinKeys, &result.markedKeys, result.details());
+  }
+  // Get the top of the bayes tree affected by all the involved keys
+  KeySet affectedKeys = collectAffectedKeys(
+      KeyVector(result.markedKeys.begin(), result.markedKeys.end()));
+  // Add the new keys to get the entire set of keys affected by the update
+  KeySet newKeys = newFactors.keys();
+  affectedKeys.insert(newKeys.begin(), newKeys.end());
+  // Return the affected keys and whether or not this will be a batch update
+  return {affectedKeys, affectedKeys.size() >= theta_.size() * 0.65};
 }
 
 }  // namespace gtsam

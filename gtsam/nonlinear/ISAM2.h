@@ -290,6 +290,19 @@ class GTSAM_EXPORT ISAM2 : public BayesTree<ISAM2Clique> {
    */
   VectorValues gradientAtZero() const;
 
+  /** @brief Predicts the updated variables for a hypothetical update.
+   * @param newFactors The factors for the hypothetical update
+   * @param newTheta The estimates for new variables in the hypothetical update
+   * @param updateParams The update params for the hypothetical update
+   * @returns The set of all affected keys, and a flag indicating if this would
+   * be a batch update
+   *
+   * NOTE: Update may mutate the mutable field delta_
+   */
+  std::pair<KeySet, bool> predictUpdateInfo(
+      const NonlinearFactorGraph& newFactors, const Values& newTheta,
+      const ISAM2UpdateParams& updateParams) const;
+
   /// @}
 
  protected:
