@@ -325,4 +325,102 @@ template <>
 struct traits<PseudorangeFactorArm>
     : public Testable<PseudorangeFactorArm> {};
 
+/**
+ * Differentially-corrected pseudorange factor with lever arm correction.
+ *
+ * Combines the differential correction model of DifferentialPseudorangeFactor
+ * with the lever arm compensation of PseudorangeFactorArm. Uses a Pose3
+ * (position + attitude) as the receiver state variable.
+ *
+ * The error model is:
+ *   error = ||antenna_pos - satPos|| + c*(dt_u - dt_s) - pseudorange - correction
+ *
+ * @ingroup navigation
+ */
+class GTSAM_EXPORT DifferentialPseudorangeFactorArm
+    : public NoiseModelFactorN<Pose3, double, double>,
+      private PseudorangeBase {
+ private:
+  typedef NoiseModelFactorN<Pose3, double, double> Base;
+
+  Point3 bL_;  ///< Lever arm from body origin to antenna in body frame.
+
+ public:
+  // Provide access to the Matrix& version of evaluateError:
+  using Base::evaluateError;
+
+  /// shorthand for a smart pointer to a factor
+  typedef std::shared_ptr<DifferentialPseudorangeFactorArm> shared_ptr;
+
+  /// Typedef to this class
+  typedef DifferentialPseudorangeFactorArm This;
+
+  /** default constructor - only use for serialization */
+  DifferentialPseudorangeFactorArm() : bL_(0, 0, 0) {}
+
+  virtual ~DifferentialPseudorangeFactorArm() = default;
+
+  /**
+   * Construct a DifferentialPseudorangeFactorArm.
+   *
+   * @param nTbKey Receiver gtsam::Pose3 key (body pose in navigation frame).
+   * @param receiverClockBiasKey Receiver clock bias node.
+   * @param differentialCorrectionKey Differential correction node.
+   * @param measuredPseudorange Receiver-measured pseudorange in meters.
+   * @param satellitePosition Satellite ECEF position in meters.
+   * @param leverArm Translation from body origin to antenna in body frame.
+   * @param satelliteClockBias Satellite clock bias in seconds.
+   * @param model 1-D pseudorange noise model.
+   */
+  DifferentialPseudorangeFactorArm(
+      Key nTbKey, Key receiverClockBiasKey, Key differentialCorrectionKey,
+      double measuredPseudorange, const Point3& satellitePosition,
+      const Point3& leverArm, double satelliteClockBias = 0.0,
+      const SharedNoiseModel& model = noiseModel::Unit::Create(1));
+
+  /// @return a deep copy of this factor
+  gtsam::NonlinearFactor::shared_ptr clone() const override {
+    return std::static_pointer_cast<gtsam::NonlinearFactor>(
+        gtsam::NonlinearFactor::shared_ptr(new This(*this)));
+  }
+
+  /// print
+  void print(const std::string& s = "", const KeyFormatter& keyFormatter =
+                                            DefaultKeyFormatter) const override;
+
+  /// equals
+  bool equals(const NonlinearFactor& expected,
+              double tol = 1e-9) const override;
+
+  /// vector of errors
+  Vector evaluateError(const Pose3& nTb, const double& receiverClockBias,
+                       const double& differentialCorrection,
+                       OptionalMatrixType H_nTb,
+                       OptionalMatrixType HreceiverClockBias,
+                       OptionalMatrixType HdifferentialCorrection) const override;
+
+  /// return the lever arm, a position in the body frame
+  inline const Point3& leverArm() const { return bL_; }
+
+ private:
+#if GTSAM_ENABLE_BOOST_SERIALIZATION  ///
+  /// Serialization function
+  friend class boost::serialization::access;
+  template <class ARCHIVE>
+  void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
+    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(
+        DifferentialPseudorangeFactorArm::Base);
+    ar& BOOST_SERIALIZATION_NVP(pseudorange_);
+    ar& BOOST_SERIALIZATION_NVP(satPos_);
+    ar& BOOST_SERIALIZATION_NVP(satClkBias_);
+    ar& BOOST_SERIALIZATION_NVP(bL_);
+  }
+#endif
+};
+
+/// traits
+template <>
+struct traits<DifferentialPseudorangeFactorArm>
+    : public Testable<DifferentialPseudorangeFactorArm> {};
+
 }  // namespace gtsam
