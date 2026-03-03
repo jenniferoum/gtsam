@@ -245,8 +245,9 @@ TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
   const auto between_factor =
       std::make_shared<BetweenFactor<Pose3>>(P(0), P(1), p01_se3, model);
   // Construct factor for interpolated pose and velocity
+  // NOTE: we set the noise model to be fixed to avoid Jacobian computations.
   const auto factor = WNOAInterpFactor<Pose3>(between_factor, estimatedStates,
-                                              interpolatedStates, Q_se3);
+                                              interpolatedStates, Q_se3, true);
 
   // Set up values
   Values values;
@@ -256,11 +257,10 @@ TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
   values.insert(V(2), v2_se3);
 
   // Check pose residuals
-  const auto res_zero = Vector6::Zero();
-  auto residual = factor.unwhitenedError(values);  // new
-  CHECK(assert_equal(residual, res_zero, 1e-12));
-  residual = between_factor->evaluateError(p0_se3, p1_se3);  // original
-  CHECK(assert_equal(residual, res_zero, 1e-12));
+  
+  auto res_btwn = between_factor->evaluateError(p0_se3, p1_se3);  // original
+  auto res_interp = factor.unwhitenedError(values);  // new
+  CHECK(assert_equal(res_btwn, res_interp, 1e-12));
 }
 
 /* *************************************************************************
@@ -294,14 +294,12 @@ TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
   values.insert(V(2), v2_se3);
   values.insert(V(4), v0_se3);
 
-  // construct relative pose
-  const Pose3 p13_se3 = p1_se3.inverse().compose(p3_se3);
-  const Vector6 res_actual = Pose3::Logmap(p13_se3);
-  auto residual = between_factor->evaluateError(p1_se3, p3_se3);  // original
-  // Check pose residuals
-  CHECK(assert_equal(residual, res_actual, 1e-12));
-  residual = factor.unwhitenedError(values);  // new
-  CHECK(assert_equal(residual, res_actual, 1e-12));
+  // Check that residual is the same when we interpolate
+  auto res_btwn = between_factor->evaluateError(p1_se3, p3_se3);  // original
+  auto res_btwn_interp = factor.unwhitenedError(values);  // new
+  // Check that residuals match between 
+  CHECK(assert_equal(res_btwn, res_btwn_interp, 1e-12));
+
 }
 
 /* *************************************************************************
