@@ -10,6 +10,7 @@ namespace gtsam {
 #include <gtsam/geometry/Similarity2.h>
 #include <gtsam/geometry/Similarity3.h>
 #include <gtsam/geometry/Gal3.h>
+#include <gtsam/geometry/SphericalCamera.h>
 // Following header defines PinholeCamera{Cal3_S2|Cal3DS2|Cal3Bundler|Cal3Fisheye|Cal3Unified}
 #include <gtsam/geometry/SimpleCamera.h>
 
@@ -106,10 +107,10 @@ typedef gtsam::GenericProjectionFactor<gtsam::Pose3, gtsam::Point3,
 #include <gtsam/slam/GeneralSFMFactor.h>
 template <CAMERA, LANDMARK>
 virtual class GeneralSFMFactor : gtsam::NoiseModelFactor {
-  GeneralSFMFactor(const gtsam::Point2& measured,
+  GeneralSFMFactor(const CAMERA::Measurement& measured,
                    const gtsam::noiseModel::Base* model, gtsam::Key cameraKey,
                    gtsam::Key landmarkKey);
-  gtsam::Point2 measured() const;
+  CAMERA::Measurement measured() const;
 };
 typedef gtsam::GeneralSFMFactor<gtsam::PinholeCamera<gtsam::Cal3_S2>,
                                 gtsam::Point3>
@@ -142,6 +143,8 @@ typedef gtsam::GeneralSFMFactor<gtsam::PinholePose<gtsam::Cal3Fisheye>,
 typedef gtsam::GeneralSFMFactor<gtsam::PinholePose<gtsam::Cal3Unified>,
                                 gtsam::Point3>
     GeneralSFMFactorPoseCal3Unified;
+typedef gtsam::GeneralSFMFactor<gtsam::SphericalCamera, gtsam::Point3>
+    GeneralSFMFactorSphericalCamera;
 
 template <CALIBRATION = {gtsam::Cal3_S2, gtsam::Cal3DS2, gtsam::Cal3f, gtsam::Cal3Bundler,
                          gtsam::Cal3Fisheye, gtsam::Cal3Unified}>
@@ -157,19 +160,20 @@ virtual class GeneralSFMFactor2 : gtsam::NoiseModelFactor {
 
 #include <gtsam/slam/SmartFactorBase.h>
 
-// Currently not wrapping SphericalCamera, since measurement type is not Point2 but Unit3
 template <
     CAMERA = {gtsam::PinholeCameraCal3_S2, gtsam::PinholeCameraCal3DS2,
               gtsam::PinholeCameraCal3Bundler, gtsam::PinholeCameraCal3Fisheye,
               gtsam::PinholeCameraCal3Unified, gtsam::PinholePoseCal3_S2,
               gtsam::PinholePoseCal3DS2, gtsam::PinholePoseCal3Bundler,
-              gtsam::PinholePoseCal3Fisheye, gtsam::PinholePoseCal3Unified}>
+              gtsam::PinholePoseCal3Fisheye, gtsam::PinholePoseCal3Unified,
+              gtsam::SphericalCamera}>
 virtual class SmartFactorBase : gtsam::NonlinearFactor {
-  void add(const gtsam::Point2& measured, gtsam::Key key);
-  void add(const gtsam::Point2Vector& measurements, const gtsam::KeyVector& cameraKeys);
+  void add(const CAMERA::Measurement& measured, gtsam::Key key);
+  void add(const CAMERA::MeasurementVector& measurements,
+           const gtsam::KeyVector& cameraKeys);
   size_t dim() const;
-  const gtsam::Point2Vector& measured() const;
-  gtsam::CameraSet<CAMERA> cameras(const gtsam::Values& values) const;
+  const CAMERA::MeasurementVector& measured() const;
+  std::vector<CAMERA> cameras(const gtsam::Values& values) const;
 
   void print(const std::string& s = "", const gtsam::KeyFormatter& keyFormatter =
     gtsam::DefaultKeyFormatter) const;
@@ -205,7 +209,8 @@ template <
               gtsam::PinholeCameraCal3Bundler, gtsam::PinholeCameraCal3Fisheye,
               gtsam::PinholeCameraCal3Unified, gtsam::PinholePoseCal3_S2,
               gtsam::PinholePoseCal3DS2, gtsam::PinholePoseCal3Bundler,
-              gtsam::PinholePoseCal3Fisheye, gtsam::PinholePoseCal3Unified}>
+              gtsam::PinholePoseCal3Fisheye, gtsam::PinholePoseCal3Unified,
+              gtsam::SphericalCamera}>
 virtual class SmartProjectionFactor : gtsam::SmartFactorBase<CAMERA> {
   SmartProjectionFactor();
 
@@ -290,11 +295,12 @@ virtual class SmartProjectionPoseFactor : gtsam::NonlinearFactor {
 };
 
 #include <gtsam/slam/SmartProjectionRigFactor.h>
-// Only for PinholePose cameras -> PinholeCamera is not supported
+// Only for pose-only cameras (e.g., PinholePose or SphericalCamera)
 template <CAMERA = {gtsam::PinholePoseCal3_S2, gtsam::PinholePoseCal3DS2,
   gtsam::PinholePoseCal3Bundler,
   gtsam::PinholePoseCal3Fisheye,
-  gtsam::PinholePoseCal3Unified}>
+  gtsam::PinholePoseCal3Unified,
+  gtsam::SphericalCamera}>
 virtual class SmartProjectionRigFactor : gtsam::SmartProjectionFactor<CAMERA> {
   SmartProjectionRigFactor();
 
@@ -303,10 +309,10 @@ virtual class SmartProjectionRigFactor : gtsam::SmartProjectionFactor<CAMERA> {
       const gtsam::CameraSet<CAMERA>* cameraRig,
       const gtsam::SmartProjectionParams& params = gtsam::SmartProjectionParams());
 
-  void add(const gtsam::Point2& measured, const gtsam::Key& poseKey,
+  void add(const CAMERA::Measurement& measured, const gtsam::Key& poseKey,
            const size_t& cameraId = 0);
 
-  void add(const gtsam::Point2Vector& measurements, const gtsam::KeyVector& poseKeys,
+  void add(const CAMERA::MeasurementVector& measurements, const gtsam::KeyVector& poseKeys,
            const gtsam::FastVector<size_t>& cameraIds = gtsam::FastVector<size_t>());
 
   const gtsam::KeyVector& nonUniqueKeys() const;
