@@ -34,9 +34,11 @@ constexpr double kTol = 1e-9;
 using Product = ProductLieGroup<Point2, Pose2>;
 using ProductVR = ProductLieGroup<Vector, Rot3>;
 using ProductVV = ProductLieGroup<Vector, Vector>;
-constexpr size_t kPowerComponents = 2;
+constexpr int kPowerComponents = 2;
 using Power = PowerLieGroup<Pose2, kPowerComponents>;
 using PowerTangent = Power::TangentVector;
+using DynamicPower = PowerLieGroup<Pose2, Eigen::Dynamic>;
+using DynamicPowerTangent = DynamicPower::TangentVector;
 
 namespace gtsam {
 template <>
@@ -64,6 +66,27 @@ struct traits<Power> : internal::LieGroupTraits<Power> {
   }
   static bool Equals(const Power& m1, const Power& m2, double tol = 1e-8) {
     for (size_t i = 0; i < kPowerComponents; ++i) {
+      if (!m1[i].equals(m2[i], tol)) return false;
+    }
+    return true;
+  }
+};
+
+template <>
+struct traits<DynamicPower> : internal::LieGroupTraits<DynamicPower> {
+  static void Print(const DynamicPower& m, const std::string& s = "") {
+    std::cout << s << "[";
+    for (size_t i = 0; i < m.size(); ++i) {
+      if (i > 0) std::cout << ", ";
+      std::cout << "Pose2(" << m[i].x() << "," << m[i].y() << ","
+                << m[i].theta() << ")";
+    }
+    std::cout << "]" << std::endl;
+  }
+  static bool Equals(const DynamicPower& m1, const DynamicPower& m2,
+                     double tol = 1e-8) {
+    if (m1.size() != m2.size()) return false;
+    for (size_t i = 0; i < m1.size(); ++i) {
       if (!m1[i].equals(m2[i], tol)) return false;
     }
     return true;
@@ -136,6 +159,28 @@ Power inversePowerProxy(const Power& A) { return A.inverse(); }
 Power powerExpmapProxy(const PowerTangent& vec) { return Power::Expmap(vec); }
 
 PowerTangent powerLogmapProxy(const Power& p) { return Power::Logmap(p); }
+
+DynamicPower composeDynamicPowerProxy(const DynamicPower& A,
+                                      const DynamicPower& B) {
+  return A.compose(B);
+}
+
+DynamicPower betweenDynamicPowerProxy(const DynamicPower& A,
+                                      const DynamicPower& B) {
+  return A.between(B);
+}
+
+DynamicPower inverseDynamicPowerProxy(const DynamicPower& A) {
+  return A.inverse();
+}
+
+DynamicPower dynamicPowerExpmapProxy(const DynamicPowerTangent& vec) {
+  return DynamicPower::Expmap(vec);
+}
+
+DynamicPowerTangent dynamicPowerLogmapProxy(const DynamicPower& p) {
+  return DynamicPower::Logmap(p);
+}
 }  // namespace
 
 /* ************************************************************************* */
@@ -570,6 +615,145 @@ TEST(testPower, AdjointMap) {
   expected.block<3, 3>(3, 3) = state[1].AdjointMap();
 
   EXPECT(assert_equal(expected, actual, kTol));
+}
+
+/* ************************************************************************* */
+TEST(Lie, PowerLieGroupDynamicCount) {
+  GTSAM_CONCEPT_ASSERT(IsGroup<DynamicPower>);
+  GTSAM_CONCEPT_ASSERT(IsManifold<DynamicPower>);
+  GTSAM_CONCEPT_ASSERT(IsLieGroup<DynamicPower>);
+
+  DynamicPower identity;
+  EXPECT_LONGS_EQUAL(Eigen::Dynamic, DynamicPower::dimension);
+  EXPECT_LONGS_EQUAL(0, identity.size());
+  EXPECT_LONGS_EQUAL(0, identity.dim());
+  EXPECT_LONGS_EQUAL(0, DynamicPower::Identity().size());
+  EXPECT(assert_equal(Vector::Zero(0), DynamicPower::Logmap(identity), kTol));
+  const Matrix emptyAdj = identity.AdjointMap();
+  EXPECT_LONGS_EQUAL(0, emptyAdj.rows());
+  EXPECT_LONGS_EQUAL(0, emptyAdj.cols());
+
+  DynamicPower sizedIdentity(2);
+  EXPECT_LONGS_EQUAL(2, sizedIdentity.size());
+  EXPECT(assert_equal(Pose2(), sizedIdentity[0], kTol));
+  EXPECT(assert_equal(Pose2(), sizedIdentity[1], kTol));
+
+  DynamicPowerTangent xi = makeVector({0.1, 0.2, 0.3, 0.4, 0.5, 0.6});
+  DynamicPower expected(
+      {Pose2::Expmap(xi.head<3>()), Pose2::Expmap(xi.tail<3>())});
+  DynamicPower actual = DynamicPower::Expmap(xi);
+  EXPECT(assert_equal(expected, actual, kTol));
+  EXPECT(assert_equal(xi, DynamicPower::Logmap(actual), kTol));
+  EXPECT_LONGS_EQUAL(6, actual.dim());
+}
+
+/* ************************************************************************* */
+TEST(testPowerDynamic, compose) {
+  DynamicPower state1({Pose2(1, 2, 3), Pose2(4, 5, 6)});
+  DynamicPower state2({Pose2(-0.5, 4, -1.0), Pose2(2.0, -3.0, 0.25)});
+
+  Matrix actH1, actH2;
+  state1.compose(state2, actH1, actH2);
+  Matrix numericH1 =
+      numericalDerivative21<DynamicPower, DynamicPower, DynamicPower, 6>(
+          composeDynamicPowerProxy, state1, state2);
+  Matrix numericH2 =
+      numericalDerivative22<DynamicPower, DynamicPower, DynamicPower, 6>(
+          composeDynamicPowerProxy, state1, state2);
+  EXPECT(assert_equal(numericH1, actH1, kTol));
+  EXPECT(assert_equal(numericH2, actH2, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testPowerDynamic, between) {
+  DynamicPower state1({Pose2(1, 2, 3), Pose2(4, 5, 6)});
+  DynamicPower state2({Pose2(-0.5, 4, -1.0), Pose2(2.0, -3.0, 0.25)});
+
+  Matrix actH1, actH2;
+  state1.between(state2, actH1, actH2);
+  Matrix numericH1 =
+      numericalDerivative21<DynamicPower, DynamicPower, DynamicPower, 6>(
+          betweenDynamicPowerProxy, state1, state2);
+  Matrix numericH2 =
+      numericalDerivative22<DynamicPower, DynamicPower, DynamicPower, 6>(
+          betweenDynamicPowerProxy, state1, state2);
+  EXPECT(assert_equal(numericH1, actH1, kTol));
+  EXPECT(assert_equal(numericH2, actH2, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testPowerDynamic, inverse) {
+  DynamicPower state({Pose2(1, 2, 3), Pose2(4, 5, 6)});
+
+  Matrix actH;
+  state.inverse(actH);
+  Matrix numericH =
+      numericalDerivative11<DynamicPower, DynamicPower, 6>(
+          inverseDynamicPowerProxy, state);
+  EXPECT(assert_equal(numericH, actH, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testPowerDynamic, retractAndLocalCoordinates) {
+  DynamicPower state({Pose2(1, 2, 3), Pose2(4, 5, 6)});
+  DynamicPowerTangent delta = makeVector({0.1, 0.2, 0.3, -0.2, 0.1, -0.1});
+
+  DynamicPower updated = state.retract(delta);
+  DynamicPower expected(
+      {state[0].retract(delta.head<3>()), state[1].retract(delta.tail<3>())});
+  EXPECT(assert_equal(expected, updated, kTol));
+  EXPECT(assert_equal(delta, state.localCoordinates(updated), kTol));
+}
+
+/* ************************************************************************* */
+TEST(testPowerDynamic, Expmap) {
+  DynamicPowerTangent vec = makeVector({0.1, 0.2, 0.3, 0.4, 0.5, 0.6});
+  DynamicPower expected(
+      {Pose2::Expmap(vec.head<3>()), Pose2::Expmap(vec.tail<3>())});
+
+  Matrix actH;
+  DynamicPower actual = DynamicPower::Expmap(vec, actH);
+  Matrix numericH =
+      numericalDerivative11<DynamicPower, DynamicPowerTangent, 6>(
+          dynamicPowerExpmapProxy, vec);
+  EXPECT(assert_equal(expected, actual, kTol));
+  EXPECT(assert_equal(numericH, actH, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testPowerDynamic, Logmap) {
+  DynamicPower state({Pose2(1, 2, 3), Pose2(4, 5, 6)});
+
+  Matrix actH;
+  DynamicPower::Logmap(state, actH);
+  Matrix numericH =
+      numericalDerivative11<DynamicPowerTangent, DynamicPower, 6>(
+          dynamicPowerLogmapProxy, state);
+  EXPECT(assert_equal(numericH, actH, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testPowerDynamic, AdjointMap) {
+  DynamicPower state({Pose2(1, 2, 3), Pose2(4, 5, 6)});
+  const Matrix actual = state.AdjointMap();
+
+  Matrix expected = Matrix::Zero(6, 6);
+  expected.block<3, 3>(0, 0) = state[0].AdjointMap();
+  expected.block<3, 3>(3, 3) = state[1].AdjointMap();
+
+  EXPECT(assert_equal(expected, actual, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testPowerDynamic, Exceptions) {
+  DynamicPower state1({Pose2(1, 2, 3), Pose2(4, 5, 6)});
+  DynamicPower state2({Pose2(1, 2, 3)});
+  CHECK_EXCEPTION(state1.compose(state2), std::invalid_argument);
+  CHECK_EXCEPTION(state1.between(state2), std::invalid_argument);
+  CHECK_EXCEPTION(state1.localCoordinates(state2), std::invalid_argument);
+
+  DynamicPowerTangent vec = makeVector({0.1, 0.2, 0.3, 0.4, 0.5});
+  CHECK_EXCEPTION(DynamicPower::Expmap(vec), std::invalid_argument);
 }
 
 //******************************************************************************

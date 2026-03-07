@@ -37,7 +37,7 @@ namespace abc {
  *
  * @tparam N Number of calibrated sensors (typically 1 or more)
  */
-template <size_t N>
+template <int N>
 class AbcEquivariantFilter
     : public gtsam::EquivariantFilter<State<N>, Symmetry<N>> {
  public:
