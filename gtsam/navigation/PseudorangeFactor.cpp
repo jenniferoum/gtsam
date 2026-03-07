@@ -183,12 +183,12 @@ Vector PseudorangeFactorArm::evaluateError(
 
   // Compute associated derivatives:
   if (H_nTb) {
+    H_nTb->resize(1, 6);
     if (range < std::numeric_limits<double>::epsilon()) {
-      *H_nTb = Matrix16::Zero();
+      H_nTb->setZero();
     } else {
       // u = unit vector from satellite to antenna
-      const RowVector3d u = (position_difference / range).transpose();
-      H_nTb->resize(1, 6);
+      const Matrix u = (position_difference / range).transpose();  // 1x3
       H_nTb->block<1, 3>(0, 0) = u * (-nRb * skewSymmetric(bL_));
       H_nTb->block<1, 3>(0, 3) = u * nRb;
     }
@@ -251,12 +251,12 @@ Vector DifferentialPseudorangeFactorArm::evaluateError(
 
   // Compute associated derivatives:
   if (H_nTb) {
+    H_nTb->resize(1, 6);
     if (range < std::numeric_limits<double>::epsilon()) {
-      *H_nTb = Matrix16::Zero();
+      H_nTb->setZero();
     } else {
       // u = unit vector from satellite to antenna
-      const RowVector3d u = (position_difference / range).transpose();
-      H_nTb->resize(1, 6);
+      const Matrix u = (position_difference / range).transpose();  // 1x3
       H_nTb->block<1, 3>(0, 0) = u * (-nRb * skewSymmetric(bL_));
       H_nTb->block<1, 3>(0, 3) = u * nRb;
     }
