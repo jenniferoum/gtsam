@@ -676,7 +676,7 @@ virtual class ManifoldEKF {
   // Accessors
   M state() const;
   gtsam::Matrix covariance() const;
-  int dimension() const;
+  size_t dimension() const;
 
   // Predict with provided next state and Jacobian
   void predict(const M& X_next, gtsam::Matrix F, gtsam::Matrix Q);
