@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    VIOSymmetry.h
+ * @file    EqVIOSymmetry.h
  * @brief   VIO symmetry actions and lift helpers
  */
 
@@ -19,9 +19,9 @@
 #include <gtsam/base/GroupAction.h>
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/Vector.h>
-#include <gtsam_unstable/navigation/VIOCommon.h>
-#include <gtsam_unstable/navigation/VIOGroup.h>
-#include <gtsam_unstable/navigation/VIOState.h>
+#include <gtsam_unstable/navigation/EqVIOCommon.h>
+#include <gtsam_unstable/navigation/EqVIOGroup.h>
+#include <gtsam_unstable/navigation/EqVIOState.h>
 #include <gtsam_unstable/dllexport.h>
 
 namespace gtsam {

@@ -10,11 +10,11 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    VIOState.cpp
+ * @file    EqVIOState.cpp
  * @brief   Dynamic VIO manifold state implementation
  */
 
-#include <gtsam_unstable/navigation/VIOState.h>
+#include <gtsam_unstable/navigation/EqVIOState.h>
 
 #include <iostream>
 #include <stdexcept>

@@ -10,14 +10,14 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file   testVIOGroup.cpp
+ * @file   testEqVIOGroup.cpp
  * @brief  Unit tests for the Eq. (22) VIOGroup
  */
 
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/TestableAssertions.h>
 #include <gtsam/base/numericalDerivative.h>
-#include <gtsam_unstable/navigation/VIOGroup.h>
+#include <gtsam_unstable/navigation/EqVIOGroup.h>
 
 #include <cmath>
 #include <functional>

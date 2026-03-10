@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    VIOState.h
+ * @file    EqVIOState.h
  * @brief   Dynamic VIO manifold state for EqF foundations
  */
 
@@ -123,4 +123,3 @@ template <>
 struct traits<const VIOState> : traits<VIOState> {};
 
 }  // namespace gtsam
-

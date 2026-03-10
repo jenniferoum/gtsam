@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    VIOCommon.h
+ * @file    EqVIOCommon.h
  * @brief   Common VIO math/data types for unstable navigation
  */
 
@@ -141,4 +141,3 @@ template <>
 struct traits<const VisionMeasurement> : traits<VisionMeasurement> {};
 
 }  // namespace gtsam
-

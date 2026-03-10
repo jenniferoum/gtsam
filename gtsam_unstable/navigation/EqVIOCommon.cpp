@@ -10,11 +10,11 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    VIOCommon.cpp
+ * @file    EqVIOCommon.cpp
  * @brief   Common VIO math/data type implementations
  */
 
-#include <gtsam_unstable/navigation/VIOCommon.h>
+#include <gtsam_unstable/navigation/EqVIOCommon.h>
 
 #include <iostream>
 #include <stdexcept>

@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    VIOGroup.h
+ * @file    EqVIOGroup.h
  * @brief   Dynamic VI-SLAM symmetry group from Eq. (22)
  */
 

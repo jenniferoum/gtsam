@@ -10,11 +10,11 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    VIOSymmetry.cpp
+ * @file    EqVIOSymmetry.cpp
  * @brief   VIO symmetry actions and lift helpers
  */
 
-#include <gtsam_unstable/navigation/VIOSymmetry.h>
+#include <gtsam_unstable/navigation/EqVIOSymmetry.h>
 
 #include <algorithm>
 #include <cmath>

@@ -10,14 +10,14 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file   testVIOState.cpp
+ * @file   testEqVIOState.cpp
  * @brief  Unit tests for VIOState manifold
  */
 
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/TestableAssertions.h>
 #include <gtsam/base/numericalDerivative.h>
-#include <gtsam_unstable/navigation/VIOState.h>
+#include <gtsam_unstable/navigation/EqVIOState.h>
 
 #include <stdexcept>
 #include <vector>
@@ -157,4 +157,3 @@ int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);
 }
-

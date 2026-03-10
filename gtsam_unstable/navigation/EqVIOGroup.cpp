@@ -10,11 +10,11 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    VIOGroup.cpp
+ * @file    EqVIOGroup.cpp
  * @brief   Dynamic VI-SLAM symmetry group from Eq. (22)
  */
 
-#include <gtsam_unstable/navigation/VIOGroup.h>
+#include <gtsam_unstable/navigation/EqVIOGroup.h>
 
 #include <stdexcept>
 #include <utility>
