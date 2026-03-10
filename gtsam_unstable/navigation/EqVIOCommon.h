@@ -30,7 +30,7 @@
 
 namespace gtsam {
 
-/// Approximate gravitational acceleration magnitude in m/s^2.
+/** Approximate gravitational acceleration magnitude in m/s^2. */
 constexpr double GRAVITY_CONSTANT = 9.80665;
 
 /**
@@ -50,7 +50,9 @@ struct GTSAM_UNSTABLE_EXPORT IMUVelocity {
   static IMUVelocity Zero();
 
   IMUVelocity() = default;
+
   explicit IMUVelocity(const Vector6& vec);
+
   explicit IMUVelocity(const Vector12& vec);
 
   IMUVelocity operator+(const IMUVelocity& other) const;
@@ -66,8 +68,23 @@ class GTSAM_UNSTABLE_EXPORT VIOCameraModel {
  public:
   virtual ~VIOCameraModel() = default;
 
+  /**
+   * Project a camera-frame 3D point to image coordinates.
+   * @param p camera-frame point.
+   * @return image measurement.
+   */
   virtual Point2 projectPoint(const Point3& p) const = 0;
+  /**
+   * Convert image coordinates to an undistorted 3D bearing-like vector.
+   * @param y image measurement.
+   * @return undistorted vector (typically homogeneous bearing).
+   */
   virtual Vector3 undistortPoint(const Point2& y) const = 0;
+  /**
+   * Jacobian of projection with respect to the input 3D vector.
+   * @param y input 3D vector.
+   * @return 2x3 projection Jacobian.
+   */
   virtual Matrix23 projectionJacobian(const Vector3& y) const = 0;
 };
 
@@ -85,13 +102,29 @@ struct GTSAM_UNSTABLE_EXPORT VisionMeasurement {
   std::map<int, Point2> camCoordinates;
   std::shared_ptr<const VIOCameraModel> camera;
 
+  /** Number of landmark measurements. */
   size_t n() const;
+
   int dim() const;
-  std::vector<int> getIds() const;
+
   operator Vector() const;
 
+  /**
+   * Retract in Euclidean chart.
+   * @param v tangent increment with size dim().
+   * @param H1 optional derivative wrt this measurement.
+   * @param H2 optional derivative wrt v.
+   * @return updated measurement.
+   */
   VisionMeasurement retract(const TangentVector& v, ChartJacobian H1 = {},
                             ChartJacobian H2 = {}) const;
+  /**
+   * Local coordinates in Euclidean chart.
+   * @param other target measurement with aligned ids.
+   * @param H1 optional derivative wrt this measurement.
+   * @param H2 optional derivative wrt other.
+   * @return tangent vector from this to other.
+   */
   TangentVector localCoordinates(const VisionMeasurement& other,
                                  ChartJacobian H1 = {},
                                  ChartJacobian H2 = {}) const;
@@ -102,6 +135,7 @@ struct GTSAM_UNSTABLE_EXPORT VisionMeasurement {
 
 VisionMeasurement operator-(const VisionMeasurement& y1,
                             const VisionMeasurement& y2);
+
 VisionMeasurement operator+(const VisionMeasurement& y, const Vector& eta);
 
 template <>
