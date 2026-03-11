@@ -339,7 +339,7 @@ HybridNonlinearFactorGraph HybridSmoother::allFactors() const {
 
 /* ************************************************************************* */
 double HybridSmoother::error(const VectorValues& x) const {
-  return this->hybridBayesNet_.error(x);
+  return this->hybridBayesNet_.error(HybridValues{x, DiscreteValues()});
 }
 
 }  // namespace gtsam
