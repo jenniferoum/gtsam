@@ -261,7 +261,7 @@ class GTSAM_EXPORT PseudorangeFactorArm
   typedef PseudorangeFactorArm This;
 
   /** default constructor - only use for serialization */
-  PseudorangeFactorArm() : bL_(0, 0, 0) {}
+  PseudorangeFactorArm() : PseudorangeBase{0.0, Point3(0, 0, 0), 0.0}, bL_(0, 0, 0) {}
 
   virtual ~PseudorangeFactorArm() = default;
 
@@ -356,7 +356,7 @@ class GTSAM_EXPORT DifferentialPseudorangeFactorArm
   typedef DifferentialPseudorangeFactorArm This;
 
   /** default constructor - only use for serialization */
-  DifferentialPseudorangeFactorArm() : bL_(0, 0, 0) {}
+  DifferentialPseudorangeFactorArm() : PseudorangeBase{0.0, Point3(0, 0, 0), 0.0}, bL_(0, 0, 0) {}
 
   virtual ~DifferentialPseudorangeFactorArm() = default;
 

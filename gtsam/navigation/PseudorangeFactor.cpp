@@ -7,6 +7,8 @@
 
 #include "PseudorangeFactor.h"
 
+#include <limits>
+
 namespace {
 
 /// Speed of light in a vacuum (m/s):

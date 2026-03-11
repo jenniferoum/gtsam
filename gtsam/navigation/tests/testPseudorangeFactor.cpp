@@ -33,7 +33,7 @@ TEST(TestPseudorangeFactor, Constructor) {
   EXPECT(!Hbias.array().isNaN().any());
   EXPECT_DOUBLES_EQUAL(Hpos.norm(), 0.0, 1e-9);
   // Clock bias derivative should always be speed-of-light in vacuum:
-  EXPECT_DOUBLES_EQUAL(Hbias.norm(), 299792458.0, 1e-9);
+  EXPECT_DOUBLES_EQUAL(Hbias(0, 0), 299792458.0, 1e-9);
 }
 
 // *************************************************************************
@@ -118,7 +118,7 @@ TEST(TestDifferentialPseudorangeFactor, Constructor) {
   EXPECT(!Hcorrection.array().isNaN().any());
   EXPECT_DOUBLES_EQUAL(Hpos.norm(), 0.0, 1e-9);
   // Clock bias derivative should always be speed-of-light in vacuum:
-  EXPECT_DOUBLES_EQUAL(Hbias.norm(), 299792458.0, 1e-9);
+  EXPECT_DOUBLES_EQUAL(Hbias(0, 0), 299792458.0, 1e-9);
   // Correction derivative should be constant -1:
   EXPECT_DOUBLES_EQUAL(Hcorrection(0, 0), -1.0, 1e-9);
 }
@@ -202,7 +202,7 @@ TEST(TestPseudorangeFactorArm, Constructor) {
   EXPECT(!Hpose.array().isNaN().any());
   EXPECT(!Hbias.array().isNaN().any());
   // Clock bias derivative should always be speed-of-light in vacuum:
-  EXPECT_DOUBLES_EQUAL(Hbias.norm(), 299792458.0, 1e-9);
+  EXPECT_DOUBLES_EQUAL(Hbias(0, 0), 299792458.0, 1e-9);
 }
 
 // *************************************************************************
@@ -343,7 +343,7 @@ TEST(TestDifferentialPseudorangeFactorArm, Constructor) {
   EXPECT(!Hpose.array().isNaN().any());
   EXPECT(!Hbias.array().isNaN().any());
   EXPECT(!Hcorrection.array().isNaN().any());
-  EXPECT_DOUBLES_EQUAL(Hbias.norm(), 299792458.0, 1e-9);
+  EXPECT_DOUBLES_EQUAL(Hbias(0, 0), 299792458.0, 1e-9);
   EXPECT_DOUBLES_EQUAL(Hcorrection(0, 0), -1.0, 1e-9);
 }
 
