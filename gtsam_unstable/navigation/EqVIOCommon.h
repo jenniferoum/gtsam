@@ -47,17 +47,36 @@ struct GTSAM_UNSTABLE_EXPORT IMUVelocity {
   Vector3 gyrBiasVel = Vector3::Zero();
   Vector3 accBiasVel = Vector3::Zero();
 
+  /** Return an IMUVelocity with all components zero and an invalid timestamp. */
   static IMUVelocity Zero();
 
   IMUVelocity() = default;
 
+  /** Construct from a size-6 stacked vector of angular and linear components. */
   explicit IMUVelocity(const Vector6& vec);
 
+  /**
+   * Construct from a size-12 stacked vector containing IMU and bias-velocity
+   * components.
+   */
   explicit IMUVelocity(const Vector12& vec);
 
+  /** Add two IMUVelocity instances component-wise. */
   IMUVelocity operator+(const IMUVelocity& other) const;
+
+  /**
+   * Subtract a size-6 stacked vector from the IMU angular and linear
+   * components.
+   */
   IMUVelocity operator-(const Vector6& vec) const;
+
+  /**
+   * Subtract a size-12 stacked vector from all IMU and bias-velocity
+   * components.
+   */
   IMUVelocity operator-(const Vector12& vec) const;
+
+  /** Scale all components of the IMUVelocity by a scalar factor. */
   IMUVelocity operator*(double c) const;
 };
 
