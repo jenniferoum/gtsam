@@ -23,12 +23,26 @@
 #include <gtsam/geometry/Point3.h>
 #include <gtsam_unstable/dllexport.h>
 
+#include <gtsam/base/ProductLieGroup.h>
+#include <gtsam/geometry/ExtendedPose3.h>
+#include <gtsam/geometry/Pose3.h>
+#include <gtsam/geometry/SO3.h>
+
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace gtsam {
+
+using SOT3 = ProductLieGroup<SO3, Vector1>;
+
+using VIOSE23 = ExtendedPose3<2>;
+using VIOBias = Vector6;
+using VIOLandmarkGroup = PowerLieGroup<SOT3, Eigen::Dynamic>;
+using VIOSensorCore = ProductLieGroup<VIOSE23, VIOBias>;
+using VIOLandmarkCore = ProductLieGroup<Pose3, VIOLandmarkGroup>;
+using VIOGroup = ProductLieGroup<VIOSensorCore, VIOLandmarkCore>;
 
 /** Approximate gravitational acceleration magnitude in m/s^2. */
 constexpr double GRAVITY_CONSTANT = 9.80665;
@@ -160,6 +174,34 @@ GTSAM_UNSTABLE_EXPORT VisionMeasurement operator-(
 
 GTSAM_UNSTABLE_EXPORT VisionMeasurement operator+(
     const VisionMeasurement& y, const Vector& eta);
+
+// Readable accessors for the composed ProductLieGroup VIOGroup.
+inline const VIOSE23& groupA(const VIOGroup& X) { return X.first.first; }
+inline VIOSE23& groupA(VIOGroup& X) { return X.first.first; }
+
+inline const Vector6& groupBeta(const VIOGroup& X) { return X.first.second; }
+inline Vector6& groupBeta(VIOGroup& X) { return X.first.second; }
+
+inline const Pose3& groupB(const VIOGroup& X) { return X.second.first; }
+inline Pose3& groupB(VIOGroup& X) { return X.second.first; }
+
+inline const VIOLandmarkGroup& groupQ(const VIOGroup& X) {
+  return X.second.second;
+}
+inline VIOLandmarkGroup& groupQ(VIOGroup& X) { return X.second.second; }
+
+inline size_t groupN(const VIOGroup& X) { return groupQ(X).size(); }
+inline size_t groupDim(const VIOGroup& X) { return 21 + 4 * groupN(X); }
+
+inline VIOGroup makeVIOGroup(const VIOSE23& A, const Vector6& beta,
+                             const Pose3& B, const VIOLandmarkGroup& Q) {
+  return VIOGroup(VIOSensorCore(A, beta), VIOLandmarkCore(B, Q));
+}
+
+inline VIOGroup makeVIOGroupIdentity(size_t n = 0) {
+  return makeVIOGroup(VIOSE23::Identity(), Vector6::Zero(), Pose3::Identity(),
+                      VIOLandmarkGroup(n));
+}
 
 template <>
 struct traits<VisionMeasurement> {

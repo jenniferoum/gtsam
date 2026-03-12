@@ -20,7 +20,6 @@
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/Vector.h>
 #include <gtsam_unstable/navigation/EqVIOCommon.h>
-#include <gtsam_unstable/navigation/EqVIOGroup.h>
 #include <gtsam_unstable/navigation/EqVIOState.h>
 #include <gtsam_unstable/dllexport.h>
 

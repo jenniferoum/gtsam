@@ -9,19 +9,14 @@
 
  * -------------------------------------------------------------------------- */
 
-/**
- * @file   testEqVIOGroup.cpp
- * @brief  Unit tests for the Eq. (22) VIOGroup
- */
+/** @file testEqVIOGroup.cpp */
 
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/TestableAssertions.h>
 #include <gtsam/base/numericalDerivative.h>
-#include <gtsam_unstable/navigation/EqVIOGroup.h>
+#include <gtsam_unstable/navigation/EqVIOCommon.h>
 
 #include <cmath>
-#include <functional>
-#include <stdexcept>
 #include <vector>
 
 using namespace gtsam;
@@ -88,8 +83,8 @@ void testChartDerivativesN(TestResult& result_, const std::string& name_,
       H2));
 }
 
-using SE23 = VIOGroup::SE23;
-using LandmarkGroup = VIOGroup::LandmarkGroup;
+using SE23 = VIOSE23;
+using LandmarkGroup = VIOLandmarkGroup;
 
 const Rot3 kR1 = Rot3::RzRyRx(0.1, -0.2, 0.3);
 const Rot3 kR2 = Rot3::RzRyRx(-0.3, 0.2, -0.1);
@@ -131,23 +126,12 @@ LandmarkGroup MakeQ1B() { return LandmarkGroup({kQ2}); }
 LandmarkGroup MakeQ3A() { return LandmarkGroup({kQ1, kQ2, kQ3}); }
 LandmarkGroup MakeQ3B() { return LandmarkGroup({kQ4, kQ5, kQ6}); }
 
-const std::vector<int> kIds1{11};
-const std::vector<int> kIds3{11, 22, 33};
-const std::vector<int> kIds3Other{11, 22, 44};
-
-VIOGroup MakeG0() { return VIOGroup(kA1, kBeta1, kB1, MakeQ0()); }
-
-VIOGroup MakeG0b() { return VIOGroup(kA2, kBeta2, kB2, MakeQ0()); }
-
-VIOGroup MakeG1() { return VIOGroup(kA1, kBeta1, kB1, MakeQ1A(), kIds1); }
-
-VIOGroup MakeG1b() { return VIOGroup(kA2, kBeta2, kB2, MakeQ1B(), kIds1); }
-
-VIOGroup MakeG1NoIds() { return VIOGroup(kA1, kBeta1, kB1, MakeQ1A()); }
-
-VIOGroup MakeG3() { return VIOGroup(kA1, kBeta1, kB1, MakeQ3A(), kIds3); }
-
-VIOGroup MakeG3b() { return VIOGroup(kA2, kBeta2, kB2, MakeQ3B(), kIds3); }
+VIOGroup MakeG0() { return makeVIOGroup(kA1, kBeta1, kB1, MakeQ0()); }
+VIOGroup MakeG0b() { return makeVIOGroup(kA2, kBeta2, kB2, MakeQ0()); }
+VIOGroup MakeG1() { return makeVIOGroup(kA1, kBeta1, kB1, MakeQ1A()); }
+VIOGroup MakeG1b() { return makeVIOGroup(kA2, kBeta2, kB2, MakeQ1B()); }
+VIOGroup MakeG3() { return makeVIOGroup(kA1, kBeta1, kB1, MakeQ3A()); }
+VIOGroup MakeG3b() { return makeVIOGroup(kA2, kBeta2, kB2, MakeQ3B()); }
 
 Vector Xi0() {
   return (Vector(21) << 0.05, -0.04, 0.03, 0.2, -0.1, 0.15, -0.05, 0.07,
@@ -171,7 +155,6 @@ Vector Xi3() {
 
 }  // namespace
 
-//******************************************************************************
 TEST(VIOGroup, Concept) {
   GTSAM_CONCEPT_ASSERT(IsGroup<VIOGroup>);
   GTSAM_CONCEPT_ASSERT(IsManifold<VIOGroup>);
@@ -179,51 +162,38 @@ TEST(VIOGroup, Concept) {
   GTSAM_CONCEPT_ASSERT(IsTestable<VIOGroup>);
 }
 
-//******************************************************************************
 TEST(VIOGroup, ConstructorsAndAccessors) {
-  const VIOGroup empty;
-  EXPECT_LONGS_EQUAL(0, empty.n());
-  EXPECT_LONGS_EQUAL(21, empty.dim());
-  EXPECT(empty.ids().empty());
+  const VIOGroup empty = makeVIOGroupIdentity();
+  EXPECT_LONGS_EQUAL(0, groupN(empty));
+  EXPECT_LONGS_EQUAL(21, groupDim(empty));
 
-  const VIOGroup identity3 = VIOGroup::Identity(3);
-  EXPECT_LONGS_EQUAL(3, identity3.n());
-  EXPECT_LONGS_EQUAL(33, identity3.dim());
-  EXPECT(identity3.ids().empty());
-
-  const VIOGroup identityIds = VIOGroup::Identity(kIds3);
-  EXPECT(identityIds.ids() == kIds3);
-  EXPECT_LONGS_EQUAL(3, identityIds.n());
+  const VIOGroup identity3 = makeVIOGroupIdentity(3);
+  EXPECT_LONGS_EQUAL(3, groupN(identity3));
+  EXPECT_LONGS_EQUAL(33, groupDim(identity3));
 
   const VIOGroup g = MakeG3();
-  EXPECT(assert_equal(kA1, g.A()));
-  EXPECT(assert_equal(Vector(kBeta1), Vector(g.beta())));
-  EXPECT(assert_equal(kB1, g.B()));
-  EXPECT(assert_equal(MakeQ3A(), g.Q()));
-  EXPECT(g.ids() == kIds3);
+  EXPECT(assert_equal(kA1, groupA(g)));
+  EXPECT(assert_equal(Vector(kBeta1), Vector(groupBeta(g))));
+  EXPECT(assert_equal(kB1, groupB(g)));
+  EXPECT(assert_equal(MakeQ3A(), groupQ(g)));
 }
 
-//******************************************************************************
 TEST(VIOGroup, GroupOperations) {
   const VIOGroup g1 = MakeG3();
   const VIOGroup g2 = MakeG3b();
   const VIOGroup composed = g1.compose(g2);
 
-  EXPECT(assert_equal(g1.A().compose(g2.A()), composed.A()));
-  EXPECT(assert_equal(Vector(g1.beta() + g2.beta()), Vector(composed.beta())));
-  EXPECT(assert_equal(g1.B().compose(g2.B()), composed.B()));
-  EXPECT(assert_equal(g1.Q().compose(g2.Q()), composed.Q()));
-  EXPECT(composed.ids() == kIds3);
+  EXPECT(assert_equal(groupA(g1).compose(groupA(g2)), groupA(composed)));
+  EXPECT(assert_equal(Vector(groupBeta(g1) + groupBeta(g2)),
+                      Vector(groupBeta(composed))));
+  EXPECT(assert_equal(groupB(g1).compose(groupB(g2)), groupB(composed)));
+  EXPECT(assert_equal(groupQ(g1).compose(groupQ(g2)), groupQ(composed)));
 
   const VIOGroup between = g1.between(g2);
   EXPECT(assert_equal(g1.inverse() * g2, between));
-
-  const VIOGroup inverse = g1.inverse();
-  EXPECT(inverse.ids() == kIds3);
-  EXPECT(assert_equal(VIOGroup::Identity(kIds3), g1.compose(inverse)));
+  EXPECT(assert_equal(makeVIOGroupIdentity(3), g1.compose(g1.inverse())));
 }
 
-//******************************************************************************
 TEST(VIOGroup, ExpmapLogmapAndAdjoint) {
   const Vector xi0 = Xi0();
   const Vector xi1 = Xi1();
@@ -236,64 +206,43 @@ TEST(VIOGroup, ExpmapLogmapAndAdjoint) {
   EXPECT(assert_equal(xi0, VIOGroup::Logmap(g0), 1e-9));
   EXPECT(assert_equal(xi1, VIOGroup::Logmap(g1), 1e-9));
   EXPECT(assert_equal(xi3, VIOGroup::Logmap(g3), 1e-9));
-  EXPECT(g3.ids().empty());
 
-  VIOGroup::VIOGroupCore core(
-      VIOGroup::SensorCore(g3.A(), g3.beta()),
-      VIOGroup::LandmarkCore(g3.B(), g3.Q()));
+  VIOGroup core(VIOSensorCore(groupA(g3), groupBeta(g3)),
+                VIOLandmarkCore(groupB(g3), groupQ(g3)));
   EXPECT(assert_equal(core.AdjointMap(), g3.AdjointMap(), 1e-9));
 }
 
-//******************************************************************************
 TEST(VIOGroup, DerivativesN0) {
-  const VIOGroup id = VIOGroup::Identity();
+  const VIOGroup id = makeVIOGroupIdentity();
   const VIOGroup g = MakeG0();
   const VIOGroup h = MakeG0b();
 
   testLieGroupDerivativesN<21>(result_, name_, id, g);
   testLieGroupDerivativesN<21>(result_, name_, g, h);
-
   testChartDerivativesN<21>(result_, name_, id, g);
   testChartDerivativesN<21>(result_, name_, g, h);
 }
 
-//******************************************************************************
 TEST(VIOGroup, DerivativesN1) {
-  const VIOGroup id = VIOGroup::Identity(kIds1);
+  const VIOGroup id = makeVIOGroupIdentity(1);
   const VIOGroup g = MakeG1();
   const VIOGroup h = MakeG1b();
 
   testLieGroupDerivativesN<25>(result_, name_, id, g);
   testLieGroupDerivativesN<25>(result_, name_, g, h);
-
   testChartDerivativesN<25>(result_, name_, id, g);
   testChartDerivativesN<25>(result_, name_, g, h);
 }
 
-//******************************************************************************
 TEST(VIOGroup, DerivativesN3) {
-  const VIOGroup id = VIOGroup::Identity(kIds3);
+  const VIOGroup id = makeVIOGroupIdentity(3);
   const VIOGroup g = MakeG3();
   const VIOGroup h = MakeG3b();
 
   testLieGroupDerivativesN<33>(result_, name_, id, g);
   testLieGroupDerivativesN<33>(result_, name_, g, h);
-
   testChartDerivativesN<33>(result_, name_, id, g);
   testChartDerivativesN<33>(result_, name_, g, h);
-}
-
-//******************************************************************************
-TEST(VIOGroup, IdBehavior) {
-  const VIOGroup withIds = MakeG1();
-  const VIOGroup withoutIds = MakeG1NoIds();
-  const VIOGroup sameCoreOtherIds(kA1, kBeta1, kB1, MakeQ1A(), {99});
-
-  EXPECT(withIds.inverse().ids() == kIds1);
-  EXPECT(withIds.compose(withoutIds).ids() == kIds1);
-  EXPECT(withoutIds.compose(withIds).ids() == kIds1);
-  EXPECT(withIds.equals(sameCoreOtherIds));
-
 }
 
 int main() {
