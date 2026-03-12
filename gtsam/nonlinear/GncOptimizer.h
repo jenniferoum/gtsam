@@ -54,13 +54,13 @@ enum class Type {
   NullPointer      ///< Factor pointer is null.
 };
 
-bool isNullType(Type type);
+GTSAM_EXPORT bool isNullType(Type type);
 
-bool isNonNoiseModelType(Type type);
+GTSAM_EXPORT bool isNonNoiseModelType(Type type);
 
-bool needsWeightUpdate(Type type);
+GTSAM_EXPORT bool needsWeightUpdate(Type type);
 
-bool hasNoise(Type type);
+GTSAM_EXPORT bool hasNoise(Type type);
 
 /* ************************************************************************* */
 template<class GncParameters>
