@@ -38,7 +38,7 @@ namespace gtsam {
  * Quantile of chi-squared distribution with given degrees of freedom at probability alpha.
  * Equivalent to chi2inv in Matlab.
  */
-static double Chi2inv(const double alpha, const size_t dofs) {
+inline double Chi2inv(const double alpha, const size_t dofs) {
   return internal::chiSquaredQuantile(dofs, alpha);
 }
 
