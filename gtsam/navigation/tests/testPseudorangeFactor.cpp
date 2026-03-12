@@ -246,17 +246,17 @@ TEST(TestPseudorangeFactorArm, Jacobians2) {
 
 // *************************************************************************
 TEST(TestPseudorangeFactorArm, LeverArmZeroError) {
-  // If the body position is set so that antenna_pos = body_pos + nRb * leverArm
+  // If the body position is set so that antenna_pos = body_pos + ecef_R_body * leverArm
   // gives the correct range, the error should be zero.
   // This mirrors the GPSFactorArm test pattern.
   const Point3 leverArm(0.5, -0.3, 1.0);
-  const Rot3 nRb = Rot3::RzRyRx(0.15, -0.30, 0.45);
+  const Rot3 ecef_R_body = Rot3::RzRyRx(0.15, -0.30, 0.45);
   const Point3 satPos(1000.0, 2000.0, 3000.0);
 
   // Choose antenna position, then back-compute body position:
   const Point3 antennaPos(10.0, 20.0, 30.0);
-  const Point3 bodyPos = antennaPos - nRb.matrix() * leverArm;
-  const Pose3 nTb(nRb, bodyPos);
+  const Point3 bodyPos = antennaPos - ecef_R_body.matrix() * leverArm;
+  const Pose3 ecef_T_body(ecef_R_body, bodyPos);
 
   // The true range from antenna to satellite:
   const double trueRange = (antennaPos - satPos).norm();
@@ -270,7 +270,7 @@ TEST(TestPseudorangeFactorArm, LeverArmZeroError) {
   const auto factor = PseudorangeFactorArm(
       Key(0), Key(1), pseudorange, satPos, leverArm, satClkBias);
 
-  const double error = factor.evaluateError(nTb, clockBias)[0];
+  const double error = factor.evaluateError(ecef_T_body, clockBias)[0];
   EXPECT_DOUBLES_EQUAL(0.0, error, 1e-6);
 }
 
@@ -390,12 +390,12 @@ TEST(TestDifferentialPseudorangeFactorArm, Jacobians2) {
 // *************************************************************************
 TEST(TestDifferentialPseudorangeFactorArm, LeverArmZeroError) {
   const Point3 leverArm(0.5, -0.3, 1.0);
-  const Rot3 nRb = Rot3::RzRyRx(0.15, -0.30, 0.45);
+  const Rot3 ecef_R_body = Rot3::RzRyRx(0.15, -0.30, 0.45);
   const Point3 satPos(1000.0, 2000.0, 3000.0);
 
   const Point3 antennaPos(10.0, 20.0, 30.0);
-  const Point3 bodyPos = antennaPos - nRb.matrix() * leverArm;
-  const Pose3 nTb(nRb, bodyPos);
+  const Point3 bodyPos = antennaPos - ecef_R_body.matrix() * leverArm;
+  const Pose3 ecef_T_body(ecef_R_body, bodyPos);
 
   const double trueRange = (antennaPos - satPos).norm();
   const double clockBias = 1e-7;
@@ -410,7 +410,7 @@ TEST(TestDifferentialPseudorangeFactorArm, LeverArmZeroError) {
       Key(0), Key(1), Key(2), pseudorange, satPos, leverArm, satClkBias);
 
   const double error =
-      factor.evaluateError(nTb, clockBias, correction)[0];
+      factor.evaluateError(ecef_T_body, clockBias, correction)[0];
   EXPECT_DOUBLES_EQUAL(0.0, error, 1e-6);
 }
 

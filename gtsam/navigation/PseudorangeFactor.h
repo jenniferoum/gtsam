@@ -234,11 +234,15 @@ struct traits<DifferentialPseudorangeFactor>
  * between the body frame origin and the GNSS antenna location.
  *
  * The antenna position is computed as:
- *   antenna_pos = nTb.translation() + nRb * bL_
+ *   antenna_pos = ecef_T_body.translation() + ecef_R_body * bL_
  *
  * where bL_ is the lever arm from the body origin to the antenna in the body
  * frame. The error model is:
  *   error = ||antenna_pos - satPos|| + c*(dt_u - dt_s) - pseudorange
+ *
+ * @note Both the body pose and satellite position are expected in the ECEF
+ *       frame. Any conversion to/from a local navigation frame (NED/ENU) is
+ *       the caller's responsibility.
  *
  * @ingroup navigation
  */
@@ -268,7 +272,7 @@ class GTSAM_EXPORT PseudorangeFactorArm
   /**
    * Construct a PseudorangeFactorArm.
    *
-   * @param nTbKey Receiver gtsam::Pose3 key (body pose in navigation frame).
+   * @param ecefTbodyKey Receiver gtsam::Pose3 key (body pose in ECEF frame).
    * @param receiverClockBiasKey Receiver clock bias node.
    * @param measuredPseudorange Receiver-measured pseudorange in meters.
    * @param satellitePosition Satellite ECEF position in meters.
@@ -277,7 +281,7 @@ class GTSAM_EXPORT PseudorangeFactorArm
    * @param model 1-D pseudorange noise model.
    */
   PseudorangeFactorArm(
-      Key nTbKey, Key receiverClockBiasKey,
+      Key ecefTbodyKey, Key receiverClockBiasKey,
       double measuredPseudorange, const Point3& satellitePosition,
       const Point3& leverArm, double satelliteClockBias = 0.0,
       const SharedNoiseModel& model = noiseModel::Unit::Create(1));
@@ -297,9 +301,9 @@ class GTSAM_EXPORT PseudorangeFactorArm
               double tol = 1e-9) const override;
 
   /// vector of errors
-  Vector evaluateError(const Pose3& nTb,
+  Vector evaluateError(const Pose3& ecef_T_body,
                        const double& receiverClockBias,
-                       OptionalMatrixType H_nTb,
+                       OptionalMatrixType H_ecef_T_body,
                        OptionalMatrixType HreceiverClockBias) const override;
 
   /// return the lever arm, a position in the body frame
@@ -335,6 +339,10 @@ struct traits<PseudorangeFactorArm>
  * The error model is:
  *   error = ||antenna_pos - satPos|| + c*(dt_u - dt_s) - pseudorange - correction
  *
+ * @note Both the body pose and satellite position are expected in the ECEF
+ *       frame. Any conversion to/from a local navigation frame (NED/ENU) is
+ *       the caller's responsibility.
+ *
  * @ingroup navigation
  */
 class GTSAM_EXPORT DifferentialPseudorangeFactorArm
@@ -363,7 +371,7 @@ class GTSAM_EXPORT DifferentialPseudorangeFactorArm
   /**
    * Construct a DifferentialPseudorangeFactorArm.
    *
-   * @param nTbKey Receiver gtsam::Pose3 key (body pose in navigation frame).
+   * @param ecefTbodyKey Receiver gtsam::Pose3 key (body pose in ECEF frame).
    * @param receiverClockBiasKey Receiver clock bias node.
    * @param differentialCorrectionKey Differential correction node.
    * @param measuredPseudorange Receiver-measured pseudorange in meters.
@@ -373,7 +381,7 @@ class GTSAM_EXPORT DifferentialPseudorangeFactorArm
    * @param model 1-D pseudorange noise model.
    */
   DifferentialPseudorangeFactorArm(
-      Key nTbKey, Key receiverClockBiasKey, Key differentialCorrectionKey,
+      Key ecefTbodyKey, Key receiverClockBiasKey, Key differentialCorrectionKey,
       double measuredPseudorange, const Point3& satellitePosition,
       const Point3& leverArm, double satelliteClockBias = 0.0,
       const SharedNoiseModel& model = noiseModel::Unit::Create(1));
@@ -393,9 +401,10 @@ class GTSAM_EXPORT DifferentialPseudorangeFactorArm
               double tol = 1e-9) const override;
 
   /// vector of errors
-  Vector evaluateError(const Pose3& nTb, const double& receiverClockBias,
+  Vector evaluateError(const Pose3& ecef_T_body,
+                       const double& receiverClockBias,
                        const double& differentialCorrection,
-                       OptionalMatrixType H_nTb,
+                       OptionalMatrixType H_ecef_T_body,
                        OptionalMatrixType HreceiverClockBias,
                        OptionalMatrixType HdifferentialCorrection) const override;
 

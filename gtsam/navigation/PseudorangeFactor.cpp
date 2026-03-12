@@ -138,11 +138,11 @@ Vector DifferentialPseudorangeFactor::evaluateError(
 }
 //***************************************************************************
 PseudorangeFactorArm::PseudorangeFactorArm(
-    const Key nTbKey, const Key receiverClockBiasKey,
+    const Key ecefTbodyKey, const Key receiverClockBiasKey,
     const double measuredPseudorange, const Point3& satellitePosition,
     const Point3& leverArm, const double satelliteClockBias,
     const SharedNoiseModel& model)
-    : Base(model, nTbKey, receiverClockBiasKey),
+    : Base(model, ecefTbodyKey, receiverClockBiasKey),
       PseudorangeBase{measuredPseudorange, satellitePosition,
                       satelliteClockBias},
       bL_(leverArm) {}
@@ -170,12 +170,12 @@ bool PseudorangeFactorArm::equals(const NonlinearFactor& expected,
 
 //***************************************************************************
 Vector PseudorangeFactorArm::evaluateError(
-    const Pose3& nTb, const double& receiverClockBias,
-    OptionalMatrixType H_nTb,
+    const Pose3& ecef_T_body, const double& receiverClockBias,
+    OptionalMatrixType H_ecef_T_body,
     OptionalMatrixType HreceiverClockBias) const {
-  // Compute antenna position in the navigation frame:
-  const Matrix3 nRb = nTb.rotation().matrix();
-  const Point3 antennaPos = nTb.translation() + nRb * bL_;
+  // Compute antenna position in the ECEF frame:
+  const Matrix3 ecef_R_body = ecef_T_body.rotation().matrix();
+  const Point3 antennaPos = ecef_T_body.translation() + ecef_R_body * bL_;
 
   // Apply pseudorange equation: rho = range + c*[dt_u - dt^s]
   const Vector3 position_difference = antennaPos - satPos_;
@@ -184,15 +184,16 @@ Vector PseudorangeFactorArm::evaluateError(
   const double error = rho - pseudorange_;
 
   // Compute associated derivatives:
-  if (H_nTb) {
-    H_nTb->resize(1, 6);
+  if (H_ecef_T_body) {
+    H_ecef_T_body->resize(1, 6);
     if (range < std::numeric_limits<double>::epsilon()) {
-      H_nTb->setZero();
+      H_ecef_T_body->setZero();
     } else {
       // u = unit vector from satellite to antenna
       const Matrix u = (position_difference / range).transpose();  // 1x3
-      H_nTb->block<1, 3>(0, 0) = u * (-nRb * skewSymmetric(bL_));
-      H_nTb->block<1, 3>(0, 3) = u * nRb;
+      H_ecef_T_body->block<1, 3>(0, 0) =
+          u * (-ecef_R_body * skewSymmetric(bL_));
+      H_ecef_T_body->block<1, 3>(0, 3) = u * ecef_R_body;
     }
   }
 
@@ -205,11 +206,11 @@ Vector PseudorangeFactorArm::evaluateError(
 
 //***************************************************************************
 DifferentialPseudorangeFactorArm::DifferentialPseudorangeFactorArm(
-    const Key nTbKey, const Key receiverClockBiasKey,
+    const Key ecefTbodyKey, const Key receiverClockBiasKey,
     const Key differentialCorrectionKey, const double measuredPseudorange,
     const Point3& satellitePosition, const Point3& leverArm,
     const double satelliteClockBias, const SharedNoiseModel& model)
-    : Base(model, nTbKey, receiverClockBiasKey, differentialCorrectionKey),
+    : Base(model, ecefTbodyKey, receiverClockBiasKey, differentialCorrectionKey),
       PseudorangeBase{measuredPseudorange, satellitePosition,
                       satelliteClockBias},
       bL_(leverArm) {}
@@ -237,13 +238,13 @@ bool DifferentialPseudorangeFactorArm::equals(
 
 //***************************************************************************
 Vector DifferentialPseudorangeFactorArm::evaluateError(
-    const Pose3& nTb, const double& receiverClockBias,
-    const double& differentialCorrection, OptionalMatrixType H_nTb,
+    const Pose3& ecef_T_body, const double& receiverClockBias,
+    const double& differentialCorrection, OptionalMatrixType H_ecef_T_body,
     OptionalMatrixType HreceiverClockBias,
     OptionalMatrixType HdifferentialCorrection) const {
-  // Compute antenna position in the navigation frame:
-  const Matrix3 nRb = nTb.rotation().matrix();
-  const Point3 antennaPos = nTb.translation() + nRb * bL_;
+  // Compute antenna position in the ECEF frame:
+  const Matrix3 ecef_R_body = ecef_T_body.rotation().matrix();
+  const Point3 antennaPos = ecef_T_body.translation() + ecef_R_body * bL_;
 
   // Apply pseudorange equation: rho = range + c*[dt_u - dt^s]
   const Vector3 position_difference = antennaPos - satPos_;
@@ -252,15 +253,16 @@ Vector DifferentialPseudorangeFactorArm::evaluateError(
   const double error = rho - pseudorange_ - differentialCorrection;
 
   // Compute associated derivatives:
-  if (H_nTb) {
-    H_nTb->resize(1, 6);
+  if (H_ecef_T_body) {
+    H_ecef_T_body->resize(1, 6);
     if (range < std::numeric_limits<double>::epsilon()) {
-      H_nTb->setZero();
+      H_ecef_T_body->setZero();
     } else {
       // u = unit vector from satellite to antenna
       const Matrix u = (position_difference / range).transpose();  // 1x3
-      H_nTb->block<1, 3>(0, 0) = u * (-nRb * skewSymmetric(bL_));
-      H_nTb->block<1, 3>(0, 3) = u * nRb;
+      H_ecef_T_body->block<1, 3>(0, 0) =
+          u * (-ecef_R_body * skewSymmetric(bL_));
+      H_ecef_T_body->block<1, 3>(0, 3) = u * ecef_R_body;
     }
   }
 
