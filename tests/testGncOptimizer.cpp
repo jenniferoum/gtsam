@@ -47,18 +47,18 @@ using symbol_shorthand::X;
 static double tol = 1e-7;
 
 /* ************************************************************************* */
-TEST(GncOptimizer, Type) {
-  Type null = Type::NullPointer;
+TEST(GncOptimizer, GncFactorType) {
+  GncFactorType null = GncFactorType::NullPointer;
   CHECK(isNullType(null));
 
-  Type nonNoiseModel = Type::NonNoiseModel;
+  GncFactorType nonNoiseModel = GncFactorType::NonNoiseModel;
   CHECK(isNonNoiseModelType(nonNoiseModel));
 
-  Type normal = Type::Normal;
+  GncFactorType normal = GncFactorType::Normal;
   CHECK(needsWeightUpdate(normal));
 
-  Type inlier = Type::Inlier;
-  Type outlier = Type::Outlier;
+  GncFactorType inlier = GncFactorType::Inlier;
+  GncFactorType outlier = GncFactorType::Outlier;
   CHECK(hasNoise(normal));
   CHECK(hasNoise(inlier));
   CHECK(hasNoise(outlier));

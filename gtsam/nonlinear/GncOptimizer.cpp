@@ -26,17 +26,24 @@ double Chi2inv(const double alpha, const size_t dofs) {
 }
 
 /* ************************************************************************* */
-bool isNullType(Type type) { return type == Type::NullPointer; }
+bool isNullType(GncFactorType type) {
+  return type == GncFactorType::NullPointer;
+}
 
 /* ************************************************************************* */
-bool isNonNoiseModelType(Type type) { return type == Type::NonNoiseModel; }
+bool isNonNoiseModelType(GncFactorType type) {
+  return type == GncFactorType::NonNoiseModel;
+}
 
 /* ************************************************************************* */
-bool needsWeightUpdate(Type type) { return type == Type::Normal; }
+bool needsWeightUpdate(GncFactorType type) {
+  return type == GncFactorType::Normal;
+}
 
 /* ************************************************************************* */
-bool hasNoise(Type type) {
-  return type == Type::Normal || type == Type::Inlier || type == Type::Outlier;
+bool hasNoise(GncFactorType type) {
+  return type == GncFactorType::Normal || type == GncFactorType::Inlier ||
+         type == GncFactorType::Outlier;
 }
 
 }  // namespace gtsam
