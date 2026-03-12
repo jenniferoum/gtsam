@@ -19,12 +19,16 @@
 
 namespace gtsam {
 
+/* ************************************************************************* */
 bool isNullType(Type type) { return type == Type::NullPointer; }
 
+/* ************************************************************************* */
 bool isNonNoiseModelType(Type type) { return type == Type::NonNoiseModel; }
 
+/* ************************************************************************* */
 bool needsWeightUpdate(Type type) { return type == Type::Normal; }
 
+/* ************************************************************************* */
 bool hasNoise(Type type) {
   return type == Type::Normal || type == Type::Inlier || type == Type::Outlier;
 }
