@@ -87,6 +87,23 @@ class TestExtendedPose3(GtsamTestCase):
         for i in range(6):
             np.testing.assert_allclose(pose.x(i), x[:, i], atol=1e-12)
 
+    def test_dynamic_alias(self):
+        """Dynamic-k alias is wrapped as ExtendedPose3d."""
+        cls = gtsam.ExtendedPose3d
+        pose = cls(5)
+        self.assertEqual(pose.k(), 5)
+        self.assertEqual(pose.dim(), 18)
+        self.gtsamAssertEquals(pose, cls.Identity(5), 1e-12)
+
+        x = np.array([
+            [1.0, 0.1, -0.2, 0.3, 0.4],
+            [0.5, -0.6, 0.7, -0.8, 0.9],
+            [1.1, 1.2, -1.3, 1.4, -1.5],
+        ])
+        expected = cls(Rot3(), x)
+        np.testing.assert_allclose(expected.xMatrix(), x, atol=1e-12)
+        self.gtsamAssertEquals(expected, cls(expected.matrix()), 1e-12)
+
     @unittest.skipUnless(hasattr(gtsam.ExtendedPose36, "serialize"), "Serialization not enabled")
     def test_serialization_k6(self):
         """Serialization works when boost serialization is enabled."""

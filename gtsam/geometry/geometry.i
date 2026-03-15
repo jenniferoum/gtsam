@@ -775,6 +775,62 @@ class ExtendedPose3 {
   void serialize() const;
 };
 
+class ExtendedPose3d {
+  // Standard Constructors
+  ExtendedPose3d();
+  ExtendedPose3d(size_t k);
+  ExtendedPose3d(const gtsam::ExtendedPose3d& other);
+  ExtendedPose3d(const gtsam::Rot3& R, const gtsam::Matrix& x);
+  ExtendedPose3d(const gtsam::Matrix& T);
+
+  // Testable
+  void print(string s = "") const;
+  bool equals(const gtsam::ExtendedPose3d& other, double tol = 1e-9) const;
+
+  // Access
+  static size_t Dimension(size_t k);
+  size_t k() const;
+  size_t dim() const;
+  gtsam::Rot3 rotation() const;
+  gtsam::Point3 x(size_t i) const;
+  gtsam::Matrix xMatrix() const;
+
+  // Group
+  static gtsam::ExtendedPose3d Identity(size_t k = 0);
+  gtsam::ExtendedPose3d inverse() const;
+  gtsam::ExtendedPose3d compose(const gtsam::ExtendedPose3d& g) const;
+  gtsam::ExtendedPose3d between(const gtsam::ExtendedPose3d& g) const;
+
+  // Operator Overloads
+  gtsam::ExtendedPose3d operator*(const gtsam::ExtendedPose3d& other) const;
+
+  // Manifold
+  gtsam::ExtendedPose3d retract(gtsam::Vector v) const;
+  gtsam::Vector localCoordinates(const gtsam::ExtendedPose3d& g) const;
+
+  // Lie Group
+  static gtsam::ExtendedPose3d Expmap(gtsam::Vector xi);
+  static gtsam::Vector Logmap(const gtsam::ExtendedPose3d& pose);
+  static gtsam::Matrix ExpmapDerivative(gtsam::Vector xi);
+  static gtsam::Matrix LogmapDerivative(gtsam::Vector xi);
+  static gtsam::Matrix LogmapDerivative(const gtsam::ExtendedPose3d& pose);
+
+  // Matrix Lie Group
+  gtsam::Matrix AdjointMap() const;
+  gtsam::Vector Adjoint(gtsam::Vector xi_b) const;
+  gtsam::Vector AdjointTranspose(gtsam::Vector x) const;
+  static gtsam::Matrix adjointMap(gtsam::Vector xi);
+  static gtsam::Vector adjoint(gtsam::Vector xi, gtsam::Vector y);
+  static gtsam::Vector adjointTranspose(gtsam::Vector xi, gtsam::Vector y);
+  gtsam::Vector vec() const;
+  gtsam::Matrix matrix() const;
+  static gtsam::Matrix Hat(const gtsam::Vector& xi);
+  static gtsam::Vector Vee(const gtsam::Matrix& X);
+
+  // enabling serialization functionality
+  void serialize() const;
+};
+
 #include <gtsam/geometry/SL4.h>
 class SL4 {
   // Standard constructors
