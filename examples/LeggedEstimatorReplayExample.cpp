@@ -655,6 +655,9 @@ CommandLineArgs parseCommandLine(int argc, char* argv[]) {
       args.robustContactHuberK = std::stod(argv[++index]);
     } else if (flag == "--marginalize-leaving-foot") {
       args.marginalizeLeavingFoot = true;
+    } else if (flag == "--no-marginalize-leaving-foot" ||
+               flag == "--disable-marginalize-leaving-foot") {
+      args.marginalizeLeavingFoot = false;
     } else if (flag == "--variants" && index + 1 < argc) {
       args.filterNames = splitCommaSeparated(argv[++index]);
     } else if (flag == "--disable-full-contact-initialization") {
@@ -672,7 +675,7 @@ CommandLineArgs parseCommandLine(int argc, char* argv[]) {
                    "[--contact-sigma-z <meters>] "
                    "[--robust-contact-noise] "
                    "[--robust-contact-huber-k <threshold>] "
-                   "[--marginalize-leaving-foot] "
+                   "[--marginalize-leaving-foot|--no-marginalize-leaving-foot] "
                    "[--variants <comma,separated,list>] "
                    "[--disable-full-contact-initialization]\n";
       std::exit(0);

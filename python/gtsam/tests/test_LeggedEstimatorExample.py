@@ -3,6 +3,7 @@
 from pathlib import Path
 import tempfile
 import unittest
+import importlib.util
 
 import numpy as np
 
@@ -18,6 +19,23 @@ from gtsam.examples.LeggedEstimatorExample import (
     replay_legged_variants,
     write_contact_side_animation_gif,
 )
+
+
+def _has_plotly_with_image_export() -> bool:
+    """Return True if plotly is installed and provides io.to_image for export."""
+    spec = importlib.util.find_spec("plotly")
+    if spec is None:
+        return False
+    try:
+        import plotly.io as pio  # type: ignore[import]
+    except Exception:
+        return False
+    return hasattr(pio, "to_image")
+
+
+def _has_pil() -> bool:
+    """Return True if Pillow (PIL) is installed."""
+    return importlib.util.find_spec("PIL") is not None
 
 
 class TestLeggedEstimatorExample(unittest.TestCase):
@@ -72,6 +90,10 @@ class TestLeggedEstimatorExample(unittest.TestCase):
         self.assertAlmostEqual(displayed[0]["timestamp_s"], 0.0)
         self.assertGreaterEqual(result["trajectory"][-1]["timestamp_s"], start_time_s)
 
+    @unittest.skipUnless(
+        _has_plotly_with_image_export(),
+        "optional dependency 'plotly' with image export support is required for this test",
+    )
     def test_contact_animation_builds_from_replay_result(self):
         dataset = load_legged_csv_dataset()
         estimator = make_legged_estimator("fixed_lag_single_bias", dataset["foot_names"])
@@ -100,6 +122,10 @@ class TestLeggedEstimatorExample(unittest.TestCase):
         self.assertTrue(bool(figure2d.layout.sliders))
         self.assertTrue(bool(figure2d.layout.updatemenus))
 
+    @unittest.skipUnless(
+        _has_plotly_with_image_export() and _has_pil(),
+        "optional dependencies 'plotly' (with image export) and 'PIL' are required for this test",
+    )
     def test_contact_side_animation_gif_writes_file(self):
         dataset = load_legged_csv_dataset()
         estimator = make_legged_estimator("fixed_lag_single_bias", dataset["foot_names"])

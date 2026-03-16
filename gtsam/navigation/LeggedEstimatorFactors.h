@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file LeggedEstimator.h
+ * @file LeggedEstimatorFactors.h
  * @date February 2026
  * @author Frank Dellaert
  */
