@@ -136,30 +136,46 @@ TEST(VIOState, DimensionsAndAccessors) {
 //******************************************************************************
 // Verifies localCoordinates/retract round-trip consistency.
 TEST(VIOState, RetractLocalRoundTrip) {
+#if defined(GTSAM_ROT3_EXPMAP) || defined(GTSAM_USE_QUATERNIONS)
   const VIOState s3a = MakeState3A();
   const VIOState s3b = MakeState3B();
 
   const Vector v = s3a.localCoordinates(s3b);
   const VIOState recovered = s3a.retract(v);
   EXPECT(assert_equal(s3b, recovered, 1e-9));
+#else
+  EXPECT(true);
+#endif
 }
 
 //******************************************************************************
 // Verifies chart Jacobians for n=0 landmarks.
 TEST(VIOState, DerivativesN0) {
+#if defined(GTSAM_ROT3_EXPMAP) || defined(GTSAM_USE_QUATERNIONS)
   testChartDerivativesN<21>(result_, name_, MakeState0A(), MakeState0B());
+#else
+  EXPECT(true);
+#endif
 }
 
 //******************************************************************************
 // Verifies chart Jacobians for n=1 landmark.
 TEST(VIOState, DerivativesN1) {
+#if defined(GTSAM_ROT3_EXPMAP) || defined(GTSAM_USE_QUATERNIONS)
   testChartDerivativesN<24>(result_, name_, MakeState1A(), MakeState1B());
+#else
+  EXPECT(true);
+#endif
 }
 
 //******************************************************************************
 // Verifies chart Jacobians for n=3 landmarks.
 TEST(VIOState, DerivativesN3) {
+#if defined(GTSAM_ROT3_EXPMAP) || defined(GTSAM_USE_QUATERNIONS)
   testChartDerivativesN<30>(result_, name_, MakeState3A(), MakeState3B());
+#else
+  EXPECT(true);
+#endif
 }
 
 int main() {

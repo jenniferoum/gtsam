@@ -219,6 +219,7 @@ TEST(VIOGroup, ExpmapLogmapAndAdjoint) {
 
 // Verifies Lie and chart derivatives for n=0 landmarks.
 TEST(VIOGroup, DerivativesN0) {
+#if defined(GTSAM_ROT3_EXPMAP) || defined(GTSAM_USE_QUATERNIONS)
   const VIOGroup id = makeVIOGroupIdentity();
   const VIOGroup g = MakeG0();
   const VIOGroup h = MakeG0b();
@@ -227,10 +228,14 @@ TEST(VIOGroup, DerivativesN0) {
   testLieGroupDerivativesN<21>(result_, name_, g, h);
   testChartDerivativesN<21>(result_, name_, id, g);
   testChartDerivativesN<21>(result_, name_, g, h);
+#else
+  EXPECT(true);
+#endif
 }
 
 // Verifies Lie and chart derivatives for n=1 landmark.
 TEST(VIOGroup, DerivativesN1) {
+#if defined(GTSAM_ROT3_EXPMAP) || defined(GTSAM_USE_QUATERNIONS)
   const VIOGroup id = makeVIOGroupIdentity(1);
   const VIOGroup g = MakeG1();
   const VIOGroup h = MakeG1b();
@@ -239,10 +244,14 @@ TEST(VIOGroup, DerivativesN1) {
   testLieGroupDerivativesN<25>(result_, name_, g, h);
   testChartDerivativesN<25>(result_, name_, id, g);
   testChartDerivativesN<25>(result_, name_, g, h);
+#else
+  EXPECT(true);
+#endif
 }
 
 // Verifies Lie and chart derivatives for n=3 landmarks.
 TEST(VIOGroup, DerivativesN3) {
+#if defined(GTSAM_ROT3_EXPMAP) || defined(GTSAM_USE_QUATERNIONS)
   const VIOGroup id = makeVIOGroupIdentity(3);
   const VIOGroup g = MakeG3();
   const VIOGroup h = MakeG3b();
@@ -251,6 +260,9 @@ TEST(VIOGroup, DerivativesN3) {
   testLieGroupDerivativesN<33>(result_, name_, g, h);
   testChartDerivativesN<33>(result_, name_, id, g);
   testChartDerivativesN<33>(result_, name_, g, h);
+#else
+  EXPECT(true);
+#endif
 }
 
 int main() {

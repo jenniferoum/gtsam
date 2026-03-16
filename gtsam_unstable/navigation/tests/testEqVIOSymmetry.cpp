@@ -39,41 +39,9 @@ using namespace gtsam;
 using namespace gtsam::eqvio;
 
 namespace eqvio_test_util {
-
-  class SimplePinholeCamera final : public VIOCameraModel {
-   public:
-    explicit SimplePinholeCamera(double fx = 450.0, double fy = 450.0,
-                                 double cx = 400.0, double cy = 240.0)
-        : fx_(fx), fy_(fy), cx_(cx), cy_(cy) {}
-  
-    Point2 projectPoint(const Point3& p) const override {
-      if (std::abs(p.z()) < 1e-12) {
-        throw std::invalid_argument("SimplePinholeCamera: z is near zero");
-      }
-      return Point2(fx_ * p.x() / p.z() + cx_, fy_ * p.y() / p.z() + cy_);
-    }
-  
-    Vector3 undistortPoint(const Point2& y) const override {
-      return Vector3((y.x() - cx_) / fx_, (y.y() - cy_) / fy_, 1.0);
-    }
-  
-    Matrix23 projectionJacobian(const Vector3& y) const override {
-      if (std::abs(y.z()) < 1e-12) {
-        throw std::invalid_argument("SimplePinholeCamera: z is near zero");
-      }
-      Matrix23 J;
-      const double z2 = y.z() * y.z();
-      J << fx_ / y.z(), 0.0, -fx_ * y.x() / z2, 0.0, fy_ / y.z(),
-          -fy_ * y.y() / z2;
-      return J;
-    }
-  
-   private:
-    double fx_, fy_, cx_, cy_;
-  };
-  
   inline std::shared_ptr<const VIOCameraModel> CreateDefaultCamera() {
-    return std::make_shared<SimplePinholeCamera>();
+    return std::make_shared<VIOCameraModel>(
+        Cal3_S2(450.0, 450.0, 0.0, 400.0, 240.0));
   }
   
   inline VIOSE23 MakeA(const Rot3& R, const Point3& t, const Vector3& w) {
