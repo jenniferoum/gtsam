@@ -136,8 +136,8 @@ class GTSAM_EXPORT LeggedEstimator {
  *   estimation." The International Journal of Robotics Research 39, no. 4
  *   (2020): 402-430.
  */
-class GTSAM_EXPORT LeggedInvariantEKF : public LeftLinearEKF<ExtendedPose3d>,
-                                        public LeggedEstimator {
+class LeggedInvariantEKF : public LeftLinearEKF<ExtendedPose3d>,
+                           public LeggedEstimator {
  public:
   using EkfBase = LeftLinearEKF<ExtendedPose3d>;
   using TangentVector = typename EkfBase::TangentVector;
@@ -145,9 +145,10 @@ class GTSAM_EXPORT LeggedInvariantEKF : public LeftLinearEKF<ExtendedPose3d>,
   using Covariance = typename EkfBase::Covariance;
 
   /// Construct the ExtendedPose3-based EKF.
-  LeggedInvariantEKF(const NavState& navState0, const Matrix& footholds0,
-                     const Matrix& P0, const LeggedEstimatorParams& params,
-                     const std::vector<std::string>& footNames = {});
+  GTSAM_EXPORT LeggedInvariantEKF(
+      const NavState& navState0, const Matrix& footholds0, const Matrix& P0,
+      const LeggedEstimatorParams& params,
+      const std::vector<std::string>& footNames = {});
 
   /// Return the current full covariance.
   Matrix covariance() const { return EkfBase::covariance(); }
@@ -172,11 +173,12 @@ class GTSAM_EXPORT LeggedInvariantEKF : public LeftLinearEKF<ExtendedPose3d>,
   }
 
   /// Predict forward using one IMU sample.
-  void predict(const Vector3& omegaBody, const Vector3& specificForceBody,
-               double dt) override;
+  GTSAM_EXPORT void predict(const Vector3& omegaBody,
+                            const Vector3& specificForceBody,
+                            double dt) override;
 
   /// Process all currently active contacts for the current step.
-  void processContacts(
+  GTSAM_EXPORT void processContacts(
       const std::vector<ContactMeasurement>& activeContacts) override;
 
   /// Autonomous flow used by the left-linear prediction step.
@@ -194,23 +196,28 @@ class GTSAM_EXPORT LeggedInvariantEKF : public LeftLinearEKF<ExtendedPose3d>,
     }
 
     /// Advance the position block while keeping velocity and footholds fixed.
-    ExtendedPose3d operator()(const ExtendedPose3d& state) const;
+    ExtendedPose3d operator()(const ExtendedPose3d& state) const {
+      Matrix blocks = state.xMatrix();
+      blocks.col(0) += blocks.col(1) * dt;
+      return ExtendedPose3d(state.rotation(), blocks);
+    }
     size_t numFeet;
     double dt;
   };
 
   /// Build an `ExtendedPose3(2+k)` state from base state and world footholds.
-  static ExtendedPose3d MakeState(const NavState& navState,
-                                  const Matrix& footholds);
+  GTSAM_EXPORT static ExtendedPose3d MakeState(const NavState& navState,
+                                               const Matrix& footholds);
 
   /// Build the gravity-only left increment for one prediction step.
-  static ExtendedPose3d GravityIncrement(size_t numFeet, const Vector3& gravity,
-                                         double dt);
+  GTSAM_EXPORT static ExtendedPose3d GravityIncrement(size_t numFeet,
+                                                      const Vector3& gravity,
+                                                      double dt);
 
   /// Build the IMU-only right increment for one prediction step.
-  static ExtendedPose3d ImuIncrement(size_t numFeet, const Vector3& omegaBody,
-                                     const Vector3& specificForceBody,
-                                     double dt);
+  GTSAM_EXPORT static ExtendedPose3d ImuIncrement(
+      size_t numFeet, const Vector3& omegaBody,
+      const Vector3& specificForceBody, double dt);
 
   /// Return the `ExtendedPose3` block index corresponding to a foot number.
   static size_t FootColumn(size_t foot) { return 2 + foot; }
@@ -255,12 +262,13 @@ class GTSAM_EXPORT LeggedInvariantEKF : public LeftLinearEKF<ExtendedPose3d>,
  * measurement phase as a small nonlinear graph solve rather than as sequential
  * EKF corrections.
  */
-class GTSAM_EXPORT LeggedInvariantIEKF : public LeggedInvariantEKF {
+class LeggedInvariantIEKF : public LeggedInvariantEKF {
  public:
   /// Construct the graph-update ExtendedPose3 estimator.
-  LeggedInvariantIEKF(const NavState& navState0, const Matrix& footholds0,
-                      const Matrix& P0, const LeggedEstimatorParams& params,
-                      const std::vector<std::string>& footNames = {});
+  GTSAM_EXPORT LeggedInvariantIEKF(
+      const NavState& navState0, const Matrix& footholds0, const Matrix& P0,
+      const LeggedEstimatorParams& params,
+      const std::vector<std::string>& footNames = {});
 
  protected:
   void applyContactUpdate(

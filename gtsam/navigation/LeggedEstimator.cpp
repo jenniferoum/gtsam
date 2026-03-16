@@ -562,14 +562,6 @@ ExtendedPose3d LeggedInvariantEKF::MakeState(const NavState& navState,
 }
 
 /* ************************************************************************* */
-ExtendedPose3d LeggedInvariantEKF::AutonomousFlow::operator()(
-    const ExtendedPose3d& state) const {
-  Matrix blocks = state.xMatrix();
-  blocks.col(0) += blocks.col(1) * dt;
-  return ExtendedPose3d(state.rotation(), blocks);
-}
-
-/* ************************************************************************* */
 ExtendedPose3d LeggedInvariantEKF::GravityIncrement(size_t numFeet,
                                                     const Vector3& gravity,
                                                     double dt) {
