@@ -136,8 +136,8 @@ class GTSAM_EXPORT LeggedEstimator {
  *   estimation." The International Journal of Robotics Research 39, no. 4
  *   (2020): 402-430.
  */
-class LeggedInvariantEKF : public LeftLinearEKF<ExtendedPose3d>,
-                           public LeggedEstimator {
+class GTSAM_EXPORT LeggedInvariantEKF : public LeftLinearEKF<ExtendedPose3d>,
+                                        public LeggedEstimator {
  public:
   using EkfBase = LeftLinearEKF<ExtendedPose3d>;
   using TangentVector = typename EkfBase::TangentVector;
@@ -229,9 +229,10 @@ class LeggedInvariantEKF : public LeftLinearEKF<ExtendedPose3d>,
   Matrix footholdMatrix() const {
     return this->X_.xMatrix().rightCols(static_cast<Eigen::Index>(numFeet()));
   }
-  void resetFootToMeasurement(size_t foot, const Vector3& bodyPoint);
-  void marginalizeFoot(size_t foot);
-  virtual void applyContactUpdate(
+  GTSAM_EXPORT void resetFootToMeasurement(size_t foot,
+                                           const Vector3& bodyPoint);
+  GTSAM_EXPORT void marginalizeFoot(size_t foot);
+  GTSAM_EXPORT virtual void applyContactUpdate(
       const std::vector<ContactMeasurement>& activeContacts);
   bool awaitingFullContactInitialization() const {
     return params_.useFullContactInitialization && !fullContactInitialized_;
@@ -262,7 +263,7 @@ class LeggedInvariantEKF : public LeftLinearEKF<ExtendedPose3d>,
  * measurement phase as a small nonlinear graph solve rather than as sequential
  * EKF corrections.
  */
-class LeggedInvariantIEKF : public LeggedInvariantEKF {
+class GTSAM_EXPORT LeggedInvariantIEKF : public LeggedInvariantEKF {
  public:
   /// Construct the graph-update ExtendedPose3 estimator.
   GTSAM_EXPORT LeggedInvariantIEKF(
