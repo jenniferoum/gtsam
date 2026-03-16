@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <stdexcept>
 #include <string>
 
@@ -62,11 +63,11 @@ Rot3 RotationFromTwoVectors(const Vector3& from, const Vector3& to) {
 std::vector<int> QIdsForMeasurement(const VIOGroup& X,
                                     const VisionMeasurement& measurement) {
   if (groupN(X) == 0) return {};
-  if (measurement.camCoordinates.size() != groupN(X)) {
+  if (measurement.size() != groupN(X)) {
     throw std::invalid_argument(
         "outputGroupAction: measurement count must match group landmark count");
   }
-  return measurement.getIds();
+  return measurementIds(measurement);
 }
 
 Matrix NumericalDerivativeActionWrtGroup(
@@ -82,48 +83,6 @@ Matrix NumericalDerivativeActionWrtGroup(
     const VIOState yPlus = f(X.retract(dx));
     dx(j) = -h;
     const VIOState yMinus = f(X.retract(dx));
-
-    H.col(j) =
-        (y0.localCoordinates(yPlus) - y0.localCoordinates(yMinus)) / (2.0 * h);
-  }
-
-  return H;
-}
-
-Matrix NumericalDerivativeOutputWrtGroup(
-    const std::function<VisionMeasurement(const VIOGroup&)>& f, const VIOGroup& X,
-    const VisionMeasurement& y0, double h = 1e-6) {
-  const int n = static_cast<int>(groupDim(X));
-  const int m = y0.dim();
-  Matrix H = Matrix::Zero(m, n);
-
-  for (int j = 0; j < n; ++j) {
-    Vector dx = Vector::Zero(n);
-    dx(j) = h;
-    const VisionMeasurement yPlus = f(X.retract(dx));
-    dx(j) = -h;
-    const VisionMeasurement yMinus = f(X.retract(dx));
-
-    H.col(j) =
-        (y0.localCoordinates(yPlus) - y0.localCoordinates(yMinus)) / (2.0 * h);
-  }
-
-  return H;
-}
-
-Matrix NumericalDerivativeOutputWrtMeasurement(
-    const std::function<VisionMeasurement(const VisionMeasurement&)>& f,
-    const VisionMeasurement& y, const VisionMeasurement& y0, double h = 1e-6) {
-  const int n = y.dim();
-  const int m = y0.dim();
-  Matrix H = Matrix::Zero(m, n);
-
-  for (int j = 0; j < n; ++j) {
-    Vector dy = Vector::Zero(n);
-    dy(j) = h;
-    const VisionMeasurement yPlus = f(y.retract(dy));
-    dy(j) = -h;
-    const VisionMeasurement yMinus = f(y.retract(dy));
 
     H.col(j) =
         (y0.localCoordinates(yPlus) - y0.localCoordinates(yMinus)) / (2.0 * h);
@@ -168,11 +127,10 @@ VIOState stateGroupAction(const VIOGroup& X, const VIOState& state) {
 }
 
 VisionMeasurement outputGroupAction(const VIOGroup& X,
-                                    const VisionMeasurement& measurement) {
+                                    const VisionMeasurement& measurement,
+                                    const std::shared_ptr<const VIOCameraModel>& camera) {
   VisionMeasurement out;
-  out.stamp = measurement.stamp;
-  out.camera = measurement.camera;
-  if (!measurement.camera) {
+  if (!camera) {
     throw std::invalid_argument("outputGroupAction: camera model is null");
   }
 
@@ -184,13 +142,13 @@ VisionMeasurement outputGroupAction(const VIOGroup& X,
 
   for (size_t i = 0; i < groupN(X); ++i) {
     const int id = qIds[i];
-    const auto it = measurement.camCoordinates.find(id);
-    if (it == measurement.camCoordinates.end()) continue;
+    const auto it = measurement.find(id);
+    if (it == measurement.end()) continue;
 
-    const Vector3 bearing = measurement.camera->undistortPoint(it->second);
+    const Vector3 bearing = camera->undistortPoint(it->second);
     const Vector3 rotated =
         SOT3Rotation(groupQ(X)[i]).matrix().transpose() * bearing;
-    out.camCoordinates[id] = measurement.camera->projectPoint(rotated);
+    out[id] = camera->projectPoint(rotated);
   }
 
   return out;
@@ -316,9 +274,8 @@ VisionMeasurement measureSystemState(
   }
 
   VisionMeasurement out;
-  out.camera = camera;
   for (const Landmark& lm : state.cameraLandmarks) {
-    out.camCoordinates[lm.id] = camera->projectPoint(lm.p);
+    out[lm.id] = camera->projectPoint(lm.p);
   }
   return out;
 }
@@ -362,27 +319,6 @@ VIOState VIOSymmetry::operator()(
   }
 
   return y;
-}
-
-VisionMeasurement VIOOutputSymmetry::operator()(
-    const VisionMeasurement& y, const VIOGroup& X,
-    OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H_y,
-    OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H_X) const {
-  const VisionMeasurement out = outputGroupAction(X, y);
-
-  if (H_X) {
-    auto f = [&y, this](const VIOGroup& g) { return this->operator()(y, g); };
-    *H_X = NumericalDerivativeOutputWrtGroup(f, X, out);
-  }
-
-  if (H_y) {
-    auto f = [&X, this](const VisionMeasurement& yy) {
-      return this->operator()(yy, X);
-    };
-    *H_y = NumericalDerivativeOutputWrtMeasurement(f, y, out);
-  }
-
-  return out;
 }
 
 }  // namespace eqvio

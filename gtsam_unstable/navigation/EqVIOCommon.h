@@ -34,7 +34,6 @@
 #include <memory>
 #include <string>
 #include <cmath>
-#include <iostream>
 #include <stdexcept>
 #include <vector>
 
@@ -177,121 +176,50 @@ class GTSAM_UNSTABLE_EXPORT VIOCameraModel
 };
 
 /// Vision measurement keyed by landmark id.
-struct GTSAM_UNSTABLE_EXPORT VisionMeasurement {
-  static constexpr int dimension = Eigen::Dynamic;
+using VisionMeasurement = std::map<int, Point2>;
 
-  using TangentVector = Vector;
-  using Jacobian = Matrix;
-  using ChartJacobian = OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic>;
-
-  double stamp = -1.0;
-  std::map<int, Point2> camCoordinates;
-  std::shared_ptr<const VIOCameraModel> camera;
-
-  /// Number of landmark measurements.
-  size_t n() const { return camCoordinates.size(); }
-
-  /// Ordered landmark ids matching map iteration order.
-  std::vector<int> getIds() const {
-    std::vector<int> ids;
-    ids.reserve(camCoordinates.size());
-    for (const auto& [id, _] : camCoordinates) {
-      (void)_;
-      ids.push_back(id);
-    }
-    return ids;
+/// Ordered landmark ids matching map iteration order.
+inline std::vector<int> measurementIds(const VisionMeasurement& measurement) {
+  std::vector<int> ids;
+  ids.reserve(measurement.size());
+  for (const auto& [id, _] : measurement) {
+    (void)_;
+    ids.push_back(id);
   }
-
-  int dim() const { return static_cast<int>(2 * camCoordinates.size()); }
-
-  operator Vector() const {
-    Vector v = Vector::Zero(dim());
-    int i = 0;
-    for (const auto& [_, y] : camCoordinates) {
-      (void)_;
-      v.segment<2>(2 * i) = y;
-      ++i;
-    }
-    return v;
-  }
-
-  /// Retract in Euclidean chart.
-  VisionMeasurement retract(const TangentVector& v, ChartJacobian H1 = {},
-                            ChartJacobian H2 = {}) const {
-    if (v.size() != dim()) {
-      throw std::invalid_argument(
-          "VisionMeasurement::retract: unexpected tangent dimension");
-    }
-
-    VisionMeasurement out(*this);
-    int i = 0;
-    for (auto& [_, y] : out.camCoordinates) {
-      (void)_;
-      y += v.segment<2>(2 * i);
-      ++i;
-    }
-
-    if (H1) *H1 = Matrix::Identity(dim(), dim());
-    if (H2) *H2 = Matrix::Identity(dim(), dim());
-    return out;
-  }
-
-  /// Local coordinates in Euclidean chart.
-  TangentVector localCoordinates(const VisionMeasurement& other,
-                                 ChartJacobian H1 = {},
-                                 ChartJacobian H2 = {}) const {
-    TangentVector v = Vector::Zero(dim());
-    int i = 0;
-    auto it1 = camCoordinates.begin();
-    auto it2 = other.camCoordinates.begin();
-    for (; it1 != camCoordinates.end(); ++it1, ++it2) {
-      v.segment<2>(2 * i) = it2->second - it1->second;
-      ++i;
-    }
-
-    if (H1) *H1 = -Matrix::Identity(dim(), dim());
-    if (H2) *H2 = Matrix::Identity(dim(), dim());
-    return v;
-  }
-
-  void print(const std::string& s = "") const {
-    if (!s.empty()) std::cout << s << std::endl;
-    std::cout << "VisionMeasurement(n=" << n() << ")" << std::endl;
-    for (const auto& [id, y] : camCoordinates) {
-      std::cout << "  id " << id << ": " << y.transpose() << std::endl;
-    }
-  }
-  bool equals(const VisionMeasurement& other, double tol = 1e-9) const {
-    if (stamp != other.stamp) return false;
-    if (camCoordinates.size() != other.camCoordinates.size()) return false;
-
-    auto it1 = camCoordinates.begin();
-    auto it2 = other.camCoordinates.begin();
-    for (; it1 != camCoordinates.end(); ++it1, ++it2) {
-      if (it1->first != it2->first) return false;
-      if (!equal_with_abs_tol(it1->second, it2->second, tol)) return false;
-    }
-    return true;
-  }
-};
-
-inline VisionMeasurement operator-(const VisionMeasurement& y1,
-                                   const VisionMeasurement& y2) {
-  VisionMeasurement out;
-  out.stamp = y1.stamp;
-  out.camera = y1.camera ? y1.camera : y2.camera;
-
-  auto it1 = y1.camCoordinates.begin();
-  auto it2 = y2.camCoordinates.begin();
-  for (; it1 != y1.camCoordinates.end(); ++it1, ++it2) {
-    out.camCoordinates[it1->first] = it1->second - it2->second;
-  }
-  return out;
+  return ids;
 }
 
-inline VisionMeasurement operator+(const VisionMeasurement& y,
-                                   const Vector& eta) {
-  return y.retract(eta);
+/// Flatten measurements to [u0,v0,u1,v1,...] in map iteration order.
+inline Vector measurementVector(const VisionMeasurement& measurement) {
+  Vector v = Vector::Zero(static_cast<int>(2 * measurement.size()));
+  int i = 0;
+  for (const auto& [_, y] : measurement) {
+    (void)_;
+    v.segment<2>(2 * i) = y;
+    ++i;
+  }
+  return v;
+}
+
+/// Compute lhs-rhs in flattened measurement coordinates.
+inline Vector measurementDifference(const VisionMeasurement& lhs,
+                                    const VisionMeasurement& rhs) {
+  if (lhs.size() != rhs.size()) {
+    throw std::invalid_argument("measurementDifference: size mismatch");
+  }
+
+  Vector diff = Vector::Zero(static_cast<int>(2 * lhs.size()));
+  auto itL = lhs.begin();
+  auto itR = rhs.begin();
+  int i = 0;
+  for (; itL != lhs.end(); ++itL, ++itR) {
+    if (itL->first != itR->first) {
+      throw std::invalid_argument("measurementDifference: id mismatch");
+    }
+    diff.segment<2>(2 * i) = itL->second - itR->second;
+    ++i;
+  }
+  return diff;
 }
 
 /// Readable accessors for the composed ProductLieGroup VIOGroup.
@@ -319,43 +247,5 @@ inline VIOGroup makeVIOGroupIdentity(size_t n = 0) {
 }
 
 }  // namespace eqvio
-
-template <>
-struct traits<eqvio::VisionMeasurement> {
-  static constexpr int dimension = Eigen::Dynamic;
-  using TangentVector = Vector;
-  using ManifoldType = eqvio::VisionMeasurement;
-  using structure_category = manifold_tag;
-
-  static int GetDimension(const eqvio::VisionMeasurement& y) { return y.dim(); }
-
-  static eqvio::VisionMeasurement Retract(
-      const eqvio::VisionMeasurement& y, const TangentVector& v,
-      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H1 = {},
-      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H2 = {}) {
-    return y.retract(v, H1, H2);
-  }
-
-  static TangentVector Local(
-      const eqvio::VisionMeasurement& y, const eqvio::VisionMeasurement& other,
-      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H1 = {},
-      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H2 = {}) {
-    return y.localCoordinates(other, H1, H2);
-  }
-
-  static void Print(const eqvio::VisionMeasurement& y,
-                    const std::string& s = "") {
-    y.print(s);
-  }
-
-  static bool Equals(const eqvio::VisionMeasurement& y1,
-                     const eqvio::VisionMeasurement& y2, double tol = 1e-9) {
-    return y1.equals(y2, tol);
-  }
-};
-
-template <>
-struct traits<const eqvio::VisionMeasurement>
-    : traits<eqvio::VisionMeasurement> {};
 
 }  // namespace gtsam

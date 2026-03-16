@@ -98,8 +98,6 @@ namespace eqvio_test_util {
       const std::vector<int>& ids,
       const std::shared_ptr<const VIOCameraModel>& camera) {
     VisionMeasurement measurement;
-    measurement.camera = camera;
-    measurement.stamp = 0.0;
   
     for (int id : ids) {
       Vector3 p;
@@ -110,7 +108,7 @@ namespace eqvio_test_util {
       while (p.z() < 1e-1) {
         p = Vector3::Random().normalized();
       }
-      measurement.camCoordinates[id] = camera->projectPoint(p);
+      measurement[id] = camera->projectPoint(p);
     }
     return measurement;
   }
@@ -139,10 +137,10 @@ namespace eqvio_test_util {
   
   inline double MeasurementDistance(const VisionMeasurement& y1,
                                     const VisionMeasurement& y2) {
-    Vector y1vec = Vector(y1);
-    Vector y2vec = Vector(y2);
+    Vector y1vec = measurementVector(y1);
+    Vector y2vec = measurementVector(y2);
     const double scale = std::max(1.0, std::max(y1vec.norm(), y2vec.norm()));
-    const Vector diff = Vector(y1 - y2);
+    const Vector diff = measurementDifference(y1, y2);
     return diff.norm() / scale;
   }
   
@@ -362,12 +360,13 @@ TEST(VIOSymmetry, OutputActionEqvioPort) {
     const VIOGroup X2 = RandomGroupElement(ids);
     const VisionMeasurement y0 = RandomVisionMeasurement(ids, camera);
 
-    const VisionMeasurement y0Id = outputGroupAction(groupId, y0);
+    const VisionMeasurement y0Id = outputGroupAction(groupId, y0, camera);
     const double dist0Id = MeasurementDistance(y0Id, y0);
     EXPECT(dist0Id <= 1e-5);
 
-    const VisionMeasurement y1 = outputGroupAction(X2, outputGroupAction(X1, y0));
-    const VisionMeasurement y2 = outputGroupAction(X1 * X2, y0);
+    const VisionMeasurement y1 =
+        outputGroupAction(X2, outputGroupAction(X1, y0, camera), camera);
+    const VisionMeasurement y2 = outputGroupAction(X1 * X2, y0, camera);
     const double dist12 = MeasurementDistance(y1, y2);
     EXPECT(dist12 <= 1e-5);
   }
@@ -387,7 +386,7 @@ TEST(VIOSymmetry, OutputEquivarianceEqvioPort) {
     const VisionMeasurement y1 =
         measureSystemState(stateGroupAction(X, xi0), camera);
     const VisionMeasurement y2 =
-        outputGroupAction(X, measureSystemState(xi0, camera));
+        outputGroupAction(X, measureSystemState(xi0, camera), camera);
     const double dist12 = MeasurementDistance(y1, y2);
     EXPECT(dist12 <= 1e-5);
   }
