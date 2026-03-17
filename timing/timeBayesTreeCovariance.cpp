@@ -1,3 +1,20 @@
+/* ----------------------------------------------------------------------------
+
+ * GTSAM Copyright 2010, Georgia Tech Research Corporation,
+ * Atlanta, Georgia 30332-0415
+ * All Rights Reserved
+ * Authors: Frank Dellaert, et al. (see THANKS for the full author list)
+
+ * See LICENSE for the license information
+ * -------------------------------------------------------------------------- */
+
+/**
+ * @file    timeBayesTreeCovariance.cpp
+ * @brief   Benchmark Bayes-tree covariance recovery variants.
+ * @date    March 2026
+ * @author  Frank Dellaert
+ */
+
 #include <gtsam/config.h>
 #include <gtsam/inference/Ordering.h>
 #include <gtsam/linear/GaussianBayesNet.h>
@@ -27,6 +44,7 @@ using namespace std;
 
 namespace {
 
+/// Covariance-recovery variant used in the benchmark.
 enum class Variant {
   LegacyDense,
   SteinerDense,
@@ -34,6 +52,7 @@ enum class Variant {
   SteinerSolve,
 };
 
+/// One benchmark query together with any selected-block split.
 struct QueryCase {
   string family;
   size_t querySize;
@@ -43,11 +62,13 @@ struct QueryCase {
   bool crossCovariance = false;
 };
 
+/// Structural statistics for the support touched by a query.
 struct SupportStats {
   size_t supportCliques = 0;
   size_t compressedCliques = 0;
 };
 
+/// Timing result for one query under one variant.
 struct RawResult {
   string dataset;
   string ordering;
@@ -64,6 +85,7 @@ struct RawResult {
   size_t reducedStateDim = 0;
 };
 
+/// Grouping key for aggregating repeated benchmark queries.
 struct SummaryKey {
   string dataset;
   string ordering;
@@ -79,6 +101,7 @@ struct SummaryKey {
   }
 };
 
+/// Hash function for SummaryKey.
 struct SummaryKeyHash {
   size_t operator()(const SummaryKey& key) const {
     size_t seed = std::hash<string>()(key.dataset);
@@ -96,6 +119,7 @@ struct SummaryKeyHash {
   }
 };
 
+/// Aggregated timing samples for one SummaryKey.
 struct SummaryValue {
   vector<double> totalMs;
   vector<double> reductionMs;
@@ -105,6 +129,7 @@ struct SummaryValue {
   size_t reducedStateDim = 0;
 };
 
+/// Return a deduplicated, sorted key list.
 KeyVector uniqueSortedKeys(const KeyVector& keys) {
   KeyVector result = keys;
   sort(result.begin(), result.end());
@@ -112,6 +137,7 @@ KeyVector uniqueSortedKeys(const KeyVector& keys) {
   return result;
 }
 
+/// Return all Pose2 keys in sorted order.
 KeyVector poseKeys(const Values& values) {
   KeyVector keys;
   for (const auto& keyValue : values.extract<Pose2>()) {
@@ -121,6 +147,7 @@ KeyVector poseKeys(const Values& values) {
   return keys;
 }
 
+/// Return the variable dimensions for a key list.
 vector<size_t> dimsForKeys(const KeyVector& keys, const Values& values) {
   vector<size_t> dims;
   dims.reserve(keys.size());
@@ -130,6 +157,7 @@ vector<size_t> dimsForKeys(const KeyVector& keys, const Values& values) {
   return dims;
 }
 
+/// Convert block dimensions to prefix offsets.
 vector<size_t> blockOffsets(const vector<size_t>& dims) {
   vector<size_t> offsets(dims.size() + 1, 0);
   for (size_t i = 0; i < dims.size(); ++i) {
@@ -138,6 +166,7 @@ vector<size_t> blockOffsets(const vector<size_t>& dims) {
   return offsets;
 }
 
+/// Sum the dimensions of a key set.
 size_t totalDimension(const KeySet& keys, const Values& values) {
   size_t dim = 0;
   for (Key key : keys) {
@@ -146,6 +175,7 @@ size_t totalDimension(const KeySet& keys, const Values& values) {
   return dim;
 }
 
+/// Compute the lowest common ancestor of two Bayes-tree cliques.
 template <class CLIQUE>
 shared_ptr<CLIQUE> findLowestCommonAncestor(const shared_ptr<CLIQUE>& lhs,
                                             const shared_ptr<CLIQUE>& rhs) {
@@ -161,6 +191,7 @@ shared_ptr<CLIQUE> findLowestCommonAncestor(const shared_ptr<CLIQUE>& lhs,
   return nullptr;
 }
 
+/// Estimate the support size and compressed size for a query.
 SupportStats analyzeSupport(const GaussianBayesTree& bayesTree,
                             const KeyVector& queryKeys) {
   vector<GaussianBayesTree::sharedClique> queryCliques;
@@ -218,6 +249,7 @@ SupportStats analyzeSupport(const GaussianBayesTree& bayesTree,
   return {support.size(), compressed};
 }
 
+/// Build the legacy reduced factor graph by marginal re-elimination.
 GaussianFactorGraph legacyReducedFactorGraph(const GaussianFactorGraph& graph,
                                              const Ordering& fullOrdering,
                                              const KeyVector& queryKeys) {
@@ -226,17 +258,20 @@ GaussianFactorGraph legacyReducedFactorGraph(const GaussianFactorGraph& graph,
       *graph.marginalMultifrontalBayesTree(queryKeys, EliminatePreferCholesky));
 }
 
+/// Build the localized reduced factor graph using Bayes-tree joint extraction.
 GaussianFactorGraph steinerReducedFactorGraph(
     const GaussianBayesTree& bayesTree, const KeyVector& queryKeys) {
   return *bayesTree.joint(queryKeys, EliminatePreferCholesky);
 }
 
+/// Eliminate a reduced factor graph to a Bayes net ordered by the query keys.
 GaussianBayesNet queryBayesNet(const GaussianFactorGraph& graph,
                                const KeyVector& queryKeys) {
   return *graph.marginalMultifrontalBayesNet(Ordering(queryKeys),
                                              EliminatePreferCholesky);
 }
 
+/// Recover selected covariance columns using triangular solves.
 Matrix covarianceColumns(const GaussianBayesNet& bayesNet,
                          const KeyVector& orderedKeys,
                          const vector<size_t>& dims,
@@ -265,6 +300,7 @@ Matrix covarianceColumns(const GaussianBayesNet& bayesNet,
   return R.triangularView<Eigen::Upper>().solve(intermediate);
 }
 
+/// Extract a left-by-right cross-covariance block from selected columns.
 Matrix extractCrossBlock(const Matrix& selectedColumns,
                          const KeyVector& orderedKeys,
                          const vector<size_t>& dims, const KeyVector& left,
@@ -302,6 +338,7 @@ Matrix extractCrossBlock(const Matrix& selectedColumns,
   return result;
 }
 
+/// Convert a Variant enum to a CSV-friendly name.
 string variantName(Variant variant) {
   switch (variant) {
     case Variant::LegacyDense:
@@ -316,10 +353,12 @@ string variantName(Variant variant) {
   return "unknown";
 }
 
+/// Convert an ordering type to a human-readable name.
 string orderingName(Ordering::OrderingType orderingType) {
   return orderingType == Ordering::METIS ? "METIS" : "COLAMD";
 }
 
+/// Compute the median of a small sample vector.
 double median(vector<double> values) {
   if (values.empty()) {
     return 0.0;
@@ -332,6 +371,7 @@ double median(vector<double> values) {
   return values[mid];
 }
 
+/// Sample representative starting indices across a window range.
 vector<size_t> sampledStarts(size_t maxStartInclusive, size_t maxQueries,
                              size_t stride = 1) {
   vector<size_t> starts;
@@ -365,6 +405,7 @@ vector<size_t> sampledStarts(size_t maxStartInclusive, size_t maxQueries,
   return starts;
 }
 
+/// Generate contiguous local-window benchmark queries.
 vector<QueryCase> generateLocalWindows(const KeyVector& poseKeys,
                                        size_t querySize, size_t maxQueries) {
   vector<QueryCase> queries;
@@ -384,6 +425,7 @@ vector<QueryCase> generateLocalWindows(const KeyVector& poseKeys,
   return queries;
 }
 
+/// Generate highly overlapping windows to test repeated local queries.
 vector<QueryCase> generateRepeatedOverlap(const KeyVector& poseKeys,
                                           size_t querySize, size_t maxQueries) {
   vector<QueryCase> queries;
@@ -403,6 +445,7 @@ vector<QueryCase> generateRepeatedOverlap(const KeyVector& poseKeys,
   return queries;
 }
 
+/// Generate wide-separated queries spread across the trajectory.
 vector<QueryCase> generateWideSeparated(const KeyVector& poseKeys,
                                         size_t querySize, size_t maxQueries) {
   vector<QueryCase> queries;
@@ -435,6 +478,7 @@ vector<QueryCase> generateWideSeparated(const KeyVector& poseKeys,
   return queries;
 }
 
+/// Generate selected cross-covariance queries from overlapping windows.
 vector<QueryCase> generateSelectedCross(const KeyVector& poseKeys,
                                         size_t querySize, size_t maxQueries) {
   vector<QueryCase> queries;
@@ -453,6 +497,7 @@ vector<QueryCase> generateSelectedCross(const KeyVector& poseKeys,
   return queries;
 }
 
+/// Build the full benchmark workload across all query families.
 vector<QueryCase> buildWorkload(const KeyVector& poseKeyList) {
   vector<QueryCase> queries;
   for (size_t querySize : {size_t(3), size_t(5), size_t(10), size_t(20)}) {
@@ -473,6 +518,7 @@ vector<QueryCase> buildWorkload(const KeyVector& poseKeyList) {
   return queries;
 }
 
+/// Time one query under one covariance-recovery variant.
 RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
                          Variant variant,
                          const GaussianFactorGraph& linearGraph,
@@ -553,6 +599,7 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
   return result;
 }
 
+/// Write per-query timing results to CSV.
 void writeRawCsv(const filesystem::path& path,
                  const vector<RawResult>& results) {
   ofstream os(path);
@@ -571,6 +618,7 @@ void writeRawCsv(const filesystem::path& path,
   }
 }
 
+/// Write aggregated benchmark statistics to CSV.
 void writeSummaryCsv(const filesystem::path& path,
                      const vector<RawResult>& results) {
   unordered_map<SummaryKey, SummaryValue, SummaryKeyHash> summary;
@@ -604,6 +652,7 @@ void writeSummaryCsv(const filesystem::path& path,
   }
 }
 
+/// Read a string argument from argv or return a default value.
 string argumentOrDefault(char** begin, char** end, const string& flag,
                          const string& defaultValue) {
   for (auto it = begin; it != end; ++it) {
@@ -614,6 +663,7 @@ string argumentOrDefault(char** begin, char** end, const string& flag,
   return defaultValue;
 }
 
+/// Split a comma-separated argument into individual values.
 vector<string> splitCommaSeparated(const string& input) {
   vector<string> values;
   size_t start = 0;

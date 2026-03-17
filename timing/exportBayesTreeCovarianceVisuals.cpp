@@ -1,3 +1,20 @@
+/* ----------------------------------------------------------------------------
+
+ * GTSAM Copyright 2010, Georgia Tech Research Corporation,
+ * Atlanta, Georgia 30332-0415
+ * All Rights Reserved
+ * Authors: Frank Dellaert, et al. (see THANKS for the full author list)
+
+ * See LICENSE for the license information
+ * -------------------------------------------------------------------------- */
+
+/**
+ * @file    exportBayesTreeCovarianceVisuals.cpp
+ * @brief   Export representative pose-graph query and covariance visuals.
+ * @date    March 2026
+ * @author  Frank Dellaert
+ */
+
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/Marginals.h>
@@ -20,6 +37,7 @@ using namespace std;
 
 namespace {
 
+/// Return all Pose2 keys in sorted order.
 KeyVector poseKeys(const Values& values) {
   KeyVector keys;
   for (const auto& keyValue : values.extract<Pose2>()) {
@@ -29,6 +47,7 @@ KeyVector poseKeys(const Values& values) {
   return keys;
 }
 
+/// Select a contiguous window near the center of the trajectory.
 KeyVector centeredWindow(const KeyVector& keys, size_t querySize) {
   if (keys.size() <= querySize) {
     return keys;
@@ -37,6 +56,7 @@ KeyVector centeredWindow(const KeyVector& keys, size_t querySize) {
   return KeyVector(keys.begin() + start, keys.begin() + start + querySize);
 }
 
+/// Select approximately evenly spaced keys across the full trajectory.
 KeyVector evenlySpaced(const KeyVector& keys, size_t querySize) {
   if (keys.size() <= querySize) {
     return keys;
@@ -47,14 +67,15 @@ KeyVector evenlySpaced(const KeyVector& keys, size_t querySize) {
   for (size_t i = 0; i < querySize; ++i) {
     const double alpha =
         querySize == 1 ? 0.0 : double(i) / double(querySize - 1);
-    const size_t index = static_cast<size_t>(
-        llround(alpha * double(keys.size() - 1)));
+    const size_t index =
+        static_cast<size_t>(llround(alpha * double(keys.size() - 1)));
     query.push_back(keys.at(index));
   }
   query.erase(unique(query.begin(), query.end()), query.end());
   return query;
 }
 
+/// Write a one-column key list CSV.
 void writeKeyListCsv(const filesystem::path& path, const KeyVector& keys) {
   ofstream stream(path);
   stream << "key\n";
@@ -63,6 +84,7 @@ void writeKeyListCsv(const filesystem::path& path, const KeyVector& keys) {
   }
 }
 
+/// Write a dense matrix to CSV with fixed precision.
 void writeMatrixCsv(const filesystem::path& path, const Matrix& matrix) {
   ofstream stream(path);
   stream << fixed << setprecision(12);
@@ -77,6 +99,7 @@ void writeMatrixCsv(const filesystem::path& path, const Matrix& matrix) {
   }
 }
 
+/// Export optimized Pose2 values together with query membership flags.
 void writePoseCsv(const filesystem::path& path, const Values& values,
                   const KeyVector& localQuery, const KeyVector& wideQuery) {
   const set<Key> localKeys(localQuery.begin(), localQuery.end());
@@ -87,12 +110,13 @@ void writePoseCsv(const filesystem::path& path, const Values& values,
   stream << fixed << setprecision(9);
   for (Key key : poseKeys(values)) {
     const Pose2 pose = values.at<Pose2>(key);
-    stream << key << ',' << pose.x() << ',' << pose.y() << ','
-           << pose.theta() << ',' << (localKeys.count(key) ? 1 : 0) << ','
+    stream << key << ',' << pose.x() << ',' << pose.y() << ',' << pose.theta()
+           << ',' << (localKeys.count(key) ? 1 : 0) << ','
            << (wideKeys.count(key) ? 1 : 0) << '\n';
   }
 }
 
+/// Export the unique Pose2 measurement edges in the factor graph.
 void writeEdgeCsv(const filesystem::path& path,
                   const NonlinearFactorGraph& graph) {
   set<pair<Key, Key>> edges;
@@ -114,6 +138,7 @@ void writeEdgeCsv(const filesystem::path& path,
   }
 }
 
+/// Read a string argument from argv or return a default value.
 string argumentOrDefault(char** begin, char** end, const string& flag,
                          const string& defaultValue) {
   for (auto it = begin; it != end; ++it) {
@@ -129,20 +154,20 @@ string argumentOrDefault(char** begin, char** end, const string& flag,
 int main(int argc, char** argv) {
   const string datasetName =
       argumentOrDefault(argv, argv + argc, "--dataset", "w100.graph");
-  const filesystem::path outputDir = argumentOrDefault(
-      argv, argv + argc, "--output-dir",
-      (filesystem::path("timing") / "results" / "bayes_tree_covariance" /
-       "visuals")
-          .string());
+  const filesystem::path outputDir =
+      argumentOrDefault(argv, argv + argc, "--output-dir",
+                        (filesystem::path("timing") / "results" /
+                         "bayes_tree_covariance" / "visuals")
+                            .string());
   filesystem::create_directories(outputDir);
 
   const auto [graphPtr, initialPtr] = load2D(findExampleDataFile(datasetName));
   const KeyVector initialPoseKeys = poseKeys(*initialPtr);
   if (!initialPoseKeys.empty()) {
-    graphPtr->addPrior(
-        initialPoseKeys.front(), initialPtr->at<Pose2>(initialPoseKeys.front()),
-        noiseModel::Diagonal::Sigmas(
-            (Vector(3) << 1e-6, 1e-6, 1e-6).finished()));
+    graphPtr->addPrior(initialPoseKeys.front(),
+                       initialPtr->at<Pose2>(initialPoseKeys.front()),
+                       noiseModel::Diagonal::Sigmas(
+                           (Vector(3) << 1e-6, 1e-6, 1e-6).finished()));
   }
 
   LevenbergMarquardtOptimizer optimizer(*graphPtr, *initialPtr);

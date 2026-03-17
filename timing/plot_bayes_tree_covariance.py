@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""
+GTSAM Copyright 2010, Georgia Tech Research Corporation,
+Atlanta, Georgia 30332-0415
+All Rights Reserved
+
+See LICENSE for the license information
+
+Generate paper-ready plots for the Bayes-tree covariance benchmarks.
+Author: Frank Dellaert
+"""
 
 import argparse
 import csv
@@ -13,11 +23,13 @@ from matplotlib.patches import Ellipse
 
 
 def load_rows(path):
+    """Load a CSV file into a list of row dictionaries."""
     with open(path, newline="") as handle:
         return list(csv.DictReader(handle))
 
 
 def to_float(rows, fields):
+    """Convert numeric CSV fields to float or integer types in place."""
     for row in rows:
         for field in fields:
             row[field] = float(row[field])
@@ -30,19 +42,37 @@ def to_float(rows, fields):
 
 
 def baseline_speedups(rows):
+    """Annotate each row with its speedup relative to the legacy dense baseline."""
     baselines = {}
     for row in rows:
-      if row["variant"] == "legacy_dense":
-        baselines[(row["dataset"], row["ordering"], row["query_family"], row["mode"], row["query_size"])] = row["median_total_ms"]
+        if row["variant"] == "legacy_dense":
+            baselines[
+                (
+                    row["dataset"],
+                    row["ordering"],
+                    row["query_family"],
+                    row["mode"],
+                    row["query_size"],
+                )
+            ] = row["median_total_ms"]
 
     for row in rows:
-      key = (row["dataset"], row["ordering"], row["query_family"], row["mode"], row["query_size"])
-      baseline = baselines.get(key, row["median_total_ms"])
-      row["speedup"] = baseline / row["median_total_ms"] if row["median_total_ms"] else 1.0
+        key = (
+            row["dataset"],
+            row["ordering"],
+            row["query_family"],
+            row["mode"],
+            row["query_size"],
+        )
+        baseline = baselines.get(key, row["median_total_ms"])
+        row["speedup"] = (
+            baseline / row["median_total_ms"] if row["median_total_ms"] else 1.0
+        )
     return rows
 
 
 def filter_rows(rows, **criteria):
+    """Return rows whose named fields match the provided values."""
     result = []
     for row in rows:
         if all(row[key] == value for key, value in criteria.items()):
@@ -51,6 +81,7 @@ def filter_rows(rows, **criteria):
 
 
 def grouped(rows, *keys):
+    """Group rows by a tuple of field values."""
     groups = defaultdict(list)
     for row in rows:
         groups[tuple(row[key] for key in keys)].append(row)
@@ -58,23 +89,61 @@ def grouped(rows, *keys):
 
 
 def dataset_label(dataset):
+    """Strip dataset file extensions for presentation."""
     return dataset.removesuffix(".graph").removesuffix(".txt")
 
 
 def plot_ablation(rows, output_path):
-    joint_rows = [row for row in rows if row["mode"] == "joint" and row["query_family"] == "local_window" and row["dataset"] in {"w10000.graph", "w20000.txt"}]
+    """Plot the four-way ablation for local-window joint queries."""
+    joint_rows = [
+        row
+        for row in rows
+        if row["mode"] == "joint"
+        and row["query_family"] == "local_window"
+        and row["dataset"] in {"w10000.graph", "w20000.txt"}
+    ]
     variants = ["legacy_dense", "steiner_dense", "legacy_solve", "steiner_solve"]
     variant_styles = {
-        "legacy_dense": {"color": "#228b22", "linestyle": "--", "marker": "s", "linewidth": 2.0},
-        "steiner_dense": {"color": "#ff8c00", "linestyle": "-", "marker": "o", "linewidth": 2.0},
-        "legacy_solve": {"color": "#1f77b4", "linestyle": "-.", "marker": "^", "linewidth": 2.0},
-        "steiner_solve": {"color": "#b22222", "linestyle": "-", "marker": "D", "linewidth": 2.2},
+        "legacy_dense": {
+            "color": "#228b22",
+            "linestyle": "--",
+            "marker": "s",
+            "linewidth": 2.0,
+        },
+        "steiner_dense": {
+            "color": "#ff8c00",
+            "linestyle": "-",
+            "marker": "o",
+            "linewidth": 2.0,
+        },
+        "legacy_solve": {
+            "color": "#1f77b4",
+            "linestyle": "-.",
+            "marker": "^",
+            "linewidth": 2.0,
+        },
+        "steiner_solve": {
+            "color": "#b22222",
+            "linestyle": "-",
+            "marker": "D",
+            "linewidth": 2.2,
+        },
     }
     figure, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=True, sharey=True)
-    for ax, (dataset, ordering) in zip(axes.flat, [("w10000.graph", "COLAMD"), ("w10000.graph", "METIS"), ("w20000.txt", "COLAMD"), ("w20000.txt", "METIS")]):
+    for ax, (dataset, ordering) in zip(
+        axes.flat,
+        [
+            ("w10000.graph", "COLAMD"),
+            ("w10000.graph", "METIS"),
+            ("w20000.txt", "COLAMD"),
+            ("w20000.txt", "METIS"),
+        ],
+    ):
         subset = filter_rows(joint_rows, dataset=dataset, ordering=ordering)
         for variant in variants:
-            series = sorted(filter_rows(subset, variant=variant), key=lambda row: row["query_size"])
+            series = sorted(
+                filter_rows(subset, variant=variant), key=lambda row: row["query_size"]
+            )
             if not series:
                 continue
             style = variant_styles[variant]
@@ -99,6 +168,7 @@ def plot_ablation(rows, output_path):
 
 
 def plot_ordering(rows, output_path):
+    """Compare ordering sensitivity for the dense baseline and localized method."""
     target_rows = [
         row
         for row in rows
@@ -108,10 +178,30 @@ def plot_ordering(rows, output_path):
         and row["query_family"] == "local_window"
     ]
     variant_styles = {
-        ("legacy_dense", "COLAMD"): {"color": "#228b22", "linestyle": "--", "marker": "s", "linewidth": 2.0},
-        ("legacy_dense", "METIS"): {"color": "#66a61e", "linestyle": ":", "marker": "s", "linewidth": 2.0},
-        ("steiner_solve", "COLAMD"): {"color": "#b22222", "linestyle": "-", "marker": "D", "linewidth": 2.2},
-        ("steiner_solve", "METIS"): {"color": "#ff8c00", "linestyle": "-.", "marker": "o", "linewidth": 2.2},
+        ("legacy_dense", "COLAMD"): {
+            "color": "#228b22",
+            "linestyle": "--",
+            "marker": "s",
+            "linewidth": 2.0,
+        },
+        ("legacy_dense", "METIS"): {
+            "color": "#66a61e",
+            "linestyle": ":",
+            "marker": "s",
+            "linewidth": 2.0,
+        },
+        ("steiner_solve", "COLAMD"): {
+            "color": "#b22222",
+            "linestyle": "-",
+            "marker": "D",
+            "linewidth": 2.2,
+        },
+        ("steiner_solve", "METIS"): {
+            "color": "#ff8c00",
+            "linestyle": "-.",
+            "marker": "o",
+            "linewidth": 2.2,
+        },
     }
     figure, axes = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
     for ax, dataset in zip(axes, ["w10000.graph", "w20000.txt"]):
@@ -155,14 +245,41 @@ def plot_ordering(rows, output_path):
 
 
 def plot_structure(rows, output_path):
-    subset = [row for row in rows if row["mode"] == "joint" and row["variant"] == "steiner_solve" and row["query_family"] == "local_window" and row["dataset"] in {"w10000.graph", "w20000.txt"} and row["ordering"] == "COLAMD"]
+    """Plot support size and reduced state statistics against query size."""
+    subset = [
+        row
+        for row in rows
+        if row["mode"] == "joint"
+        and row["variant"] == "steiner_solve"
+        and row["query_family"] == "local_window"
+        and row["dataset"] in {"w10000.graph", "w20000.txt"}
+        and row["ordering"] == "COLAMD"
+    ]
     figure, axes = plt.subplots(1, 2, figsize=(11, 4), sharey=False)
     for ax, dataset in zip(axes, ["w10000.graph", "w20000.txt"]):
-        series = sorted([row for row in subset if row["dataset"] == dataset], key=lambda row: row["query_size"])
+        series = sorted(
+            [row for row in subset if row["dataset"] == dataset],
+            key=lambda row: row["query_size"],
+        )
         x = [row["query_size"] for row in series]
-        ax.plot(x, [row["support_cliques"] for row in series], marker="o", label="support cliques")
-        ax.plot(x, [row["compressed_cliques"] for row in series], marker="s", label="compressed cliques")
-        ax.plot(x, [row["reduced_state_dim"] for row in series], marker="^", label="reduced state dim")
+        ax.plot(
+            x,
+            [row["support_cliques"] for row in series],
+            marker="o",
+            label="support cliques",
+        )
+        ax.plot(
+            x,
+            [row["compressed_cliques"] for row in series],
+            marker="s",
+            label="compressed cliques",
+        )
+        ax.plot(
+            x,
+            [row["reduced_state_dim"] for row in series],
+            marker="^",
+            label="reduced-state dimension",
+        )
         ax.set_title(dataset_label(dataset))
         ax.set_xlabel("Query size")
         ax.set_ylabel("Count / dimension")
@@ -175,19 +292,52 @@ def plot_structure(rows, output_path):
 
 
 def plot_selected_cross(rows, output_path):
-    subset = [row for row in rows if row["mode"] == "cross" and row["query_family"] == "selected_cross" and row["dataset"] in {"w10000.graph", "w20000.txt"}]
+    """Plot selected cross-covariance speedups for all benchmark variants."""
+    subset = [
+        row
+        for row in rows
+        if row["mode"] == "cross"
+        and row["query_family"] == "selected_cross"
+        and row["dataset"] in {"w10000.graph", "w20000.txt"}
+    ]
     variants = ["legacy_dense", "steiner_dense", "legacy_solve", "steiner_solve"]
     variant_styles = {
-        "legacy_dense": {"color": "#228b22", "linestyle": "--", "marker": "s", "linewidth": 2.0},
-        "steiner_dense": {"color": "#ff8c00", "linestyle": "-", "marker": "o", "linewidth": 2.0},
-        "legacy_solve": {"color": "#1f77b4", "linestyle": "-.", "marker": "^", "linewidth": 2.0},
-        "steiner_solve": {"color": "#b22222", "linestyle": "-", "marker": "D", "linewidth": 2.2},
+        "legacy_dense": {
+            "color": "#228b22",
+            "linestyle": "--",
+            "marker": "s",
+            "linewidth": 2.0,
+        },
+        "steiner_dense": {
+            "color": "#ff8c00",
+            "linestyle": "-",
+            "marker": "o",
+            "linewidth": 2.0,
+        },
+        "legacy_solve": {
+            "color": "#1f77b4",
+            "linestyle": "-.",
+            "marker": "^",
+            "linewidth": 2.0,
+        },
+        "steiner_solve": {
+            "color": "#b22222",
+            "linestyle": "-",
+            "marker": "D",
+            "linewidth": 2.2,
+        },
     }
     figure, axes = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
     for ax, dataset in zip(axes, ["w10000.graph", "w20000.txt"]):
         for variant in variants:
             series = sorted(
-                [row for row in subset if row["dataset"] == dataset and row["ordering"] == "COLAMD" and row["variant"] == variant],
+                [
+                    row
+                    for row in subset
+                    if row["dataset"] == dataset
+                    and row["ordering"] == "COLAMD"
+                    and row["variant"] == variant
+                ],
                 key=lambda row: row["query_size"],
             )
             if not series:
@@ -214,12 +364,14 @@ def plot_selected_cross(rows, output_path):
 
 
 def load_key_list(path):
+    """Load a single-column key CSV."""
     with open(path, newline="") as handle:
         reader = csv.DictReader(handle)
         return [int(row["key"]) for row in reader]
 
 
 def load_pose_rows(path):
+    """Load pose metadata used by the visual summary figures."""
     with open(path, newline="") as handle:
         reader = csv.DictReader(handle)
         rows = list(reader)
@@ -234,6 +386,7 @@ def load_pose_rows(path):
 
 
 def load_edge_rows(path):
+    """Load pose-graph edges used by the visual summary figures."""
     with open(path, newline="") as handle:
         reader = csv.DictReader(handle)
         rows = list(reader)
@@ -244,6 +397,7 @@ def load_edge_rows(path):
 
 
 def plot_w100_queries(data_dir, output_path):
+    """Render representative local and wide-separated query selections on w100."""
     pose_rows = load_pose_rows(data_dir / "w100_poses.csv")
     edge_rows = load_edge_rows(data_dir / "w100_edges.csv")
     local_keys = load_key_list(data_dir / "w100_local_keys.csv")
@@ -340,12 +494,14 @@ def plot_w100_queries(data_dir, output_path):
 
 
 def pose_block(covariance, keys, key):
+    """Extract the 3x3 Pose2 marginal block for one key."""
     block_index = keys.index(key)
     start = 3 * block_index
     return covariance[start : start + 3, start : start + 3]
 
 
 def representative_pose_key(keys, covariance):
+    """Select the queried pose with the largest translational uncertainty."""
     scored = []
     for key in keys:
         marginal = pose_block(covariance, keys, key)
@@ -356,6 +512,7 @@ def representative_pose_key(keys, covariance):
 
 
 def sample_tangent_gaussian(rng, covariance, size):
+    """Sample a Gaussian in Pose2 tangent coordinates."""
     symmetric_covariance = 0.5 * (covariance + covariance.T)
     eigenvalues, eigenvectors = np.linalg.eigh(symmetric_covariance)
     clamped = np.clip(eigenvalues, 0.0, None)
@@ -365,6 +522,7 @@ def sample_tangent_gaussian(rng, covariance, size):
 
 
 def exp_se2(tangent):
+    """Evaluate the SE(2) exponential map for one tangent vector."""
     vx, vy, omega = tangent
     if abs(omega) < 1e-9:
         return np.array([vx, vy]), omega
@@ -378,6 +536,7 @@ def exp_se2(tangent):
 
 
 def retract_pose(mean_pose, tangent):
+    """Push a tangent perturbation forward from a mean Pose2 state."""
     translation, omega = exp_se2(tangent)
     mean_theta = mean_pose["theta"]
     rotation = np.array(
@@ -391,10 +550,12 @@ def retract_pose(mean_pose, tangent):
 
 
 def wrap_degrees(angle_radians):
+    """Wrap an angle in radians to the range [-180, 180) degrees."""
     return ((np.rad2deg(angle_radians) + 180.0) % 360.0) - 180.0
 
 
 def draw_heading_arrow(ax, pose_row, length=1.0):
+    """Draw a heading arrow for a mean pose."""
     dx = length * math.cos(pose_row["theta"])
     dy = length * math.sin(pose_row["theta"])
     ax.arrow(
@@ -412,6 +573,7 @@ def draw_heading_arrow(ax, pose_row, length=1.0):
 
 
 def draw_world_sample_ellipse(ax, positions):
+    """Draw the empirical 2-sigma ellipse of sampled world-frame positions."""
     covariance_xy = np.cov(positions[:, :2].T)
     center = positions[:, :2].mean(axis=0)
     eigenvalues, eigenvectors = np.linalg.eigh(covariance_xy)
@@ -436,6 +598,7 @@ def draw_world_sample_ellipse(ax, positions):
 
 
 def plot_pose2_marginals(data_dir, output_path):
+    """Render representative Pose2 marginals as pushed-forward sample clouds."""
     local_keys = load_key_list(data_dir / "w100_local_keys.csv")
     wide_keys = load_key_list(data_dir / "w100_wide_keys.csv")
     pose_rows = {row["key"]: row for row in load_pose_rows(data_dir / "w100_poses.csv")}
@@ -454,15 +617,27 @@ def plot_pose2_marginals(data_dir, output_path):
     heatmap_axes = axes[:2]
     colorbar_axis = axes[2]
     specifications = [
-        ("Representative local Pose2 marginal", local_key, local_keys, local_covariance),
-        ("Representative wide-separated Pose2 marginal", wide_key, wide_keys, wide_covariance),
+        (
+            "Representative local Pose2 marginal",
+            local_key,
+            local_keys,
+            local_covariance,
+        ),
+        (
+            "Representative wide-separated Pose2 marginal",
+            wide_key,
+            wide_keys,
+            wide_covariance,
+        ),
     ]
 
     for ax, (title, key, keys, covariance) in zip(heatmap_axes, specifications):
         marginal = pose_block(covariance, keys, key)
         mean_pose = pose_rows[key]
         samples_tangent = sample_tangent_gaussian(rng, marginal, size=4000)
-        positions = np.array([retract_pose(mean_pose, tangent) for tangent in samples_tangent])
+        positions = np.array(
+            [retract_pose(mean_pose, tangent) for tangent in samples_tangent]
+        )
         headings = wrap_degrees(positions[:, 2])
         heatmap = ax.scatter(
             positions[:, 0],
@@ -508,6 +683,7 @@ def plot_pose2_marginals(data_dir, output_path):
 
 
 def main():
+    """Parse arguments and generate all requested benchmark figures."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
     parser.add_argument("--output-dir", required=True)
@@ -522,7 +698,12 @@ def main():
     rows = baseline_speedups(
         to_float(
             load_rows(input_path),
-            ["median_total_ms", "total_total_ms", "median_reduction_ms", "median_extraction_ms"],
+            [
+                "median_total_ms",
+                "total_total_ms",
+                "median_reduction_ms",
+                "median_extraction_ms",
+            ],
         )
     )
 
