@@ -392,8 +392,8 @@ class ExtendedPose3
 #endif
 };
 
-/// Convenience typedef for dynamic k.
-using ExtendedPose3Dynamic = ExtendedPose3<Eigen::Dynamic>;
+/// Convenience typedef for dynamic-k ExtendedPose3.
+using ExtendedPose3d = ExtendedPose3<Eigen::Dynamic>;
 
 template <int K, class Derived>
 struct traits<ExtendedPose3<K, Derived>>

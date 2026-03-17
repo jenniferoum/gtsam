@@ -792,4 +792,112 @@ class Gal3ImuEKF : gtsam::InvariantEKF<gtsam::Gal3> {
   // Predict using IMU measurements
   void predict(const gtsam::Vector& omega_b, const gtsam::Vector& f_b, double dt);
 };
+
+#include <gtsam/navigation/LeggedEstimator.h>
+class ContactMeasurement {
+  ContactMeasurement();
+  size_t foot;
+  gtsam::Vector3 bodyPoint;
+  bool touchdown;
+};
+
+class LeggedEstimatorParams {
+  LeggedEstimatorParams();
+  std::shared_ptr<gtsam::PreintegrationParams> preintegrationParams;
+  gtsam::Pose3 body_P_imu;
+  double footholdProcessSigma;
+  double footholdInitSigma;
+  gtsam::Matrix3 contactCovariance;
+  double heightPriorSigma;
+  bool useRobustContactNoise;
+  double robustContactHuberK;
+  gtsam::imuBias::ConstantBias imuBias;
+  double biasAccRandomWalkSigma;
+  double biasOmegaRandomWalkSigma;
+  bool useFullContactInitialization;
+  bool marginalizeLeavingFoot;
+};
+
+virtual class LeggedEstimator {
+  void turnHeightPriorOn(double terrainHeight);
+  void turnHeightPriorOff();
+  void predict(const gtsam::Vector3& omegaBody,
+               const gtsam::Vector3& specificForceBody, double dt);
+  void processContacts(
+      const std::vector<gtsam::ContactMeasurement>& activeContacts);
+  gtsam::ExtendedPose3d estimate() const;
+  gtsam::imuBias::ConstantBias estimateBias() const;
+};
+
+class LeggedInvariantEKF : gtsam::LeggedEstimator {
+  LeggedInvariantEKF(const gtsam::NavState& navState0,
+                     const gtsam::Matrix& footholds0,
+                     const gtsam::Matrix& P0,
+                     const gtsam::LeggedEstimatorParams& params,
+                     const std::vector<std::string>& footNames);
+  void turnHeightPriorOn(double terrainHeight);
+  void turnHeightPriorOff();
+  void predict(const gtsam::Vector3& omegaBody,
+               const gtsam::Vector3& specificForceBody, double dt);
+  void processContacts(
+      const std::vector<gtsam::ContactMeasurement>& activeContacts);
+  gtsam::ExtendedPose3d estimate() const;
+  gtsam::imuBias::ConstantBias estimateBias() const;
+  gtsam::Matrix covariance() const;
+  size_t numFeet() const;
+};
+
+class LeggedInvariantIEKF : gtsam::LeggedInvariantEKF {
+  LeggedInvariantIEKF(const gtsam::NavState& navState0,
+                      const gtsam::Matrix& footholds0,
+                      const gtsam::Matrix& P0,
+                      const gtsam::LeggedEstimatorParams& params,
+                      const std::vector<std::string>& footNames);
+  void turnHeightPriorOn(double terrainHeight);
+  void turnHeightPriorOff();
+  void predict(const gtsam::Vector3& omegaBody,
+               const gtsam::Vector3& specificForceBody, double dt);
+  void processContacts(
+      const std::vector<gtsam::ContactMeasurement>& activeContacts);
+  gtsam::ExtendedPose3d estimate() const;
+  gtsam::imuBias::ConstantBias estimateBias() const;
+  gtsam::Matrix covariance() const;
+  size_t numFeet() const;
+};
+
+class LeggedFixedLagSmoother : gtsam::LeggedEstimator {
+  LeggedFixedLagSmoother(const gtsam::NavState& navState0,
+                         const gtsam::Matrix& footholds0,
+                         const gtsam::Matrix9& baseCovariance0,
+                         const gtsam::LeggedEstimatorParams& params,
+                         double lagSeconds,
+                         const std::vector<std::string>& footNames);
+  void turnHeightPriorOn(double terrainHeight);
+  void turnHeightPriorOff();
+  void predict(const gtsam::Vector3& omegaBody,
+               const gtsam::Vector3& specificForceBody, double dt);
+  void processContacts(
+      const std::vector<gtsam::ContactMeasurement>& activeContacts);
+  gtsam::ExtendedPose3d estimate() const;
+  gtsam::imuBias::ConstantBias estimateBias() const;
+  size_t numFeet() const;
+};
+
+class LeggedCombinedFixedLagSmoother : gtsam::LeggedEstimator {
+  LeggedCombinedFixedLagSmoother(
+      const gtsam::NavState& navState0,
+      const gtsam::Matrix& footholds0,
+      const gtsam::Matrix9& baseCovariance0,
+      const gtsam::LeggedEstimatorParams& params, double lagSeconds,
+      const std::vector<std::string>& footNames);
+  void turnHeightPriorOn(double terrainHeight);
+  void turnHeightPriorOff();
+  void predict(const gtsam::Vector3& omegaBody,
+               const gtsam::Vector3& specificForceBody, double dt);
+  void processContacts(
+      const std::vector<gtsam::ContactMeasurement>& activeContacts);
+  gtsam::ExtendedPose3d estimate() const;
+  gtsam::imuBias::ConstantBias estimateBias() const;
+  size_t numFeet() const;
+};
 }

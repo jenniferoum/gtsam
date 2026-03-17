@@ -26,7 +26,6 @@
 using namespace gtsam;
 
 using ExtendedPose33 = ExtendedPose3<3>;
-using ExtendedPose3d = ExtendedPose3<Eigen::Dynamic>;
 
 GTSAM_CONCEPT_TESTABLE_INST(ExtendedPose33)
 GTSAM_CONCEPT_MATRIX_LIE_GROUP_INST(ExtendedPose33)
