@@ -119,7 +119,13 @@ namespace gtsam {
   /* ************************************************************************* */
   Matrix GaussianBayesTree::marginalCovariance(Key key) const
   {
-    return marginalFactor(key)->information().inverse();
+    const Matrix information = marginalFactor(key)->information();
+    if (!information.allFinite()) {
+      return Matrix::Zero(information.rows(), information.cols());
+    }
+    const Matrix identity =
+        Matrix::Identity(information.rows(), information.cols());
+    return information.selfadjointView<Eigen::Upper>().llt().solve(identity);
   }
 
 

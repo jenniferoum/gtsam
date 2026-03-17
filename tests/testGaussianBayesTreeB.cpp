@@ -320,5 +320,62 @@ TEST(GaussianBayesTree, shortcut_overlapping_separator)
 }
 
 /* ************************************************************************* */
+TEST(GaussianBayesTree, multiKeyJointMatchesPairwise) {
+  GaussianFactorGraph fg;
+  noiseModel::Diagonal::shared_ptr model = noiseModel::Unit::Create(1);
+  fg.add(1, (Matrix(1, 1) << 1.0).finished(), 3,
+         (Matrix(1, 1) << 2.0).finished(), 5,
+         (Matrix(1, 1) << 3.0).finished(), (Vector(1) << 4.0).finished(), model);
+  fg.add(1, (Matrix(1, 1) << 5.0).finished(), (Vector(1) << 6.0).finished(), model);
+  fg.add(2, (Matrix(1, 1) << 7.0).finished(), 4,
+         (Matrix(1, 1) << 8.0).finished(), 5,
+         (Matrix(1, 1) << 9.0).finished(), (Vector(1) << 10.0).finished(), model);
+  fg.add(2, (Matrix(1, 1) << 11.0).finished(), (Vector(1) << 12.0).finished(), model);
+  fg.add(5, (Matrix(1, 1) << 13.0).finished(), 6,
+         (Matrix(1, 1) << 14.0).finished(), (Vector(1) << 15.0).finished(), model);
+  fg.add(6, (Matrix(1, 1) << 17.0).finished(), 7,
+         (Matrix(1, 1) << 18.0).finished(), (Vector(1) << 19.0).finished(), model);
+  fg.add(7, (Matrix(1, 1) << 20.0).finished(), (Vector(1) << 21.0).finished(), model);
+
+  Ordering ordering(fg.keys());
+  GaussianBayesTree bt = *fg.eliminateMultifrontal(ordering);
+
+  const GaussianFactorGraph pairwiseJoint = *bt.joint(1, 2, EliminateQR);
+  const GaussianFactorGraph multiKeyJoint = *bt.joint(KeyVector{2, 1}, EliminateQR);
+  EXPECT(assert_equal(pairwiseJoint.augmentedHessian(),
+                      multiKeyJoint.augmentedHessian(), 1e-9));
+}
+
+/* ************************************************************************* */
+TEST(GaussianBayesTree, multiKeyJointMatchesLegacyMarginalization) {
+  GaussianFactorGraph fg;
+  noiseModel::Diagonal::shared_ptr model = noiseModel::Unit::Create(1);
+  fg.add(1, (Matrix(1, 1) << 1.0).finished(), 3,
+         (Matrix(1, 1) << 2.0).finished(), 5,
+         (Matrix(1, 1) << 3.0).finished(), (Vector(1) << 4.0).finished(), model);
+  fg.add(1, (Matrix(1, 1) << 5.0).finished(), (Vector(1) << 6.0).finished(), model);
+  fg.add(2, (Matrix(1, 1) << 7.0).finished(), 4,
+         (Matrix(1, 1) << 8.0).finished(), 5,
+         (Matrix(1, 1) << 9.0).finished(), (Vector(1) << 10.0).finished(), model);
+  fg.add(2, (Matrix(1, 1) << 11.0).finished(), (Vector(1) << 12.0).finished(), model);
+  fg.add(5, (Matrix(1, 1) << 13.0).finished(), 6,
+         (Matrix(1, 1) << 14.0).finished(), (Vector(1) << 15.0).finished(), model);
+  fg.add(6, (Matrix(1, 1) << 17.0).finished(), 7,
+         (Matrix(1, 1) << 18.0).finished(), (Vector(1) << 19.0).finished(), model);
+  fg.add(7, (Matrix(1, 1) << 20.0).finished(), (Vector(1) << 21.0).finished(), model);
+
+  Ordering ordering(fg.keys());
+  GaussianBayesTree bt = *fg.eliminateMultifrontal(ordering);
+
+  const KeyVector query{7, 2, 1};
+  const GaussianFactorGraph actualJoint = *bt.joint(query, EliminateQR);
+  const GaussianFactorGraph legacyJoint =
+      GaussianFactorGraph(*fg.marginalMultifrontalBayesTree(KeyVector{1, 2, 7},
+                                                            EliminateQR));
+  EXPECT(assert_equal(legacyJoint.augmentedHessian(),
+                      actualJoint.augmentedHessian(), 1e-9));
+}
+
+/* ************************************************************************* */
 int main() { TestResult tr; return TestRegistry::runAllTests(tr);}
 /* ************************************************************************* */
