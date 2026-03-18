@@ -32,6 +32,16 @@ This writes:
 - `timing/results/bayes_tree_covariance/raw.csv`
 - `timing/results/bayes_tree_covariance/summary.csv`
 
+The generated CSVs now include the small-query families used to benchmark the
+legacy common cases:
+
+- `single_pose` for `Q = 1`
+- `pair_pose` for `Q = 2`
+
+These are timed with the same benchmark executable and appear alongside the
+larger `local_window`, `wide_separated`, `overlap_window`, and
+`selected_cross` workloads.
+
 ### Export `w100` visual data
 
 Run from `build/`:
@@ -58,6 +68,7 @@ python3 timing/plot_bayes_tree_covariance.py \
 
 This generates:
 
+- `results-smallq.pdf`
 - `results-ablation.pdf`
 - `results-ordering.pdf`
 - `results-structure.pdf`
@@ -69,6 +80,9 @@ This generates:
 
 - The benchmark timings measure covariance-query work after optimization and
   linearization.
+- The `results-smallq.pdf` figure summarizes the `Q = 1` and `Q = 2` query
+  families; the larger performance figures focus on `Q > 2`, where Steiner
+  localization changes the asymptotic behavior.
 - The benchmark compares four variants:
   - `legacy_dense`
   - `steiner_dense`

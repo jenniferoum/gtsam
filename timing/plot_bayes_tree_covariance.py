@@ -167,6 +167,73 @@ def plot_ablation(rows, output_path):
     plt.close(figure)
 
 
+def plot_small_queries(rows, output_path):
+    """Plot timing for the legacy single-pose and pair-pose query families."""
+    subset = [
+        row
+        for row in rows
+        if row["mode"] == "joint"
+        and row["query_family"] in {"single_pose", "pair_pose"}
+        and row["dataset"] in {"w10000.graph", "w20000.txt"}
+    ]
+    families = [("single_pose", "Q = 1"), ("pair_pose", "Q = 2")]
+    groups = [
+        ("w10000.graph", "COLAMD"),
+        ("w10000.graph", "METIS"),
+        ("w20000.txt", "COLAMD"),
+        ("w20000.txt", "METIS"),
+    ]
+    variants = ["legacy_dense", "steiner_dense", "legacy_solve", "steiner_solve"]
+    colors = {
+        "legacy_dense": "#228b22",
+        "steiner_dense": "#ff8c00",
+        "legacy_solve": "#1f77b4",
+        "steiner_solve": "#b22222",
+    }
+    figure, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
+    width = 0.18
+    x_positions = np.arange(len(groups))
+
+    for ax, (family, title) in zip(axes, families):
+        family_rows = [row for row in subset if row["query_family"] == family]
+        for index, variant in enumerate(variants):
+            heights = []
+            for dataset, ordering in groups:
+                matches = [
+                    row["median_total_ms"]
+                    for row in family_rows
+                    if row["dataset"] == dataset
+                    and row["ordering"] == ordering
+                    and row["variant"] == variant
+                ]
+                heights.append(matches[0] if matches else math.nan)
+            ax.bar(
+                x_positions + (index - 1.5) * width,
+                heights,
+                width=width,
+                color=colors[variant],
+                label=variant.replace("_", " "),
+            )
+        ax.set_title(title)
+        ax.set_xticks(
+            x_positions,
+            [
+                "w10000\nCOLAMD",
+                "w10000\nMETIS",
+                "w20000\nCOLAMD",
+                "w20000\nMETIS",
+            ],
+        )
+        ax.set_ylabel("Median query time (ms)")
+        ax.set_yscale("log")
+        ax.grid(True, axis="y", alpha=0.3)
+    handles, labels = axes[0].get_legend_handles_labels()
+    figure.legend(handles, labels, loc="upper center", ncol=4, frameon=False)
+    figure.tight_layout(rect=(0, 0, 1, 0.88))
+    figure.savefig(output_path)
+    plt.close(figure)
+
+
 def plot_ordering(rows, output_path):
     """Compare ordering sensitivity for the dense baseline and localized method."""
     target_rows = [
@@ -708,6 +775,7 @@ def main():
     )
 
     plot_ablation(rows, output_dir / "results-ablation.pdf")
+    plot_small_queries(rows, output_dir / "results-smallq.pdf")
     plot_ordering(rows, output_dir / "results-ordering.pdf")
     plot_structure(rows, output_dir / "results-structure.pdf")
     plot_selected_cross(rows, output_dir / "results-cross.pdf")

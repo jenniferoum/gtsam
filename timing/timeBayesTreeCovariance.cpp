@@ -264,6 +264,12 @@ GaussianFactorGraph steinerReducedFactorGraph(
   return *bayesTree.joint(queryKeys, EliminatePreferCholesky);
 }
 
+/// Build the legacy two-key reduced factor graph using the pairwise joint path.
+GaussianFactorGraph pairReducedFactorGraph(const GaussianBayesTree& bayesTree,
+                                           const KeyVector& queryKeys) {
+  return *bayesTree.joint(queryKeys[0], queryKeys[1], EliminatePreferCholesky);
+}
+
 /// Eliminate a reduced factor graph to a Bayes net ordered by the query keys.
 GaussianBayesNet queryBayesNet(const GaussianFactorGraph& graph,
                                const KeyVector& queryKeys) {
@@ -425,6 +431,41 @@ vector<QueryCase> generateLocalWindows(const KeyVector& poseKeys,
   return queries;
 }
 
+/// Generate single-pose queries that exercise the legacy marginal path.
+vector<QueryCase> generateSinglePoseQueries(const KeyVector& poseKeys,
+                                            size_t maxQueries) {
+  vector<QueryCase> queries;
+  if (poseKeys.empty()) {
+    return queries;
+  }
+  for (size_t start : sampledStarts(poseKeys.size() - 1, maxQueries,
+                                    max<size_t>(1, poseKeys.size() / maxQueries))) {
+    QueryCase query;
+    query.family = "single_pose";
+    query.querySize = 1;
+    query.keys = {poseKeys[start]};
+    queries.push_back(query);
+  }
+  return queries;
+}
+
+/// Generate adjacent-pair queries that exercise the legacy pairwise path.
+vector<QueryCase> generatePairPoseQueries(const KeyVector& poseKeys,
+                                          size_t maxQueries) {
+  vector<QueryCase> queries;
+  if (poseKeys.size() < 2) {
+    return queries;
+  }
+  for (size_t start : sampledStarts(poseKeys.size() - 2, maxQueries, 1)) {
+    QueryCase query;
+    query.family = "pair_pose";
+    query.querySize = 2;
+    query.keys = {poseKeys[start], poseKeys[start + 1]};
+    queries.push_back(query);
+  }
+  return queries;
+}
+
 /// Generate highly overlapping windows to test repeated local queries.
 vector<QueryCase> generateRepeatedOverlap(const KeyVector& poseKeys,
                                           size_t querySize, size_t maxQueries) {
@@ -500,6 +541,12 @@ vector<QueryCase> generateSelectedCross(const KeyVector& poseKeys,
 /// Build the full benchmark workload across all query families.
 vector<QueryCase> buildWorkload(const KeyVector& poseKeyList) {
   vector<QueryCase> queries;
+  auto singlePose = generateSinglePoseQueries(poseKeyList, 32);
+  queries.insert(queries.end(), singlePose.begin(), singlePose.end());
+
+  auto pairPose = generatePairPoseQueries(poseKeyList, 32);
+  queries.insert(queries.end(), pairPose.begin(), pairPose.end());
+
   for (size_t querySize : {size_t(3), size_t(5), size_t(10), size_t(20)}) {
     auto local = generateLocalWindows(poseKeyList, querySize, 16);
     queries.insert(queries.end(), local.begin(), local.end());
@@ -528,11 +575,53 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
   const KeyVector orderedKeys = uniqueSortedKeys(query.keys);
   const SupportStats supportStats = analyzeSupport(bayesTree, orderedKeys);
 
+  if (orderedKeys.size() == 1) {
+    const auto reductionStart = chrono::steady_clock::now();
+    const auto marginalFactor =
+        bayesTree.marginalFactor(orderedKeys.front(), EliminatePreferCholesky);
+    const Matrix information = marginalFactor->information();
+    const auto reductionEnd = chrono::steady_clock::now();
+
+    const auto extractionStart = chrono::steady_clock::now();
+    Matrix recovered;
+    if (variant == Variant::LegacyDense || variant == Variant::SteinerDense) {
+      recovered = information.inverse();
+    } else {
+      recovered =
+          information.selfadjointView<Eigen::Upper>().llt().solve(
+              Matrix::Identity(information.rows(), information.cols()));
+    }
+    const auto extractionEnd = chrono::steady_clock::now();
+
+    volatile double checksum = recovered.sum();
+    (void)checksum;
+
+    RawResult result;
+    result.dataset = datasetName;
+    result.ordering = orderingLabel;
+    result.family = query.family;
+    result.mode = "joint";
+    result.variant = variantName(variant);
+    result.querySize = query.querySize;
+    result.queryIndex = queryIndex;
+    result.reductionMs =
+        chrono::duration<double, milli>(reductionEnd - reductionStart).count();
+    result.extractionMs =
+        chrono::duration<double, milli>(extractionEnd - extractionStart).count();
+    result.totalMs = result.reductionMs + result.extractionMs;
+    result.supportCliques = 1;
+    result.compressedCliques = 1;
+    result.reducedStateDim = information.rows();
+    return result;
+  }
+
   const auto reductionStart = chrono::steady_clock::now();
   GaussianFactorGraph reducedGraph =
-      (variant == Variant::LegacyDense || variant == Variant::LegacySolve)
-          ? legacyReducedFactorGraph(linearGraph, fullOrdering, orderedKeys)
-          : steinerReducedFactorGraph(bayesTree, orderedKeys);
+      orderedKeys.size() == 2
+          ? pairReducedFactorGraph(bayesTree, orderedKeys)
+          : ((variant == Variant::LegacyDense || variant == Variant::LegacySolve)
+                 ? legacyReducedFactorGraph(linearGraph, fullOrdering, orderedKeys)
+                 : steinerReducedFactorGraph(bayesTree, orderedKeys));
   const auto reductionEnd = chrono::steady_clock::now();
 
   const auto extractionStart = chrono::steady_clock::now();
@@ -726,6 +815,13 @@ int main(int argc, char** argv) {
 
       size_t queryIndex = 0;
       for (const QueryCase& query : workload) {
+        if (query.querySize == 1) {
+          (void)bayesTree.marginalFactor(query.keys.front(),
+                                         EliminatePreferCholesky);
+        } else if (query.querySize == 2) {
+          (void)bayesTree.joint(query.keys[0], query.keys[1],
+                                EliminatePreferCholesky);
+        }
         for (const Variant variant :
              {Variant::LegacyDense, Variant::SteinerDense, Variant::LegacySolve,
               Variant::SteinerSolve}) {
