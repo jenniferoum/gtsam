@@ -112,6 +112,13 @@ FixedLagSmoother::Result IncrementalFixedLagSmoother::update(
     std::cout << std::endl;
   }
 
+  if (not isamResult_.unusedKeys.empty()) {
+    // Remove keys that became unused after update from the key-timestamp
+    // database
+    eraseKeyTimestampMap(KeyVector{isamResult_.unusedKeys.begin(),
+                                   isamResult_.unusedKeys.end()});
+  }
+
   if (debug) {
     PrintSymbolicTree(isam_,
         "Bayes Tree After Update, Before Marginalization:");
