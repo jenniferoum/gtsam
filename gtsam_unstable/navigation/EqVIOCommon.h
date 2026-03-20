@@ -9,9 +9,11 @@
 
  * -------------------------------------------------------------------------- */
 
-/// @file EqVIOCommon.h
-/// @brief Common EqVIO math/data types for unstable navigation.
-/// @author Rohan Bansal
+/**
+ * @file EqVIOCommon.h
+ * @brief Common EqVIO math/data types for unstable navigation.
+ * @author Rohan Bansal
+ */
 
 #pragma once
 
@@ -33,6 +35,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <cassert>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -42,15 +45,39 @@ namespace eqvio {
 
 using SOT3 = ProductLieGroup<SO3, double>;
 
-using VIOSE23 = ExtendedPose3<2>;
-using VIOBias = imuBias::ConstantBias;
-using VIOLandmarkGroup = PowerLieGroup<SOT3, Eigen::Dynamic>;
-using VIOSensorCore = ProductLieGroup<VIOSE23, VIOBias>;
-using VIOLandmarkCore = ProductLieGroup<Pose3, VIOLandmarkGroup>;
-using VIOGroup = ProductLieGroup<VIOSensorCore, VIOLandmarkCore>;
+using Se23 = ExtendedPose3<2>;
+using Bias = imuBias::ConstantBias;
+using LandmarkGroup = PowerLieGroup<SOT3, Eigen::Dynamic>;
+using SensorCore = ProductLieGroup<Se23, Bias>;
+using LandmarkCore = ProductLieGroup<Pose3, LandmarkGroup>;
+using VioGroup = ProductLieGroup<SensorCore, LandmarkCore>;
 
 /// Approximate gravitational acceleration magnitude in m/s^2.
 constexpr double GRAVITY_CONSTANT = 9.80665;
+
+/// Return positive scale component of SOT3.
+inline double SOT3Scale(const SOT3& Q) { return std::exp(Q.second); }
+
+/// Return SO3 rotation component of SOT3.
+inline const SO3& SOT3Rotation(const SOT3& Q) { return Q.first; }
+
+/// Return scaled-rotation matrix a*R for SOT3 element (R,log(a)).
+inline Matrix3 SOT3ScaledRotation(const SOT3& Q) {
+  return SOT3Rotation(Q).matrix() * SOT3Scale(Q);
+}
+
+/// Apply inverse SOT3 transform to a 3D point.
+inline Vector3 SOT3ApplyInverse(const SOT3& Q, const Vector3& p) {
+  return (1.0 / SOT3Scale(Q)) * (SOT3Rotation(Q).matrix().transpose() * p);
+}
+
+/// Construct SOT3 from rotation and positive scale.
+inline SOT3 MakeSOT3(const SO3& R, double scale) {
+  if (scale <= 0.0) {
+    throw std::invalid_argument("MakeSOT3: scale must be strictly positive");
+  }
+  return SOT3(R, std::log(scale));
+}
 
 /// IMU input bundle used by EqVIO propagation.
 struct GTSAM_UNSTABLE_EXPORT IMUInput {
@@ -67,12 +94,6 @@ struct GTSAM_UNSTABLE_EXPORT IMUInput {
   static IMUInput Zero() { return IMUInput(); }
 
   IMUInput() = default;
-
-  /// Construct from stacked [gyr, acc].
-  explicit IMUInput(const Vector6& vec) {
-    gyr = vec.head<3>();
-    acc = vec.tail<3>();
-  }
 
   /// Construct from stacked [gyr, acc, gyrBiasVel, accBiasVel].
   explicit IMUInput(const Vector12& vec) {
@@ -93,26 +114,8 @@ struct GTSAM_UNSTABLE_EXPORT IMUInput {
     return out;
   }
 
-  /// Subtract stacked [gyr, acc].
-  IMUInput operator-(const Vector6& vec) const {
-    IMUInput out(*this);
-    out.gyr -= vec.head<3>();
-    out.acc -= vec.tail<3>();
-    return out;
-  }
-
-  /// Subtract stacked [gyr, acc, gyrBiasVel, accBiasVel].
-  IMUInput operator-(const Vector12& vec) const {
-    IMUInput out(*this);
-    out.gyr -= vec.segment<3>(0);
-    out.acc -= vec.segment<3>(3);
-    out.gyrBiasVel -= vec.segment<3>(6);
-    out.accBiasVel -= vec.segment<3>(9);
-    return out;
-  }
-
   /// Subtract a ConstantBias from [gyr, acc].
-  IMUInput operator-(const VIOBias& bias) const {
+  IMUInput operator-(const Bias& bias) const {
     IMUInput out(*this);
     out.gyr -= bias.gyroscope();
     out.acc -= bias.accelerometer();
@@ -130,50 +133,57 @@ struct GTSAM_UNSTABLE_EXPORT IMUInput {
   }
 };
 
-/// EqVIO camera built on top of GTSAM PinholeCamera<Cal3_S2>.
-class GTSAM_UNSTABLE_EXPORT VIOCameraModel
-    : public PinholeCamera<Cal3_S2> {
- public:
-  using Base = PinholeCamera<Cal3_S2>;
+/**
+ * @brief Camera model used by EqVIO measurement functions.
+ *
+ * We reuse GTSAM's existing `PinholeCamera<Cal3_S2>` instead of defining a new
+ * camera class here.
+ *
+ * More general camera models (distortion, fisheye, etc.) are intentionally not
+ * used here because EqVIO also needs:
+ * 1. an explicit "undistort to normalized bearing" operation, and
+ * 2. a closed-form projection Jacobian with respect to the 3D ray.
+ * Those operations are model-specific for non-pinhole cameras and would add
+ * extra branches and conversion code.
+ */
+using CameraModel = PinholeCamera<Cal3_S2>;
 
-  VIOCameraModel() : Base(Pose3::Identity(), Cal3_S2()) {}
-  explicit VIOCameraModel(const Cal3_S2& K) : Base(Pose3::Identity(), K) {}
-  VIOCameraModel(const Pose3& pose, const Cal3_S2& K) : Base(pose, K) {}
-  virtual ~VIOCameraModel() = default;
+/**
+ * @brief Convert image coordinates into a normalized bearing-like vector.
+ *
+ * For `Cal3_S2`, calibration inversion maps pixel coordinates to normalized
+ * image coordinates `(x/z, y/z)`. EqVIO represents this as a 3D direction-like
+ * vector `[x/z, y/z, 1]`.
+ */
+inline Vector3 undistortPoint(const CameraModel& camera, const Point2& y) {
+  const Point2 p = camera.calibration().calibrate(y);
+  return Vector3(p.x(), p.y(), 1.0);
+}
 
-  /// Project a camera-frame 3D point to image coordinates.
-  virtual Point2 projectPoint(const Point3& p) const {
-    if (std::abs(p.z()) < 1e-12) {
-      throw std::invalid_argument("VIOCameraModel::projectPoint: z is near zero");
-    }
-    const Point2 pn(p.x() / p.z(), p.y() / p.z());
-    return this->calibration().uncalibrate(pn);
+/**
+ * @brief Jacobian of pixel projection with respect to a camera-frame 3D point.
+ *
+ * This returns `d pi(y) / d y` for the `Cal3_S2` pinhole projection used by
+ * EqVIO's linearized output model.
+ *
+ * @throws std::invalid_argument if `y.z()` is numerically near zero.
+ */
+inline Matrix23 projectionJacobian(const CameraModel& camera, const Vector3& y) {
+  if (std::abs(y.z()) < 1e-12) {
+    throw std::invalid_argument("projectionJacobian: z is near zero");
   }
 
-  /// Convert image coordinates to an undistorted 3D bearing-like vector.
-  virtual Vector3 undistortPoint(const Point2& y) const {
-    const Point2 p = this->calibration().calibrate(y);
-    return Vector3(p.x(), p.y(), 1.0);
-  }
+  const double invz = 1.0 / y.z();
+  const double invz2 = invz * invz;
+  const double fx = camera.calibration().fx();
+  const double fy = camera.calibration().fy();
+  const double s = camera.calibration().skew();
 
-  /// Projection Jacobian with respect to the input 3D vector.
-  virtual Matrix23 projectionJacobian(const Vector3& y) const {
-    if (std::abs(y.z()) < 1e-12) {
-      throw std::invalid_argument("VIOCameraModel::projectionJacobian: z is near zero");
-    }
-
-    const double invz = 1.0 / y.z();
-    const double invz2 = invz * invz;
-    const double fx = this->calibration().fx();
-    const double fy = this->calibration().fy();
-    const double s = this->calibration().skew();
-
-    Matrix23 J;
-    J << fx * invz, s * invz, -(fx * y.x() + s * y.y()) * invz2, 0.0,
-        fy * invz, -fy * y.y() * invz2;
-    return J;
-  }
-};
+  Matrix23 J;
+  J << fx * invz, s * invz, -(fx * y.x() + s * y.y()) * invz2, 0.0, fy * invz,
+      -fy * y.y() * invz2;
+  return J;
+}
 
 /// Vision measurement keyed by landmark id.
 using VisionMeasurement = std::map<int, Point2>;
@@ -182,81 +192,81 @@ using VisionMeasurement = std::map<int, Point2>;
 inline std::vector<int> measurementIds(const VisionMeasurement& measurement) {
   std::vector<int> ids;
   ids.reserve(measurement.size());
-  for (const auto& [id, _] : measurement) {
-    (void)_;
-    ids.push_back(id);
+  for (const auto& item : measurement) {
+    ids.push_back(item.first);
   }
   return ids;
 }
 
-/// Flatten measurements to [u0,v0,u1,v1,...] in map iteration order.
-inline Vector measurementVector(const VisionMeasurement& measurement) {
-  Vector v = Vector::Zero(static_cast<int>(2 * measurement.size()));
-  int i = 0;
-  for (const auto& [_, y] : measurement) {
-    (void)_;
-    v.segment<2>(2 * i) = y;
-    ++i;
-  }
-  return v;
+/// Remove a contiguous row block from a matrix.
+inline void removeRows(Matrix& mat, int startRow, int numRows) {
+  const int rows = mat.rows();
+  const int cols = mat.cols();
+  assert(startRow >= 0 && numRows >= 0 && startRow + numRows <= rows);
+  mat.block(startRow, 0, rows - numRows - startRow, cols) =
+      mat.block(startRow + numRows, 0, rows - numRows - startRow, cols);
+  mat.conservativeResize(rows - numRows, Eigen::NoChange);
 }
 
-/// Compute lhs-rhs in flattened measurement coordinates.
-inline Vector measurementDifference(const VisionMeasurement& lhs,
-                                    const VisionMeasurement& rhs) {
-  if (lhs.size() != rhs.size()) {
-    throw std::invalid_argument("measurementDifference: size mismatch");
-  }
-
-  Vector diff = Vector::Zero(static_cast<int>(2 * lhs.size()));
-  auto itL = lhs.begin();
-  auto itR = rhs.begin();
-  int i = 0;
-  for (; itL != lhs.end(); ++itL, ++itR) {
-    if (itL->first != itR->first) {
-      throw std::invalid_argument("measurementDifference: id mismatch");
-    }
-    diff.segment<2>(2 * i) = itL->second - itR->second;
-    ++i;
-  }
-  return diff;
+/// Remove a contiguous column block from a matrix.
+inline void removeCols(Matrix& mat, int startCol, int numCols) {
+  const int rows = mat.rows();
+  const int cols = mat.cols();
+  assert(startCol >= 0 && numCols >= 0 && startCol + numCols <= cols);
+  mat.block(0, startCol, rows, cols - numCols - startCol) =
+      mat.block(0, startCol + numCols, rows, cols - numCols - startCol);
+  mat.conservativeResize(Eigen::NoChange, cols - numCols);
 }
 
-/// Readable accessors for the composed ProductLieGroup VIOGroup.
-inline const VIOSE23& A_sensorKinematics(const VIOGroup& X) {
+/// Readable accessors for the composed ProductLieGroup VioGroup.
+inline const Se23& A_sensorKinematics(const VioGroup& X) {
   return X.first.first;
 }
 
-inline const VIOBias& Beta_biasOffset(const VIOGroup& X) {
+inline const Bias& Beta_biasOffset(const VioGroup& X) {
   return X.first.second;
 }
 
-inline const Pose3& B_cameraExtrinsics(const VIOGroup& X) {
+inline const Pose3& B_cameraExtrinsics(const VioGroup& X) {
   return X.second.first;
 }
 
-inline const VIOLandmarkGroup& Q_landmarkTransforms(const VIOGroup& X) {
+inline const LandmarkGroup& Q_landmarkTransforms(const VioGroup& X) {
   return X.second.second;
 }
 
-inline size_t N_landmarkCount(const VIOGroup& X) {
+inline size_t N_landmarkCount(const VioGroup& X) {
   return Q_landmarkTransforms(X).size();
 }
-inline size_t Dim_groupTangent(const VIOGroup& X) {
+inline size_t Dim_groupTangent(const VioGroup& X) {
   return 21 + 4 * N_landmarkCount(X);
 }
 
-inline VIOGroup makeVIOGroup(const VIOSE23& sensor_kinematics,
-                             const VIOBias& bias_offset,
-                             const Pose3& camera_extrinsics,
-                             const VIOLandmarkGroup& landmark_transforms) {
-  return VIOGroup(VIOSensorCore(sensor_kinematics, bias_offset),
-                  VIOLandmarkCore(camera_extrinsics, landmark_transforms));
+/// Read-only decomposition view for structured bindings.
+struct VioGroupView {
+  const Se23& A_sensorKinematics;
+  const Bias& Beta_biasOffset;
+  const Pose3& B_cameraExtrinsics;
+  const LandmarkGroup& Q_landmarkTransforms;
+};
+
+/// Decompose VioGroup into named read-only references.
+inline VioGroupView decomposeVioGroup(const VioGroup& X) {
+  return {A_sensorKinematics(X), Beta_biasOffset(X), B_cameraExtrinsics(X),
+          Q_landmarkTransforms(X)};
 }
 
-inline VIOGroup makeVIOGroupIdentity(size_t n = 0) {
-  return makeVIOGroup(VIOSE23::Identity(), VIOBias::Identity(), Pose3::Identity(),
-                      VIOLandmarkGroup(n));
+inline VioGroup makeVioGroup(const Se23& sensor_kinematics,
+                             const Bias& bias_offset,
+                             const Pose3& camera_extrinsics,
+                             const LandmarkGroup& landmark_transforms) {
+  return VioGroup(SensorCore(sensor_kinematics, bias_offset),
+                  LandmarkCore(camera_extrinsics, landmark_transforms));
+}
+
+inline VioGroup makeVioGroupIdentity(size_t n = 0) {
+  return makeVioGroup(Se23::Identity(), Bias::Identity(), Pose3::Identity(),
+                      LandmarkGroup(n));
 }
 
 }  // namespace eqvio
