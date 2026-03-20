@@ -87,10 +87,10 @@ struct GTSAM_UNSTABLE_EXPORT IMUInput {
   using Vector12 = Eigen::Matrix<double, 12, 1>;
 
   double stamp = -1.0;
-  Vector3 gyr = Vector3::Zero();
-  Vector3 acc = Vector3::Zero();
-  Vector3 gyrBiasVel = Vector3::Zero();
-  Vector3 accBiasVel = Vector3::Zero();
+  Vector3 gyr = Z_3x1;
+  Vector3 acc = Z_3x1;
+  Vector3 gyrBiasVel = Z_3x1;
+  Vector3 accBiasVel = Z_3x1;
 
   /// Return a zero-initialized input with invalid timestamp.
   static IMUInput Zero() { return IMUInput(); }
@@ -242,6 +242,12 @@ inline size_t N_landmarkCount(const VioGroup& X) {
 }
 inline size_t Dim_groupTangent(const VioGroup& X) {
   return 21 + 4 * N_landmarkCount(X);
+}
+
+/// Decompose VioGroup into (A, Beta, B, Q) references for structured bindings.
+inline auto decompose(const VioGroup& X) {
+  return std::tie(A_sensorKinematics(X), Beta_biasOffset(X),
+                  B_cameraExtrinsics(X), Q_landmarkTransforms(X));
 }
 
 inline VioGroup makeVioGroup(const Se23& sensor_kinematics,

@@ -139,13 +139,13 @@ State::TangentVector State::localCoordinates(const State& other,
 
   if (H1) {
     H1->setZero(d, d);
-    H1->block<6, 6>(0, 0) = -Matrix66::Identity();
+    H1->block<6, 6>(0, 0) = -I_6x6;
     H1->block<6, 6>(6, 6) = Hpose1;
-    H1->block<3, 3>(12, 12) = -Matrix3::Identity();
+    H1->block<3, 3>(12, 12) = -I_3x3;
     H1->block<6, 6>(15, 15) = Hcam1;
     for (size_t i = 0; i < n(); ++i) {
       const int row = SensorState::CompDim + 3 * static_cast<int>(i);
-      H1->block<3, 3>(row, row) = -Matrix3::Identity();
+      H1->block<3, 3>(row, row) = -I_3x3;
     }
   }
 

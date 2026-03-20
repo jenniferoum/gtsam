@@ -41,7 +41,7 @@ struct GTSAM_UNSTABLE_EXPORT Landmark {
   static constexpr int CompDim = 3;
 
   /// Landmark position in world coordinates.
-  Point3 p = Point3::Zero();
+  Point3 p = Z_3x1;
   /// Stable landmark identifier used for ordering/alignment.
   int id = -1;
 

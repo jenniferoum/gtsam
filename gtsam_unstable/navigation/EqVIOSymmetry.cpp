@@ -90,15 +90,16 @@ Matrix NumericalDerivativeActionWrtGroup(
 /// Apply group action to the sensor sub-state.
 SensorState sensorStateGroupAction(const VioGroup& X,
                                    const SensorState& sensor) {
-  const Pose3 A = APose(X);
-  const Vector3 w = AW(X);
+  const Pose3 i0Ti1 = APose(X);
+  const Pose3 c0Tc1 = B_cameraExtrinsics(X);
+  const Vector3 velocityShift = AW(X);
 
   SensorState out;
   out.inputBias = sensor.inputBias + Beta_biasOffset(X);
-  out.pose = sensor.pose.compose(A);
-  out.velocity = A.rotation().unrotate(sensor.velocity - w);
+  out.pose = sensor.pose.compose(i0Ti1);
+  out.velocity = i0Ti1.rotation().unrotate(sensor.velocity - velocityShift);
   out.cameraOffset =
-      A.inverse().compose(sensor.cameraOffset).compose(B_cameraExtrinsics(X));
+      i0Ti1.inverse().compose(sensor.cameraOffset).compose(c0Tc1);
   return out;
 }
 
@@ -191,25 +192,25 @@ Vector liftVelocity(const State& state, const IMUInput& velocity) {
 VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
                               double dt) {
   const SensorState& sensor = state.sensor;
+  const Pose3& wTi0 = sensor.pose;
+  const Pose3& iTc = sensor.cameraOffset;
   const IMUInput v_est = velocity - sensor.inputBias;
 
   const Rot3 dR = Rot3::Expmap(dt * v_est.gyr);
-  const Vector3 dXWorld =
-      dt * (sensor.pose.rotation() * sensor.velocity) +
+  const Vector3 deltaWorld =
+      dt * (wTi0.rotation() * sensor.velocity) +
       0.5 * dt * dt *
-          (sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT));
-  const Point3 dXBody = sensor.pose.rotation().unrotate(dXWorld);
-  const Pose3 A_pose(dR, dXBody);
+          (wTi0.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT));
+  const Point3 deltaBody = wTi0.rotation().unrotate(deltaWorld);
+  const Pose3 i0Ti1(dR, deltaBody);
 
   const Vector3 bodyVelocityDiff =
       v_est.acc - sensor.gravityDir() * GRAVITY_CONSTANT;
-  const Vector3 w = sensor.velocity - (sensor.velocity + dt * bodyVelocityDiff);
+  const Vector3 velocityShift =
+      sensor.velocity - (sensor.velocity + dt * bodyVelocityDiff);
 
-  const Pose3 B = sensor.cameraOffset.inverse().compose(A_pose).compose(
-      sensor.cameraOffset);
-  const Pose3 cameraPoseChangeInv = sensor.cameraOffset.inverse()
-                                        .compose(A_pose.inverse())
-                                        .compose(sensor.cameraOffset);
+  const Pose3 c0Tc1 = iTc.inverse().compose(i0Ti1).compose(iTc);
+  const Pose3 c1Tc0 = c0Tc1.inverse();
 
   // Construct the landmark transform velocities
   std::vector<SOT3> q;
@@ -218,7 +219,7 @@ VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
     const Landmark& lm0 = state.cameraLandmarks[i];
     Landmark lm1;
     lm1.id = lm0.id;
-    lm1.p = cameraPoseChangeInv.transformFrom(lm0.p);
+    lm1.p = c1Tc0.transformFrom(lm0.p);
 
     const Rot3 R = RotationFromTwoVectors(lm1.p, lm0.p);
     const double a = lm0.p.norm() / lm1.p.norm();
@@ -227,8 +228,8 @@ VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
 
   LandmarkGroup Q(q);
   const Bias beta(dt * velocity.accBiasVel, dt * velocity.gyrBiasVel);
-  const Se23 A = MakeA(A_pose.rotation(), A_pose.translation(), w);
-  return makeVioGroup(A, beta, B, Q);
+  const Se23 A = MakeA(i0Ti1.rotation(), i0Ti1.translation(), velocityShift);
+  return makeVioGroup(A, beta, c0Tc1, Q);
 }
 
 /// Integrate system dynamics over dt using IMU input.
@@ -236,6 +237,8 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
                               double dt) {
   State out;
   const SensorState& sensor = state.sensor;
+  const Pose3& wTi0 = sensor.pose;
+  const Pose3& iTc = sensor.cameraOffset;
   const IMUInput v_est = velocity - sensor.inputBias;
 
   out.sensor.inputBias = Bias(
@@ -243,33 +246,30 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
       sensor.inputBias.gyroscope() + dt * velocity.gyrBiasVel);
 
   const Rot3 dR = Rot3::Expmap(dt * v_est.gyr);
-  const Vector3 dXWorld =
-      dt * (sensor.pose.rotation() * sensor.velocity) +
+  const Vector3 deltaWorld =
+      dt * (wTi0.rotation() * sensor.velocity) +
       0.5 * dt * dt *
-          (sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT));
-  const Point3 dXBody = sensor.pose.rotation().unrotate(dXWorld);
-  const Pose3 poseChange(dR, dXBody);
+          (wTi0.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT));
+  const Point3 deltaBody = wTi0.rotation().unrotate(deltaWorld);
+  const Pose3 i0Ti1(dR, deltaBody);
 
-  out.sensor.pose = sensor.pose.compose(poseChange);
+  out.sensor.pose = wTi0.compose(i0Ti1);
 
   const Vector3 inertialVelocityDiff =
-      sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT);
+      wTi0.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT);
   out.sensor.velocity = out.sensor.pose.rotation().unrotate(
-      sensor.pose.rotation() * sensor.velocity + dt * inertialVelocityDiff);
+      wTi0.rotation() * sensor.velocity + dt * inertialVelocityDiff);
 
-  const Pose3 cameraPoseChangeInv = sensor.cameraOffset.inverse()
-                                        .compose(poseChange.inverse())
-                                        .compose(sensor.cameraOffset);
+  const Pose3 c1Tc0 = iTc.inverse().compose(i0Ti1.inverse()).compose(iTc);
   out.cameraLandmarks.resize(state.n());
 
   // Transform the body-fixed landmarks
   for (size_t i = 0; i < state.n(); ++i) {
-    out.cameraLandmarks[i].p =
-        cameraPoseChangeInv.transformFrom(state.cameraLandmarks[i].p);
+    out.cameraLandmarks[i].p = c1Tc0.transformFrom(state.cameraLandmarks[i].p);
     out.cameraLandmarks[i].id = state.cameraLandmarks[i].id;
   }
 
-  out.sensor.cameraOffset = sensor.cameraOffset;
+  out.sensor.cameraOffset = iTc;
   return out;
 }
 
@@ -299,20 +299,21 @@ State VIOSymmetry::operator()(
     const int d = xi.dim();
     H_xi->setZero(d, d);
 
-    const Pose3 A = APose(X);
+    const Pose3 i0Ti1 = APose(X);
+    const Pose3 c0Tc1 = B_cameraExtrinsics(X);
 
     Matrix66 Hpose;
-    xi.sensor.pose.compose(A, Hpose, {});
+    xi.sensor.pose.compose(i0Ti1, Hpose, {});
     H_xi->block<6, 6>(6, 6) = Hpose;
 
     Matrix66 HtmpCamera, Hcamera;
-    const Pose3 tmp = A.inverse().compose(xi.sensor.cameraOffset, {},
-                                          HtmpCamera);
-    (void)tmp.compose(B_cameraExtrinsics(X), Hcamera, {});
+    const Pose3 i1Tc0 =
+        i0Ti1.inverse().compose(xi.sensor.cameraOffset, {}, HtmpCamera);
+    (void)i1Tc0.compose(c0Tc1, Hcamera, {});
     H_xi->block<6, 6>(15, 15) = Hcamera * HtmpCamera;
 
     H_xi->block<6, 6>(0, 0).setIdentity();
-    H_xi->block<3, 3>(12, 12) = A.rotation().matrix().transpose();
+    H_xi->block<3, 3>(12, 12) = i0Ti1.rotation().matrix().transpose();
 
     // Compute the Jacobian of the landmark transform velocities
     for (size_t i = 0; i < xi.n(); ++i) {
