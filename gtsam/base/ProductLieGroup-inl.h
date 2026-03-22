@@ -48,10 +48,14 @@ ProductLieGroup<G, H> ProductLieGroup<G, H>::retract(const TangentVector& v,
         "ProductLieGroup::retract tangent dimension does not match product "
         "dimension");
   }
-  Jacobian1 D_g_first;
-  Jacobian1 D_g_second;
-  Jacobian2 D_h_first;
-  Jacobian2 D_h_second;
+  Jacobian1 D_g_first = Jacobian1::Zero(
+      static_cast<int>(firstDimension), static_cast<int>(firstDimension));
+  Jacobian1 D_g_second = Jacobian1::Zero(
+      static_cast<int>(firstDimension), static_cast<int>(firstDimension));
+  Jacobian2 D_h_first = Jacobian2::Zero(
+      static_cast<int>(secondDimension), static_cast<int>(secondDimension));
+  Jacobian2 D_h_second = Jacobian2::Zero(
+      static_cast<int>(secondDimension), static_cast<int>(secondDimension));
   G g = traits<G>::Retract(this->first, tangentSegment<G>(v, 0, firstDimension),
                            H1 ? &D_g_first : nullptr,
                            H2 ? &D_g_second : nullptr);
@@ -83,10 +87,14 @@ ProductLieGroup<G, H>::localCoordinates(const ProductLieGroup& g,
   const size_t secondDimension = secondDim();
   const size_t productDimension =
       combinedDimension(firstDimension, secondDimension);
-  Jacobian1 D_g_first;
-  Jacobian1 D_g_second;
-  Jacobian2 D_h_first;
-  Jacobian2 D_h_second;
+  Jacobian1 D_g_first = Jacobian1::Zero(
+      static_cast<int>(firstDimension), static_cast<int>(firstDimension));
+  Jacobian1 D_g_second = Jacobian1::Zero(
+      static_cast<int>(firstDimension), static_cast<int>(firstDimension));
+  Jacobian2 D_h_first = Jacobian2::Zero(
+      static_cast<int>(secondDimension), static_cast<int>(secondDimension));
+  Jacobian2 D_h_second = Jacobian2::Zero(
+      static_cast<int>(secondDimension), static_cast<int>(secondDimension));
   typename traits<G>::TangentVector v1 =
       traits<G>::Local(this->first, g.first, H1 ? &D_g_first : nullptr,
                        H2 ? &D_g_second : nullptr);
@@ -116,8 +124,10 @@ ProductLieGroup<G, H> ProductLieGroup<G, H>::compose(
   const size_t secondDimension = secondDim();
   const size_t productDimension =
       combinedDimension(firstDimension, secondDimension);
-  Jacobian1 D_g_first;
-  Jacobian2 D_h_second;
+  Jacobian1 D_g_first = Jacobian1::Zero(
+      static_cast<int>(firstDimension), static_cast<int>(firstDimension));
+  Jacobian2 D_h_second = Jacobian2::Zero(
+      static_cast<int>(secondDimension), static_cast<int>(secondDimension));
   G g = traits<G>::Compose(this->first, other.first, H1 ? &D_g_first : nullptr);
   H h = traits<H>::Compose(this->second, other.second,
                            H1 ? &D_h_second : nullptr);
@@ -139,8 +149,10 @@ ProductLieGroup<G, H> ProductLieGroup<G, H>::between(
   const size_t secondDimension = secondDim();
   const size_t productDimension =
       combinedDimension(firstDimension, secondDimension);
-  Jacobian1 D_g_first;
-  Jacobian2 D_h_second;
+  Jacobian1 D_g_first = Jacobian1::Zero(
+      static_cast<int>(firstDimension), static_cast<int>(firstDimension));
+  Jacobian2 D_h_second = Jacobian2::Zero(
+      static_cast<int>(secondDimension), static_cast<int>(secondDimension));
   G g = traits<G>::Between(this->first, other.first, H1 ? &D_g_first : nullptr);
   H h = traits<H>::Between(this->second, other.second,
                            H1 ? &D_h_second : nullptr);
@@ -160,8 +172,10 @@ ProductLieGroup<G, H> ProductLieGroup<G, H>::inverse(ChartJacobian D) const {
   const size_t secondDimension = secondDim();
   const size_t productDimension =
       combinedDimension(firstDimension, secondDimension);
-  Jacobian1 D_g_first;
-  Jacobian2 D_h_second;
+  Jacobian1 D_g_first = Jacobian1::Zero(
+      static_cast<int>(firstDimension), static_cast<int>(firstDimension));
+  Jacobian2 D_h_second = Jacobian2::Zero(
+      static_cast<int>(secondDimension), static_cast<int>(secondDimension));
   G g = traits<G>::Inverse(this->first, D ? &D_g_first : nullptr);
   H h = traits<H>::Inverse(this->second, D ? &D_h_second : nullptr);
   if (D) {
