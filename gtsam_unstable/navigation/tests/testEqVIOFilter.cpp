@@ -102,6 +102,10 @@ IMUInput ImuFixture() {
 
 bool IsFinite(const Matrix& M) { return M.array().isFinite().all(); }
 
+void PropagateSingle(EqVIOFilter& filter, const IMUInput& imu, double dt) {
+  filter.propagate(std::vector<IMUInput>{imu}, std::vector<double>{dt});
+}
+
 }  // namespace
 
 TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
@@ -120,18 +124,18 @@ TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
 
   IMUInput imu1 = imu0;
   imu1.stamp = 0.01;
-  filter.propagate(imu1, 0.01);
+  PropagateSingle(filter, imu1, 0.01);
 
   VisionMeasurement meas1;
   meas1[1] = camera->project2(Point3(0.2, -0.1, 3.5));
   meas1[2] = camera->project2(Point3(-0.3, 0.15, 4.0));
-  filter.propagate(imu1, 0.01);
+  PropagateSingle(filter, imu1, 0.01);
   filter.correct(meas1, camera);
   EXPECT_LONGS_EQUAL(2, filter.stateEstimate().n());
 
   IMUInput imu2 = imu0;
   imu2.stamp = 0.02;
-  filter.propagate(imu2, 0.01);
+  PropagateSingle(filter, imu2, 0.01);
 
   VisionMeasurement meas2;
   meas2[1] = meas1.at(1);
@@ -157,8 +161,8 @@ TEST(EqVIOFilter, InitAndPropagation) {
 
   IMUInput imu1 = imu0;
   imu1.stamp = 1.01;
-  filter.propagate(imu1, 0.01);
-  filter.propagate(imu1, 0.01);
+  PropagateSingle(filter, imu1, 0.01);
+  PropagateSingle(filter, imu1, 0.01);
 
   auto camera =
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
@@ -191,7 +195,7 @@ TEST(EqVIOFilter, ParityShortSequence) {
     imu.acc = Vector3(0.02, -0.01, GRAVITY_CONSTANT - 0.03);
     imu.gyrBiasVel = Vector3(0.0005, -0.0002, 0.0001);
     imu.accBiasVel = Vector3(-0.0004, 0.0003, -0.0001);
-    filter.propagate(imu, dt);
+    PropagateSingle(filter, imu, dt);
 
     VisionMeasurement emptyMeas;
     filter.correct(emptyMeas, camera);
@@ -216,7 +220,7 @@ TEST(EqVIOFilter, VisionUpdate) {
   imu.stamp = 0.0;
   imu.gyr = Vector3::Zero();
   imu.acc = Vector3(0.0, 0.0, GRAVITY_CONSTANT);
-  filter.propagate(imu, 0.01);
+  PropagateSingle(filter, imu, 0.01);
 
   auto camera =
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
@@ -252,7 +256,7 @@ TEST(EqVIOFilter, Smoke) {
     imu.stamp = t;
     imu.gyr = Vector3::Zero();
     imu.acc = Vector3(0.0, 0.0, GRAVITY_CONSTANT);
-    filter.propagate(imu, dt);
+    PropagateSingle(filter, imu, dt);
 
     if (k % 5 == 0) {
       VisionMeasurement y = measureSystemState(filter.stateEstimate(), camera);

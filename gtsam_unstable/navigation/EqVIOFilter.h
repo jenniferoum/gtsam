@@ -75,8 +75,9 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   /// Set manifold reference/origin and covariance.
   void setReferenceState(const State& xi0, const Matrix& Sigma0);
 
-  /// Propagate observer by one IMU hold over `dt`.
-  void propagate(const IMUInput& imu, double dt);
+  /// Propagate over multiple IMU holds while preserving legacy replay semantics.
+  void propagate(const std::vector<IMUInput>& imuInputs,
+                 const std::vector<double>& dts);
   /// Propagate covariance only over `dt` with one IMU hold.
   void propagateCovariance(const IMUInput& imu, double dt);
   /// Propagate observer state only over `dt` with one IMU hold.

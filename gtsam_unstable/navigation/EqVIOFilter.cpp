@@ -107,9 +107,36 @@ void EqVIOFilter::setReferenceState(const State& xi0, const Matrix& Sigma0) {
   syncBase(true);
 }
 
-void EqVIOFilter::propagate(const IMUInput& imu, double dt) {
-  propagateCovariance(imu, dt);
-  propagateState(imu, dt);
+void EqVIOFilter::propagate(const std::vector<IMUInput>& imuInputs,
+                            const std::vector<double>& dts) {
+  if (!initialized_ || imuInputs.empty()) {
+    return;
+  }
+  if (imuInputs.size() != dts.size()) {
+    throw std::invalid_argument(
+        "EqVIOFilter::propagate: imuInputs and dts size mismatch");
+  }
+
+  double totalTime = 0.0;
+  IMUInput averagedImu = IMUInput::Zero();
+  for (size_t i = 0; i < imuInputs.size(); ++i) {
+    const double dt = dts[i];
+    if (dt <= 0.0) continue;
+    totalTime += dt;
+    averagedImu = averagedImu + imuInputs[i] * dt;
+  }
+  if (totalTime <= 0.0) {
+    return;
+  }
+
+  averagedImu = averagedImu * (1.0 / totalTime);
+  propagateCovariance(averagedImu, totalTime);
+
+  for (size_t i = 0; i < imuInputs.size(); ++i) {
+    const double dt = dts[i];
+    if (dt <= 0.0) continue;
+    propagateState(imuInputs[i], dt);
+  }
 }
 
 void EqVIOFilter::propagateCovariance(const IMUInput& imu, double dt) {

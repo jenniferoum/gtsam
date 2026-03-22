@@ -253,33 +253,26 @@ void propagateBufferedImu(EqVIOFilter& filter, std::vector<IMUInput>& imuBuffer,
   }
 
   const double tRef = currentTime;
-  double accumulatedTime = 0.0;
-  IMUInput accumulatedVelocity = IMUInput::Zero();
+  std::vector<IMUInput> imuInputs;
+  std::vector<double> dts;
+  imuInputs.reserve(imuBuffer.size());
+  dts.reserve(imuBuffer.size());
+  double propagatedTime = 0.0;
   for (size_t i = 0; i < imuBuffer.size(); ++i) {
     const double t0 = std::max(imuBuffer[i].stamp, tRef);
     const double t1 =
         i + 1 < imuBuffer.size() ? std::min(imuBuffer[i + 1].stamp, targetTime)
                                  : targetTime;
     const double dt = std::max(t1 - t0, 0.0);
-    accumulatedTime += dt;
-    accumulatedVelocity = accumulatedVelocity + imuBuffer[i] * dt;
+    if (dt <= 0.0) continue;
+    imuInputs.push_back(imuBuffer[i]);
+    dts.push_back(dt);
+    propagatedTime += dt;
   }
 
-  if (accumulatedTime > 0.0) {
-    accumulatedVelocity = accumulatedVelocity * (1.0 / accumulatedTime);
-    filter.propagateCovariance(accumulatedVelocity, accumulatedTime);
-
-    for (size_t i = 0; i < imuBuffer.size(); ++i) {
-      const double t0 = std::max(imuBuffer[i].stamp, tRef);
-      const double t1 =
-          i + 1 < imuBuffer.size() ? std::min(imuBuffer[i + 1].stamp, targetTime)
-                                   : targetTime;
-      const double dt = std::max(t1 - t0, 0.0);
-      if (dt > 0.0) {
-        filter.propagateState(imuBuffer[i], dt);
-        currentTime += dt;
-      }
-    }
+  if (!imuInputs.empty()) {
+    filter.propagate(imuInputs, dts);
+    currentTime += propagatedTime;
   }
 
   auto it = std::find_if(imuBuffer.begin(), imuBuffer.end(),
