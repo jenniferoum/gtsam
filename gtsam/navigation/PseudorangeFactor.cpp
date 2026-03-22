@@ -193,7 +193,8 @@ Vector PseudorangeFactorArm::evaluateError(
     OptionalMatrixType HreceiverClockBias) const {
   // Convert from local nav frame to ECEF if ecef_T_nav is provided:
   Matrix66 H_compose;
-  const Pose3 ecef_T_body = ecef_T_nav_
+  const bool has_nav = ecef_T_nav_.has_value();
+  const Pose3 ecef_T_body = has_nav
       ? ecef_T_nav_->compose(pose, {}, H_pose ? &H_compose : nullptr)
       : pose;
 
@@ -220,7 +221,7 @@ Vector PseudorangeFactorArm::evaluateError(
           u * (-ecef_R_body * skewSymmetric(bL_));
       H_ecef.block<1, 3>(0, 3) = u * ecef_R_body;
       // Chain rule: if ecef_T_nav is set, multiply by compose Jacobian
-      *H_pose = ecef_T_nav_ ? H_ecef * H_compose : H_ecef;
+      *H_pose = has_nav ? H_ecef * H_compose : H_ecef;
     }
   }
 
@@ -290,7 +291,8 @@ Vector DifferentialPseudorangeFactorArm::evaluateError(
     OptionalMatrixType HdifferentialCorrection) const {
   // Convert from local nav frame to ECEF if ecef_T_nav is provided:
   Matrix66 H_compose;
-  const Pose3 ecef_T_body = ecef_T_nav_
+  const bool has_nav = ecef_T_nav_.has_value();
+  const Pose3 ecef_T_body = has_nav
       ? ecef_T_nav_->compose(pose, {}, H_pose ? &H_compose : nullptr)
       : pose;
 
@@ -317,7 +319,7 @@ Vector DifferentialPseudorangeFactorArm::evaluateError(
           u * (-ecef_R_body * skewSymmetric(bL_));
       H_ecef.block<1, 3>(0, 3) = u * ecef_R_body;
       // Chain rule: if ecef_T_nav is set, multiply by compose Jacobian
-      *H_pose = ecef_T_nav_ ? H_ecef * H_compose : H_ecef;
+      *H_pose = has_nav ? H_ecef * H_compose : H_ecef;
     }
   }
 
