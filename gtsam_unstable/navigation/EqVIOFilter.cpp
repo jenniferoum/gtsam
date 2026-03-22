@@ -22,7 +22,7 @@ namespace eqvio {
 
 namespace {
 
-Vector measurementVector(const VisionMeasurement& measurement) {
+Vector _measurementVector(const VisionMeasurement& measurement) {
   Vector v = Vector::Zero(static_cast<int>(2 * measurement.size()));
   int i = 0;
   for (const auto& item : measurement) {
@@ -32,8 +32,8 @@ Vector measurementVector(const VisionMeasurement& measurement) {
   return v;
 }
 
-Vector measurementDifference(const VisionMeasurement& lhs,
-                             const VisionMeasurement& rhs) {
+Vector _measurementDifference(const VisionMeasurement& lhs,
+                              const VisionMeasurement& rhs) {
   if (lhs.size() != rhs.size()) {
     throw std::invalid_argument("measurementDifference: size mismatch");
   }
@@ -143,9 +143,8 @@ void EqVIOFilter::propagateCovariance(const IMUInput& imu, double dt) {
   if (!initialized_ || dt <= 0.0) {
     return;
   }
-  const Matrix A =
-      EqFCoordinateSuite_invdepth.stateMatrixA(view_.X, view_.xi0, imu);
-  const Matrix B = EqFCoordinateSuite_invdepth.inputMatrixB(view_.X, view_.xi0);
+  const Matrix A = EqFStateMatrixA(view_.X, view_.xi0, imu);
+  const Matrix B = EqFInputMatrixB(view_.X, view_.xi0);
   const Matrix Qc =
       B * params_.inputNoise * B.transpose() + stateProcessNoise(view_.xi0.n());
 
@@ -371,15 +370,15 @@ Matrix2 EqVIOFilter::outputCovarianceById(
 
   const size_t i =
       static_cast<size_t>(std::distance(view_.xi0.cameraLandmarks.begin(), it));
-  const auto& Q = gtsam::get<3>(view_.X);
+  const LandmarkGroup& Q = std::get<3>(decompose(view_.X));
   const SOT3& Q_i = Q[i];
 
-  const Matrix23 C0i = EqFCoordinateSuite_invdepth.outputMatrixCi(it->p, Q_i, camera);
+  const Matrix23 C0i = EqFoutputMatrixCi(it->p, Q_i, camera);
   return C0i * lmCov * C0i.transpose();
 }
 
 void EqVIOFilter::removeInvalidLandmarksNow() {
-  const auto& Q = gtsam::get<3>(view_.X);
+  const LandmarkGroup& Q = std::get<3>(decompose(view_.X));
   std::set<int> invalidIds;
   for (size_t i = 0; i < Q.size(); ++i) {
     const double a = SOT3Scale(Q[i]);
@@ -478,22 +477,22 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
       measureSystemState(stateEstimate(), camera);
   Vector yTilde;
   try {
-    yTilde = measurementDifference(measurement, estimatedMeasurement);
+    yTilde = _measurementDifference(measurement, estimatedMeasurement);
   } catch (const std::exception& e) {
     throw std::invalid_argument(std::string("EqVIOFilter::update: ") + e.what());
   }
-  const Matrix Ct = EqFCoordinateSuite_invdepth.outputMatrixC(
-      view_.xi0, view_.X, measurement, camera, true);
+  const Matrix Ct = EqFoutputMatrixC(view_.xi0, view_.X, measurement, camera,
+                                     true);
 
   const Matrix Rused =
       (outputGainMatrix.rows() == Ct.rows() && outputGainMatrix.cols() == Ct.rows())
           ? outputGainMatrix
           : Matrix::Identity(Ct.rows(), Ct.rows()) * params_.measurementNoiseVariance;
 
-  const Vector zhat = measurementVector(estimatedMeasurement);
-  const Vector z = measurementVector(measurement);
+  const Vector zhat = _measurementVector(estimatedMeasurement);
+  const Vector z = _measurementVector(measurement);
   Base::updateWithVector(zhat, Ct, z, Rused, [this](const Vector& delta_xi) -> Vector {
-    return EqFCoordinateSuite_invdepth.liftInnovation(delta_xi, view_.xi0);
+    return liftInnovation(delta_xi, view_.xi0);
   });
   syncFromBase();
 }

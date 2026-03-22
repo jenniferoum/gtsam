@@ -78,10 +78,6 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   /// Propagate over multiple IMU holds while preserving legacy replay semantics.
   void propagate(const std::vector<IMUInput>& imuInputs,
                  const std::vector<double>& dts);
-  /// Propagate covariance only over `dt` with one IMU hold.
-  void propagateCovariance(const IMUInput& imu, double dt);
-  /// Propagate observer state only over `dt` with one IMU hold.
-  void propagateState(const IMUInput& imu, double dt);
   /// Apply one visual correction at current observer time.
   void correct(const VisionMeasurement& measurement,
                const std::shared_ptr<const CameraModel>& camera,
@@ -96,6 +92,9 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
 
  private:
   static Matrix defaultCovariance(size_t nLandmarks);
+
+  void propagateCovariance(const IMUInput& imu, double dt);
+  void propagateState(const IMUInput& imu, double dt);
 
   void syncBase(bool resetReference);
   void syncFromBase();

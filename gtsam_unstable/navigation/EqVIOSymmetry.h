@@ -24,8 +24,6 @@
 #include <gtsam_unstable/navigation/EqVIOState.h>
 #include <gtsam_unstable/dllexport.h>
 
-#include <functional>
-
 namespace gtsam {
 namespace eqvio {
 
@@ -55,28 +53,31 @@ GTSAM_UNSTABLE_EXPORT State integrateSystemFunction(
 GTSAM_UNSTABLE_EXPORT VisionMeasurement measureSystemState(
     const State& state, const std::shared_ptr<const CameraModel>& camera);
 
-/// InvDepth EqF coordinate suite and associated matrices/lifts.
-struct GTSAM_UNSTABLE_EXPORT EqFCoordinateSuite {
-  std::function<Matrix(const VioGroup&, const State&, const IMUInput&)>
-      stateMatrixA;
-  std::function<Matrix(const VioGroup&, const State&)> inputMatrixB;
-  std::function<Matrix23(const Point3&, const SOT3&,
-                         const std::shared_ptr<const CameraModel>&,
-                         const Point2&)>
-      outputMatrixCiStar;
-  std::function<Vector(const Vector&, const State&)> liftInnovation;
-
-  Matrix outputMatrixC(const State& xi0, const VioGroup& X,
-                       const VisionMeasurement& y,
-                       const std::shared_ptr<const CameraModel>& camera,
-                       bool useEquivariance = true) const;
-
-  Matrix23 outputMatrixCi(const Point3& q0, const SOT3& QHat,
-                          const std::shared_ptr<const CameraModel>& camera)
-      const;
-};
-
-extern const GTSAM_UNSTABLE_EXPORT EqFCoordinateSuite EqFCoordinateSuite_invdepth;
+/**
+ * @brief EqF linearization blocks used by EqVIO.
+ *
+ * EqVIO uses an inverse-depth landmark error chart to preserve the
+ * equivariant output linearization while remaining numerically stable for
+ * distant points. Other coordinate systems (Euclid, Polar) are not supported
+ * in this implementation yet. See the EqVIO paper (van Goor and Mahony,
+ * arXiv:2205.01980v3).
+ */
+GTSAM_UNSTABLE_EXPORT Matrix EqFStateMatrixA(
+    const VioGroup& X, const State& xi0, const IMUInput& imuVel);
+GTSAM_UNSTABLE_EXPORT Matrix EqFInputMatrixB(
+    const VioGroup& X, const State& xi0);
+GTSAM_UNSTABLE_EXPORT Matrix23 EqFoutputMatrixCiStar(
+    const Point3& q0, const SOT3& QHat,
+    const std::shared_ptr<const CameraModel>& camera, const Point2& y);
+GTSAM_UNSTABLE_EXPORT Matrix23 EqFoutputMatrixCi(
+    const Point3& q0, const SOT3& QHat,
+    const std::shared_ptr<const CameraModel>& camera);
+GTSAM_UNSTABLE_EXPORT Matrix EqFoutputMatrixC(
+    const State& xi0, const VioGroup& X, const VisionMeasurement& y,
+    const std::shared_ptr<const CameraModel>& camera,
+    bool useEquivariance = true);
+GTSAM_UNSTABLE_EXPORT Vector liftInnovation(const Vector& totalInnovation,
+                                            const State& xi0);
 
 /// Right action phi(xi, X) = stateGroupAction(X, xi).
 struct GTSAM_UNSTABLE_EXPORT Symmetry

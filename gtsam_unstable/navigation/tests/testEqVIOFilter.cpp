@@ -271,16 +271,9 @@ TEST(EqVIOFilter, Smoke) {
   EXPECT(filter.view().Sigma.array().isFinite().all());
 }
 
-TEST(VIOEqFMatricesInvDepth, Selector) {
-  const EqFCoordinateSuite* suite = &EqFCoordinateSuite_invdepth;
-  EXPECT(suite != nullptr);
-}
-
-//******************************************************************************
-TEST(VIOEqFMatricesInvDepth, ShapesAndFinite) {
+TEST(VIOEqFMatrices, ShapesAndFinite) {
   const auto camera =
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
-  const EqFCoordinateSuite& suite = EqFCoordinateSuite_invdepth;
 
   for (const auto& pair : std::vector<std::pair<State, VioGroup>>{
            {State0(), Group0()}, {State1(), Group1()}, {State3(), Group3()}}) {
@@ -290,9 +283,9 @@ TEST(VIOEqFMatricesInvDepth, ShapesAndFinite) {
     const VisionMeasurement y =
         measureSystemState(stateGroupAction(X, xi0), camera);
 
-    const Matrix A = suite.stateMatrixA(X, xi0, imu);
-    const Matrix B = suite.inputMatrixB(X, xi0);
-    const Matrix C = suite.outputMatrixC(xi0, X, y, camera, true);
+    const Matrix A = EqFStateMatrixA(X, xi0, imu);
+    const Matrix B = EqFInputMatrixB(X, xi0);
+    const Matrix C = EqFoutputMatrixC(xi0, X, y, camera, true);
 
     EXPECT_LONGS_EQUAL(xi0.dim(), A.rows());
     EXPECT_LONGS_EQUAL(xi0.dim(), A.cols());
