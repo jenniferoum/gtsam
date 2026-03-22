@@ -243,8 +243,10 @@ ProductLieGroup<G, H> ProductLieGroup<G, H>::Expmap(
   const size_t secondDimension = static_cast<size_t>(v2.size());
   const size_t productDimension =
       combinedDimension(firstDimension, secondDimension);
-  Jacobian1 D_g_first;
-  Jacobian2 D_h_second;
+  Jacobian1 D_g_first = Jacobian1::Zero(
+      static_cast<int>(firstDimension), static_cast<int>(firstDimension));
+  Jacobian2 D_h_second = Jacobian2::Zero(
+      static_cast<int>(secondDimension), static_cast<int>(secondDimension));
   G g = traits<G>::Expmap(v1, H1 ? &D_g_first : nullptr);
   H h = traits<H>::Expmap(v2, H2 ? &D_h_second : nullptr);
   if (H1) {
@@ -265,8 +267,10 @@ typename ProductLieGroup<G, H>::TangentVector ProductLieGroup<G, H>::Logmap(
   const size_t secondDimension = p.secondDim();
   const size_t productDimension =
       combinedDimension(firstDimension, secondDimension);
-  Jacobian1 D_g_first;
-  Jacobian2 D_h_second;
+  Jacobian1 D_g_first = Jacobian1::Zero(
+      static_cast<int>(firstDimension), static_cast<int>(firstDimension));
+  Jacobian2 D_h_second = Jacobian2::Zero(
+      static_cast<int>(secondDimension), static_cast<int>(secondDimension));
   typename traits<G>::TangentVector v1 =
       traits<G>::Logmap(p.first, Hp ? &D_g_first : nullptr);
   typename traits<H>::TangentVector v2 =
