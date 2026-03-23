@@ -66,7 +66,7 @@ class EquivariantFilter : public ManifoldEKF<M> {
   M xi_ref_;  // Origin (reference) state on the manifold
   typename Symmetry::Orbit act_on_ref_;  // Orbit of the reference state
   MatrixMG Dphi0_;           // Differential of state action at identity
- MatrixGM InnovationLift_;  // Innovation lift matrix ((Dphi0)^+)
+  MatrixGM InnovationLift_;  // Innovation lift matrix ((Dphi0)^+)
 
   G g_;  // Group element estimate
 
@@ -78,13 +78,11 @@ class EquivariantFilter : public ManifoldEKF<M> {
     xi_ref_ = xi_ref;
     g_ = g;
 
-    // -- Recompute Dphi0 and innovation lift matrix from current reference
-    // state.
+    // Recompute Dphi0 and innovation lift matrix from current reference state
     act_on_ref_ = typename Symmetry::Orbit(xi_ref_);
     const G identity_at_g = traits<G>::Compose(g_.inverse(), g_);
     act_on_ref_(identity_at_g, &Dphi0_);
     InnovationLift_ = Dphi0_.completeOrthogonalDecomposition().pseudoInverse();
-    // --
 
     if constexpr (DimM == Eigen::Dynamic) {
       this->n_ = traits<M>::GetDimension(xi_ref_);

@@ -73,8 +73,6 @@ Matrix NumericalDerivativeActionWrtGroup(
   return H;
 }
 
-constexpr double kStereoChartDiffDelta = 1e-6;
-
 Vector2 E3ProjectSphere(const Vector3& eta) {
   static const Matrix23 I23 = Matrix23::Identity();
   static const Vector3 e3 = Vector3::UnitZ();
@@ -91,16 +89,14 @@ Matrix23 E3ProjectSphereDiff(const Vector3& eta) {
   const std::function<Vector2(const Vector3&)> f = [](const Vector3& x) {
     return E3ProjectSphere(x);
   };
-  return gtsam::numericalDerivative11<Vector2, Vector3, 3>(
-      f, eta, kStereoChartDiffDelta);
+  return gtsam::numericalDerivative11<Vector2, Vector3, 3>(f, eta, 1e-6);
 }
 
 Matrix32 E3ProjectSphereInvDiff(const Vector2& y) {
   const std::function<Vector3(const Vector2&)> f = [](const Vector2& x) {
     return E3ProjectSphereInv(x);
   };
-  return gtsam::numericalDerivative11<Vector3, Vector2, 2>(
-      f, y, kStereoChartDiffDelta);
+  return gtsam::numericalDerivative11<Vector3, Vector2, 2>(f, y, 1e-6);
 }
 
 Matrix23 SphereChartStereoDiff0(const Vector3& pole) {
