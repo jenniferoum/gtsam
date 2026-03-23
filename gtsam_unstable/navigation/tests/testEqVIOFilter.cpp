@@ -110,6 +110,45 @@ void PropagateSingle(EqVIOFilter& filter, const IMUInput& imu, double dt) {
   filter.propagate(std::vector<IMUInput>{imu}, std::vector<double>{dt});
 }
 
+State integrateSystemFunction(const State& state, const IMUInput& velocity,
+                              double dt) {
+  State out;
+  const SensorState& sensor = state.sensor;
+  const IMUInput v_est = velocity - sensor.inputBias;
+
+  out.sensor.inputBias = Bias(
+      sensor.inputBias.accelerometer() + dt * velocity.accBiasVel,
+      sensor.inputBias.gyroscope() + dt * velocity.gyrBiasVel);
+
+  const Rot3 dR = Rot3::Expmap(dt * v_est.gyr);
+  const Vector3 dXWorld =
+      dt * (sensor.pose.rotation() * sensor.velocity) +
+      0.5 * dt * dt *
+          (sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT));
+  const Point3 dXBody = sensor.pose.rotation().unrotate(dXWorld);
+  const Pose3 b0Tb1(dR, dXBody);
+
+  out.sensor.pose = sensor.pose.compose(b0Tb1);
+
+  const Vector3 inertialVelocityDiff =
+      sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT);
+  out.sensor.velocity = out.sensor.pose.rotation().unrotate(
+      sensor.pose.rotation() * sensor.velocity + dt * inertialVelocityDiff);
+
+  const Pose3 c1Tc0 =
+      sensor.cameraOffset.inverse().compose(b0Tb1.inverse()).compose(
+          sensor.cameraOffset);
+  out.cameraLandmarks.resize(state.n());
+
+  for (size_t i = 0; i < state.n(); ++i) {
+    out.cameraLandmarks[i].p = c1Tc0.transformFrom(state.cameraLandmarks[i].p);
+    out.cameraLandmarks[i].id = state.cameraLandmarks[i].id;
+  }
+
+  out.sensor.cameraOffset = sensor.cameraOffset;
+  return out;
+}
+
 }  // namespace
 
 TEST(EqVIOFilter, DynamicLandmarksAddRemove) {

@@ -452,23 +452,6 @@ void EqVIOFilter::removeOutliers(
   }
 }
 
-double EqVIOFilter::getMedianSceneDepth() const {
-  const std::vector<Landmark> landmarks = stateEstimate().cameraLandmarks;
-  if (landmarks.empty()) return params_.initialPointDepth;
-
-  std::vector<double> depthsSquared(landmarks.size());
-  std::transform(landmarks.begin(), landmarks.end(), depthsSquared.begin(),
-                 [](const Landmark& lm) { return lm.p.squaredNorm(); });
-  const auto midway = depthsSquared.begin() + depthsSquared.size() / 2;
-  std::nth_element(depthsSquared.begin(), midway, depthsSquared.end());
-
-  double medianDepth = params_.initialPointDepth;
-  if (midway != depthsSquared.end()) {
-    medianDepth = std::pow(*midway, 0.5);
-  }
-  return medianDepth;
-}
-
 void EqVIOFilter::update(const VisionMeasurement& measurement,
                          const std::shared_ptr<const CameraModel>& camera,
                          const Matrix& outputGainMatrix) {

@@ -103,7 +103,6 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   void syncFromBase();
 
   Matrix stateProcessNoise(size_t nLandmarks) const;
-  double getMedianSceneDepth() const;
 
   void addNewLandmarks(const VisionMeasurement& measurement,
                        const std::shared_ptr<const CameraModel>& camera);

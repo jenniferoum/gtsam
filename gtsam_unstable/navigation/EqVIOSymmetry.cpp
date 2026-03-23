@@ -51,16 +51,6 @@ Rot3 RotationFromTwoVectors(const Vector3& from, const Vector3& to) {
   return Rot3(q);
 }
 
-std::vector<int> QIdsForMeasurement(const VioGroup& X,
-                                    const VisionMeasurement& measurement) {
-  if (N_landmarkCount(X) == 0) return {};
-  if (measurement.size() != N_landmarkCount(X)) {
-    throw std::invalid_argument(
-        "outputGroupAction: measurement count must match group landmark count");
-  }
-  return measurementIds(measurement);
-}
-
 /// Numerical derivative of the state action with respect to group coordinates.
 Matrix NumericalDerivativeActionWrtGroup(
     const std::function<State(const VioGroup&)>& f, const VioGroup& X,
@@ -434,34 +424,6 @@ State stateGroupAction(const VioGroup& X, const State& state) {
   return out;
 }
 
-VisionMeasurement outputGroupAction(const VioGroup& X,
-                                    const VisionMeasurement& measurement,
-                                    const std::shared_ptr<const CameraModel>& camera) {
-  const LandmarkGroup& Q = std::get<3>(decompose(X));
-  VisionMeasurement out;
-  if (!camera) {
-    throw std::invalid_argument("outputGroupAction: camera model is null");
-  }
-
-  const std::vector<int> qIds = QIdsForMeasurement(X, measurement);
-  if (qIds.size() != Q.size()) {
-    throw std::invalid_argument(
-        "outputGroupAction: invalid Q-to-id mapping cardinality");
-  }
-
-  for (size_t i = 0; i < Q.size(); ++i) {
-    const int id = qIds[i];
-    const auto it = measurement.find(id);
-    if (it == measurement.end()) continue;
-
-    const Vector3 bearing = undistortPoint(*camera, it->second);
-    const Vector3 rotated = SOT3Rotation(Q[i]).matrix().transpose() * bearing;
-    out[id] = camera->project2(rotated);
-  }
-
-  return out;
-}
-
 VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
                               double dt) {
   const SensorState& sensor = state.sensor;
@@ -503,47 +465,6 @@ VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
   const Bias beta(dt * velocity.accBiasVel, dt * velocity.gyrBiasVel);
   const Se23 b0Tb1Kinematics = MakeA(b0Tb1.rotation(), b0Tb1.translation(), w);
   return makeVioGroup(b0Tb1Kinematics, beta, c0Tc1, Q);
-}
-
-State integrateSystemFunction(const State& state, const IMUInput& velocity,
-                                 double dt) {
-  State out;
-  const SensorState& sensor = state.sensor;
-  const IMUInput v_est = velocity - sensor.inputBias;
-
-  out.sensor.inputBias = Bias(
-      sensor.inputBias.accelerometer() + dt * velocity.accBiasVel,
-      sensor.inputBias.gyroscope() + dt * velocity.gyrBiasVel);
-
-  const Rot3 dR = Rot3::Expmap(dt * v_est.gyr);
-  const Vector3 dXWorld =
-      dt * (sensor.pose.rotation() * sensor.velocity) +
-      0.5 * dt * dt *
-          (sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT));
-  const Point3 dXBody = sensor.pose.rotation().unrotate(dXWorld);
-  const Pose3 b0Tb1(dR, dXBody);
-
-  out.sensor.pose = sensor.pose.compose(b0Tb1);
-
-  const Vector3 inertialVelocityDiff =
-      sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT);
-  out.sensor.velocity = out.sensor.pose.rotation().unrotate(
-      sensor.pose.rotation() * sensor.velocity + dt * inertialVelocityDiff);
-
-  const Pose3 c1Tc0 =
-      sensor.cameraOffset.inverse().compose(b0Tb1.inverse()).compose(
-          sensor.cameraOffset);
-  out.cameraLandmarks.resize(state.n());
-
-  // Transform the body-fixed landmarks
-  for (size_t i = 0; i < state.n(); ++i) {
-    out.cameraLandmarks[i].p =
-        c1Tc0.transformFrom(state.cameraLandmarks[i].p);
-    out.cameraLandmarks[i].id = state.cameraLandmarks[i].id;
-  }
-
-  out.sensor.cameraOffset = sensor.cameraOffset;
-  return out;
 }
 
 /// Predict ideal normalized image measurements from current landmark state.

@@ -201,7 +201,40 @@ namespace eqvio_test_util {
     }
     return true;
   }
-  
+
+  inline Vector liftVelocity(const State& state, const IMUInput& velocity) {
+    const size_t N = state.n();
+    Vector lift = Vector::Zero(21 + 4 * static_cast<int>(N));
+
+    const SensorState& sensor = state.sensor;
+    const IMUInput v_est = velocity - sensor.inputBias;
+
+    Vector6 U_A;
+    U_A << v_est.gyr, sensor.velocity;
+    const Vector6 U_B = sensor.cameraOffset.inverse().AdjointMap() * U_A;
+    const Vector3 u_w = -v_est.acc + sensor.gravityDir() * GRAVITY_CONSTANT;
+
+    lift.segment<6>(0) = U_A;
+    lift.segment<3>(6) = u_w;
+    lift.segment<6>(9) << velocity.accBiasVel, velocity.gyrBiasVel;
+    lift.segment<6>(15) = U_B;
+
+    const Vector6 U_C = sensor.cameraOffset.inverse().AdjointMap() * U_A;
+    const Vector3 omegaC = U_C.head<3>();
+    const Vector3 vC = U_C.tail<3>();
+
+    // Lift the landmark transform velocities
+    for (size_t i = 0; i < N; ++i) {
+      const Vector3 p = state.cameraLandmarks[i].p;
+      Vector4 W;
+      W.head<3>() = omegaC + Rot3::Hat(p) * vC / p.squaredNorm();
+      W(3) = p.dot(vC) / p.squaredNorm();
+      lift.segment<4>(21 + 4 * static_cast<int>(i)) = W;
+    }
+
+    return lift;
+  }
+
 }  // namespace eqvio_test_util
 
 using namespace eqvio_test_util;
@@ -210,6 +243,83 @@ namespace {
 
 constexpr int kEqvioActionReps = 25;
 constexpr double kEqvioNearZero = 1e-12;
+
+std::vector<int> QIdsForMeasurement(const VioGroup& X,
+                                    const VisionMeasurement& measurement) {
+  if (N_landmarkCount(X) == 0) return {};
+  if (measurement.size() != N_landmarkCount(X)) {
+    throw std::invalid_argument(
+        "outputGroupAction: measurement count must match group landmark count");
+  }
+  return measurementIds(measurement);
+}
+
+VisionMeasurement outputGroupAction(
+    const VioGroup& X, const VisionMeasurement& measurement,
+    const std::shared_ptr<const CameraModel>& camera) {
+  const LandmarkGroup& Q = std::get<3>(decompose(X));
+  VisionMeasurement out;
+  if (!camera) {
+    throw std::invalid_argument("outputGroupAction: camera model is null");
+  }
+
+  const std::vector<int> qIds = QIdsForMeasurement(X, measurement);
+  if (qIds.size() != Q.size()) {
+    throw std::invalid_argument(
+        "outputGroupAction: invalid Q-to-id mapping cardinality");
+  }
+
+  for (size_t i = 0; i < Q.size(); ++i) {
+    const int id = qIds[i];
+    const auto it = measurement.find(id);
+    if (it == measurement.end()) continue;
+
+    const Vector3 bearing = undistortPoint(*camera, it->second);
+    const Vector3 rotated = SOT3Rotation(Q[i]).matrix().transpose() * bearing;
+    out[id] = camera->project2(rotated);
+  }
+
+  return out;
+}
+
+State integrateSystemFunction(const State& state, const IMUInput& velocity,
+                              double dt) {
+  State out;
+  const SensorState& sensor = state.sensor;
+  const IMUInput v_est = velocity - sensor.inputBias;
+
+  out.sensor.inputBias = Bias(
+      sensor.inputBias.accelerometer() + dt * velocity.accBiasVel,
+      sensor.inputBias.gyroscope() + dt * velocity.gyrBiasVel);
+
+  const Rot3 dR = Rot3::Expmap(dt * v_est.gyr);
+  const Vector3 dXWorld =
+      dt * (sensor.pose.rotation() * sensor.velocity) +
+      0.5 * dt * dt *
+          (sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT));
+  const Point3 dXBody = sensor.pose.rotation().unrotate(dXWorld);
+  const Pose3 b0Tb1(dR, dXBody);
+
+  out.sensor.pose = sensor.pose.compose(b0Tb1);
+
+  const Vector3 inertialVelocityDiff =
+      sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT);
+  out.sensor.velocity = out.sensor.pose.rotation().unrotate(
+      sensor.pose.rotation() * sensor.velocity + dt * inertialVelocityDiff);
+
+  const Pose3 c1Tc0 =
+      sensor.cameraOffset.inverse().compose(b0Tb1.inverse()).compose(
+          sensor.cameraOffset);
+  out.cameraLandmarks.resize(state.n());
+
+  for (size_t i = 0; i < state.n(); ++i) {
+    out.cameraLandmarks[i].p = c1Tc0.transformFrom(state.cameraLandmarks[i].p);
+    out.cameraLandmarks[i].id = state.cameraLandmarks[i].id;
+  }
+
+  out.sensor.cameraOffset = sensor.cameraOffset;
+  return out;
+}
 
 
 std::vector<Landmark> Lms0() { return {}; }
@@ -430,6 +540,9 @@ TEST(Symmetry, LiftAndIntegrationSanity) {
   imu.acc = Vector3(0.2, -0.1, 9.75);
   imu.gyrBiasVel = Vector3(0.01, 0.0, -0.02);
   imu.accBiasVel = Vector3(-0.01, 0.02, 0.0);
+
+  const Vector l = liftVelocity(xi, imu);
+  EXPECT_LONGS_EQUAL(33, l.size());
 
   const double dt = 1e-3;
   const VioGroup delta = liftVelocityDiscrete(xi, imu, dt);

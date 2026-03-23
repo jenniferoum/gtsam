@@ -33,19 +33,12 @@ GTSAM_UNSTABLE_EXPORT SensorState sensorStateGroupAction(
 /// Right group action on full state.
 GTSAM_UNSTABLE_EXPORT State stateGroupAction(const VioGroup& X,
                                                 const State& state);
-/// Right group action on vision measurements.
-GTSAM_UNSTABLE_EXPORT VisionMeasurement outputGroupAction(
-    const VioGroup& X, const VisionMeasurement& measurement,
-    const std::shared_ptr<const CameraModel>& camera);
 
 /// Discrete-time lift map from IMU velocity to VioGroup increment.
 GTSAM_UNSTABLE_EXPORT VioGroup liftVelocityDiscrete(const State& state,
                                                     const IMUInput& velocity,
                                                     double dt);
 
-/// Integrate system dynamics forward by dt.
-GTSAM_UNSTABLE_EXPORT State integrateSystemFunction(
-    const State& state, const IMUInput& velocity, double dt);
 /// Generate ideal camera measurements from state.
 GTSAM_UNSTABLE_EXPORT VisionMeasurement measureSystemState(
     const State& state, const std::shared_ptr<const CameraModel>& camera);
