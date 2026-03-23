@@ -13,6 +13,7 @@
  * @file Marginals.cpp
  * @brief
  * @author Richard Roberts
+ * @author Frank Dellaert
  * @date May 14, 2012
  */
 
@@ -90,7 +91,7 @@ GaussianFactorGraph reducedJointFactorGraph(
     return *bayesTree.joint(variables, EliminateQR);
   }
   throw std::runtime_error(
-      "Marginals::jointMarginalInformation: Unknown factorization");
+      "Marginals::reducedJointFactorGraph: Unknown factorization");
 }
 
 /* ************************************************************************* */

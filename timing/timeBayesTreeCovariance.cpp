@@ -370,11 +370,11 @@ Matrix covarianceColumns(const GaussianBayesNet& bayesNet,
   return R.triangularView<Eigen::Upper>().solve(intermediate);
 }
 
-/// Extract a left-by-right cross-covariance block from selected columns.
-Matrix extractCrossBlock(const Matrix& selectedColumns,
-                         const KeyVector& orderedKeys,
-                         const vector<size_t>& dims, const KeyVector& left,
-                         const KeyVector& right) {
+/// Extract a left-by-right cross-covariance block from packed selected columns.
+Matrix extractPackedCrossBlock(const Matrix& selectedColumns,
+                               const KeyVector& orderedKeys,
+                               const vector<size_t>& dims,
+                               const KeyVector& left, const KeyVector& right) {
   const FastMap<Key, size_t> keyIndex = Ordering(orderedKeys).invert();
   const vector<size_t> offsets = blockOffsets(dims);
   size_t leftDim = 0;
@@ -402,6 +402,44 @@ Matrix extractCrossBlock(const Matrix& selectedColumns,
                                 rightDimBlock);
       columnOffset += rightDimBlock;
       selectedOffset += rightDimBlock;
+    }
+    rowOffset += leftDimBlock;
+  }
+  return result;
+}
+
+/// Extract a left-by-right cross-covariance block from a full covariance
+/// matrix.
+Matrix extractDenseCrossBlock(const Matrix& fullCovariance,
+                              const KeyVector& orderedKeys,
+                              const vector<size_t>& dims, const KeyVector& left,
+                              const KeyVector& right) {
+  const FastMap<Key, size_t> keyIndex = Ordering(orderedKeys).invert();
+  const vector<size_t> offsets = blockOffsets(dims);
+  size_t leftDim = 0;
+  for (Key key : left) {
+    leftDim += dims.at(keyIndex.at(key));
+  }
+  size_t rightDim = 0;
+  for (Key key : right) {
+    rightDim += dims.at(keyIndex.at(key));
+  }
+
+  Matrix result(leftDim, rightDim);
+  size_t rowOffset = 0;
+  for (Key leftKey : left) {
+    const size_t leftBlock = keyIndex.at(leftKey);
+    const size_t leftDimBlock = dims[leftBlock];
+    const size_t leftBegin = offsets[leftBlock];
+    size_t columnOffset = 0;
+    for (Key rightKey : right) {
+      const size_t rightBlock = keyIndex.at(rightKey);
+      const size_t rightDimBlock = dims[rightBlock];
+      const size_t rightBegin = offsets[rightBlock];
+      result.block(rowOffset, columnOffset, leftDimBlock, rightDimBlock) =
+          fullCovariance.block(leftBegin, rightBegin, leftDimBlock,
+                               rightDimBlock);
+      columnOffset += rightDimBlock;
     }
     rowOffset += leftDimBlock;
   }
@@ -734,14 +772,13 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
       (void)rhs;
       const Matrix information = R.transpose() * R;
       const Matrix covariance = information.inverse();
-      selectedColumns = covariance;
-      recovered = extractCrossBlock(selectedColumns, orderedKeys, dims,
-                                    query.left, query.right);
+      recovered = extractDenseCrossBlock(covariance, orderedKeys, dims,
+                                         query.left, query.right);
     } else {
       selectedColumns =
           covarianceColumns(reducedBayesNet, orderedKeys, dims, rightBlocks);
-      recovered = extractCrossBlock(selectedColumns, orderedKeys, dims,
-                                    query.left, query.right);
+      recovered = extractPackedCrossBlock(selectedColumns, orderedKeys, dims,
+                                          query.left, query.right);
     }
   } else {
     if (variant == Variant::LegacyDense || variant == Variant::SteinerDense) {

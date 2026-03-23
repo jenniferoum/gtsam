@@ -166,6 +166,72 @@ Matrix extractCrossBlock(const Matrix& fullCovariance,
   return result;
 }
 
+/* ************************************************************************* */
+Matrix packedSelectedColumns(const Matrix& fullCovariance,
+                             const KeyVector& orderedKeys, const Values& values,
+                             const KeyVector& selectedKeys) {
+  const std::vector<size_t> dims = dimsForKeys(orderedKeys, values);
+  const std::vector<size_t> offsets = blockOffsets(dims);
+  const FastMap<Key, size_t> keyIndex = Ordering(orderedKeys).invert();
+
+  size_t selectedDim = 0;
+  for (Key key : selectedKeys) {
+    selectedDim += dims.at(keyIndex.at(key));
+  }
+
+  Matrix result(fullCovariance.rows(), selectedDim);
+  size_t columnOffset = 0;
+  for (Key key : selectedKeys) {
+    const size_t block = keyIndex.at(key);
+    const size_t dim = dims.at(block);
+    const size_t begin = offsets.at(block);
+    result.block(0, columnOffset, fullCovariance.rows(), dim) =
+        fullCovariance.block(0, begin, fullCovariance.rows(), dim);
+    columnOffset += dim;
+  }
+  return result;
+}
+
+/* ************************************************************************* */
+Matrix extractPackedCrossBlock(const Matrix& selectedColumns,
+                               const KeyVector& orderedKeys,
+                               const Values& values, const KeyVector& left,
+                               const KeyVector& right) {
+  const std::vector<size_t> dims = dimsForKeys(orderedKeys, values);
+  const std::vector<size_t> offsets = blockOffsets(dims);
+  const FastMap<Key, size_t> keyIndex = Ordering(orderedKeys).invert();
+
+  size_t leftDim = 0;
+  for (Key key : left) {
+    leftDim += dims.at(keyIndex.at(key));
+  }
+  size_t rightDim = 0;
+  for (Key key : right) {
+    rightDim += dims.at(keyIndex.at(key));
+  }
+
+  Matrix result(leftDim, rightDim);
+  size_t rowOffset = 0;
+  for (Key leftKey : left) {
+    const size_t leftBlock = keyIndex.at(leftKey);
+    const size_t leftSize = dims[leftBlock];
+    const size_t leftBegin = offsets[leftBlock];
+    size_t columnOffset = 0;
+    size_t selectedOffset = 0;
+    for (Key rightKey : right) {
+      const size_t rightBlock = keyIndex.at(rightKey);
+      const size_t rightSize = dims[rightBlock];
+      (void)rightBlock;
+      result.block(rowOffset, columnOffset, leftSize, rightSize) =
+          selectedColumns.block(leftBegin, selectedOffset, leftSize, rightSize);
+      columnOffset += rightSize;
+      selectedOffset += rightSize;
+    }
+    rowOffset += leftSize;
+  }
+  return result;
+}
+
 }  // namespace
 
 TEST(Marginals, planarSLAMmarginals) {
@@ -453,6 +519,56 @@ TEST(Marginals, crossCovarianceOrderAndLegacyAgreement) {
                           uniqueStableKeys(left), uniqueStableKeys(right));
     EXPECT(assert_equal(expected, actual, 1e-8));
   }
+}
+
+/* ************************************************************************* */
+TEST(Marginals, packedCrossBlockRegression) {
+  NonlinearFactorGraph graph;
+  graph.addPrior(0, Pose2(), noiseModel::Unit::Create(3));
+  graph.emplace_shared<BetweenFactor<Pose2>>(0, 1, Pose2(1, 0, 0),
+                                             noiseModel::Unit::Create(3));
+  graph.emplace_shared<BetweenFactor<Pose2>>(1, 2, Pose2(1, 0, 0),
+                                             noiseModel::Unit::Create(3));
+  graph.emplace_shared<BetweenFactor<Pose2>>(2, 3, Pose2(1, 0, 0),
+                                             noiseModel::Unit::Create(3));
+
+  Values values;
+  values.insert(0, Pose2());
+  values.insert(1, Pose2(1, 0, 0));
+  values.insert(2, Pose2(2, 0, 0));
+  values.insert(3, Pose2(3, 0, 0));
+  values.insert(100, Point2(0, 1));
+  values.insert(101, Point2(1, 1));
+
+  graph.emplace_shared<BearingRangeFactor<Pose2, Point2>>(
+      0, 100, values.at<Pose2>(0).bearing(values.at<Point2>(100)),
+      values.at<Pose2>(0).range(values.at<Point2>(100)),
+      noiseModel::Unit::Create(2));
+  graph.emplace_shared<BearingRangeFactor<Pose2, Point2>>(
+      2, 101, values.at<Pose2>(2).bearing(values.at<Point2>(101)),
+      values.at<Pose2>(2).range(values.at<Point2>(101)),
+      noiseModel::Unit::Create(2));
+
+  GaussianFactorGraph linearGraph = *graph.linearize(values);
+  const Ordering ordering = Ordering::Colamd(linearGraph);
+  const KeyVector unionKeys{101, 1, 100, 3};
+  const KeyVector orderedKeys = uniqueSortedKeys(unionKeys);
+  const KeyVector left = uniqueStableKeys(KeyVector{101, 1});
+  const KeyVector right = uniqueStableKeys(KeyVector{100, 3});
+
+  const Matrix fullCovariance = legacyJointCovariance(
+      linearGraph, ordering, unionKeys, Marginals::CHOLESKY);
+  const Matrix expected =
+      extractCrossBlock(fullCovariance, orderedKeys, values, left, right);
+  const Matrix packedColumns =
+      packedSelectedColumns(fullCovariance, orderedKeys, values, right);
+  const Matrix actual =
+      extractPackedCrossBlock(packedColumns, orderedKeys, values, left, right);
+
+  EXPECT(assert_equal(expected, actual, 1e-8));
+  const Matrix incorrect =
+      extractPackedCrossBlock(fullCovariance, orderedKeys, values, left, right);
+  EXPECT((incorrect - expected).norm() > 1e-3);
 }
 
 #ifdef GTSAM_SUPPORT_NESTED_DISSECTION
