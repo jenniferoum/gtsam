@@ -103,6 +103,16 @@ FixedLagSmoother::Result IncrementalFixedLagSmoother::update(
       factorsToRemove, constrainedKeys, {}, additionalMarkedKeys);
 
   if (debug) {
+    std::cout << "Unused Keys After Update: ";
+    if (not isamResult_.unusedKeys.empty()) {
+      for (auto key : isamResult_.unusedKeys) {
+        std::cout << DefaultKeyFormatter(key) << "  ";
+      }
+    }
+    std::cout << std::endl;
+  }
+
+  if (debug) {
     PrintSymbolicTree(isam_,
         "Bayes Tree After Update, Before Marginalization:");
     std::cout << "END" << std::endl;
