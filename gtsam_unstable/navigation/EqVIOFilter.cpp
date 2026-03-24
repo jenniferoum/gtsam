@@ -522,8 +522,7 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
                          const Matrix& outputGainMatrix) {
   if (measurement.empty()) return;
 
-  const VisionMeasurement estimatedMeasurement =
-      measureSystemState(stateEstimate(), camera);
+  const VisionMeasurement estimatedMeasurement = measureSystemState(stateEstimate(), camera);
   Vector yTilde = _measurementDifference(measurement, estimatedMeasurement);
   const Matrix Ct = EqFoutputMatrixC(snapshot_.xi0, snapshot_.X, measurement, camera,
                                      true);

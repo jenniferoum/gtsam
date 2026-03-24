@@ -47,21 +47,13 @@ struct GTSAM_UNSTABLE_EXPORT EqVIOFilterParams {
   double outlierThresholdProb = 1e8;
   /// Fraction of features to keep after ranking potential outliers (in [0, 1]).
   double featureRetention = 0.3;
-  /// Continuous-time process variance for gyroscope bias random walk.
   double biasOmegaProcessVariance = 0.001;
-  /// Continuous-time process variance for accelerometer bias random walk.
   double biasAccelProcessVariance = 0.001;
-  /// Continuous-time process variance for attitude error state.
   double attitudeProcessVariance = 0.001;
-  /// Continuous-time process variance for position error state.
   double positionProcessVariance = 0.001;
-  /// Continuous-time process variance for velocity error state.
   double velocityProcessVariance = 0.001;
-  /// Continuous-time process variance for camera extrinsic attitude error.
   double cameraAttitudeProcessVariance = 0.001;
-  /// Continuous-time process variance for camera extrinsic position error.
   double cameraPositionProcessVariance = 0.001;
-  /// Continuous-time process variance for landmark error states.
   double pointProcessVariance = 0.001;
   /// IMU driving noise covariance in stacked order `[gyr, acc, gyr_bias_walk, acc_bias_walk]`.
   Eigen::Matrix<double, IMUInput::CompDim, IMUInput::CompDim> inputNoise =
@@ -88,11 +80,8 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
 
   /// Internal filter state snapshot synchronized with `EquivariantFilter` base state.
   struct Snapshot {
-    /// Reference state used for linearization and chart coordinates.
     State xi0;
-    /// Group element that maps the reference state to the current estimate.
     VioGroup X = makeVioGroupIdentity();
-    /// Error covariance in the reference-state chart.
     Matrix Sigma =
         Matrix::Identity(SensorState::CompDim, SensorState::CompDim);
   };
@@ -103,7 +92,6 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   bool initialized_ = false;
 
  public:
-  /// Construct with default parameters and identity reference/group/covariance.
   EqVIOFilter();
   /// Construct with explicit parameter bundle and default identity initial state.
   explicit EqVIOFilter(const EqVIOFilterParams& params);

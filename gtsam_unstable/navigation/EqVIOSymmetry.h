@@ -65,10 +65,12 @@ GTSAM_UNSTABLE_EXPORT VisionMeasurement measureSystemState(
  *
  * EqVIO uses an inverse-depth landmark error chart to preserve the
  * equivariant output linearization while remaining numerically stable for
- * distant points. Other coordinate systems (Euclid, Polar) are not supported
- * in this implementation yet. See the EqVIO paper (van Goor and Mahony,
- * arXiv:2205.01980v3).
+ * distant points. I haven't implemented other coordinate systems (Euclid,
+ * Polar) yet. van Goor et al. propose Polar as the flagship coordinate system
+ * for this use case, which is the next TODO. See arXiv:2205.01980v3, eq. 16.
  */
+
+/// EqF state matrix that maps IMU input to state change.
 GTSAM_UNSTABLE_EXPORT Matrix EqFStateMatrixA(
     const VioGroup& X, const State& xi0, const IMUInput& imuVel);
 /// EqF input matrix that maps IMU driving noise into chart error coordinates.
@@ -87,7 +89,32 @@ GTSAM_UNSTABLE_EXPORT Matrix EqFoutputMatrixC(
     const State& xi0, const VioGroup& X, const VisionMeasurement& y,
     const std::shared_ptr<const CameraModel>& camera,
     bool useEquivariance = true);
-/// Map state innovation in chart coordinates to group tangent innovation.
+
+
+/**
+ * @brief Lift EqVIO correction from state-chart coordinates to group tangent coordinates.
+ *
+ * EqVIO uses a specialized error chart (including inverse-depth landmark
+ * coordinates) for linearization. The resulting correction `delta_xi` from the
+ * Kalman step lives in state-chart coordinates (`21 + 3N`), while the group
+ * update uses `VioGroup` tangent coordinates (`21 + 4N`).
+ *
+ * A direct base-class lift via a fixed pseudo-inverse of `Dphi0` is not
+ * sufficient here because:
+ * 1. each landmark block must be mapped from a 3D chart perturbation to a 4D
+ *    SOT3 tangent perturbation (rotation + log-scale), and
+ * 2. the sensor blocks require EqVIO-specific coupling terms consistent with
+ *    the right-action formulation and chosen coordinates.
+ *
+ * This function applies that EqVIO-specific mapping so the correction can be
+ * integrated as a valid group increment.
+ *
+ * @param totalInnovation Kalman correction in EqVIO chart coordinates (`21 + 3N`).
+ * @param xi0 Reference state used by the chart conversion.
+ * @return Group-tangent correction (`21 + 4N`) for `VioGroup::Expmap`.
+ *
+ * @throws std::invalid_argument if `totalInnovation` has inconsistent dimension.
+ */
 GTSAM_UNSTABLE_EXPORT Vector liftInnovation(const Vector& totalInnovation,
                                             const State& xi0);
 
