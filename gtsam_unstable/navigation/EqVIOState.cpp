@@ -20,14 +20,12 @@
 namespace gtsam {
 namespace eqvio {
 
-/// Print one landmark block with id and world coordinates.
 void Landmark::print(const std::string& s) const {
   if (!s.empty()) std::cout << s << " ";
   std::cout << "Landmark{id=" << id << ", p=" << p.transpose() << "}"
             << std::endl;
 }
 
-/// Compare landmark id and coordinates within absolute tolerance.
 bool Landmark::equals(const Landmark& other, double tol) const {
   return id == other.id && equal_with_abs_tol(p, other.p, tol);
 }
@@ -37,7 +35,6 @@ Vector3 SensorState::gravityDir() const {
   return pose.rotation().unrotate(Vector3::UnitZ());
 }
 
-/// Print sensor block for debugging and test diagnostics.
 void SensorState::print(const std::string& s) const {
   if (!s.empty()) std::cout << s << std::endl;
   gtsam::print(Vector(inputBias.vector()), "  inputBias");
@@ -46,7 +43,6 @@ void SensorState::print(const std::string& s) const {
   cameraOffset.print("  cameraOffset");
 }
 
-/// Compare all sensor subcomponents within tolerance.
 bool SensorState::equals(const SensorState& other, double tol) const {
   return inputBias.equals(other.inputBias, tol) &&
          pose.equals(other.pose, tol) &&
@@ -57,15 +53,12 @@ bool SensorState::equals(const SensorState& other, double tol) const {
 State::State(const SensorState& sensor_, const std::vector<Landmark>& lms)
     : sensor(sensor_), cameraLandmarks(lms) {}
 
-/// Number of landmarks in dynamic state tail.
 size_t State::n() const { return cameraLandmarks.size(); }
 
-/// Total state chart dimension.
 int State::dim() const {
   return SensorState::CompDim + Landmark::CompDim * static_cast<int>(n());
 }
 
-/// Landmark ids in contiguous storage order.
 std::vector<int> State::ids() const {
   std::vector<int> out;
   out.reserve(cameraLandmarks.size());
@@ -73,12 +66,6 @@ std::vector<int> State::ids() const {
   return out;
 }
 
-/**
- * @brief Retract state by tangent increment in EqVIO chart coordinates.
- *
- * Sensor manifold components use their native retract operations, while
- * landmark position blocks are additive.
- */
 State State::retract(const TangentVector& v, ChartJacobian H1,
                      ChartJacobian H2) const {
   const int d = dim();
@@ -127,12 +114,6 @@ State State::retract(const TangentVector& v, ChartJacobian H1,
   return out;
 }
 
-/**
- * @brief Compute chart local coordinates from this state to `other`.
- *
- * Sensor manifold components use native local coordinates, while landmark
- * position blocks are simple differences.
- */
 State::TangentVector State::localCoordinates(const State& other,
                                              ChartJacobian H1,
                                              ChartJacobian H2) const {
@@ -180,7 +161,6 @@ State::TangentVector State::localCoordinates(const State& other,
   return out;
 }
 
-/// Print full state for debugging.
 void State::print(const std::string& s) const {
   if (!s.empty()) std::cout << s << std::endl;
   std::cout << "State(dim=" << dim() << ", n=" << n() << ")" << std::endl;
@@ -190,7 +170,6 @@ void State::print(const std::string& s) const {
   }
 }
 
-/// Compare sensor and landmark blocks with tolerance.
 bool State::equals(const State& other, double tol) const {
   if (cameraLandmarks.size() != other.cameraLandmarks.size()) return false;
   if (!sensor.equals(other.sensor, tol)) return false;

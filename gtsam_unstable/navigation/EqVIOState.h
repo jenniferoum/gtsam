@@ -92,9 +92,7 @@ class GTSAM_UNSTABLE_EXPORT State {
 
   /// Number of landmarks.
   size_t n() const;
-  /// Total chart dimension `21 + 3*n()`.
   int dim() const;
-  /// Landmark ids in contiguous state storage order.
   std::vector<int> ids() const;
 
   /// Retract in the state chart.
