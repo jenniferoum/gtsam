@@ -223,24 +223,24 @@ virtual class SmartProjectionFactor : gtsam::SmartFactorBase<CAMERA> {
   bool triangulateForLinearize(const gtsam::CameraSet<CAMERA>& cameras) const;
 
   gtsam::HessianFactor* createHessianFactor(
-      const gtsam::CameraSet<CAMERA>& cameras, const double lambda = 0.0,
+      const gtsam::CameraSet<CAMERA>& cameras, const double _lambda = 0.0,
       bool diagonalDamping = false) const;
   gtsam::JacobianFactor* createJacobianQFactor(
-      const gtsam::CameraSet<CAMERA>& cameras, double lambda) const;
+      const gtsam::CameraSet<CAMERA>& cameras, double _lambda) const;
   gtsam::JacobianFactor* createJacobianQFactor(
-      const gtsam::Values& values, double lambda) const;
+      const gtsam::Values& values, double _lambda) const;
   gtsam::JacobianFactor* createJacobianSVDFactor(
-      const gtsam::CameraSet<CAMERA>& cameras, double lambda) const;
+      const gtsam::CameraSet<CAMERA>& cameras, double _lambda) const;
   gtsam::HessianFactor* linearizeToHessian(
-      const gtsam::Values& values, double lambda = 0.0) const;
+      const gtsam::Values& values, double _lambda = 0.0) const;
   gtsam::JacobianFactor* linearizeToJacobian(
-      const gtsam::Values& values, double lambda = 0.0) const;
+      const gtsam::Values& values, double _lambda = 0.0) const;
 
   gtsam::GaussianFactor* linearizeDamped(const gtsam::CameraSet<CAMERA>& cameras,
-      const double lambda = 0.0) const;
+      const double _lambda = 0.0) const;
 
   gtsam::GaussianFactor* linearizeDamped(const gtsam::Values& values,
-      const double lambda = 0.0) const;
+      const double _lambda = 0.0) const;
 
   gtsam::GaussianFactor* linearize(
       const gtsam::Values& values) const;
@@ -355,7 +355,7 @@ class ReferenceFrameFactor : gtsam::NoiseModelFactor {
   ReferenceFrameFactor(gtsam::Key globalKey, gtsam::Key transKey, 
                        gtsam::Key localKey, const gtsam::noiseModel::Base* model);
 
-  gtsam::Vector evaluateError(const LANDMARK& global, const POSE& trans, const LANDMARK& local);
+  gtsam::Vector evaluateError(const LANDMARK& _global, const POSE& trans, const LANDMARK& local);
 
   void print(const std::string& s="",
     const gtsam::KeyFormatter& keyFormatter = gtsam::DefaultKeyFormatter);
