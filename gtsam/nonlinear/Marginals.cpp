@@ -77,9 +77,10 @@ Matrix informationToCovariance(const Matrix& information) {
     return Matrix::Zero(information.rows(), information.cols());
   }
 
-  const Matrix identity =
-      Matrix::Identity(information.rows(), information.cols());
-  return information.selfadjointView<Eigen::Upper>().llt().solve(identity);
+  Eigen::LLT<Matrix> llt(information.selfadjointView<Eigen::Upper>());
+  Matrix covariance = Matrix::Identity(information.rows(), information.cols());
+  llt.solveInPlace(covariance);
+  return covariance;
 }
 
 GaussianFactorGraph reducedJointFactorGraph(
@@ -133,9 +134,9 @@ Matrix covarianceColumns(const GaussianBayesNet& bayesNet,
     selectedOffset += dim;
   }
 
-  Matrix intermediate =
-      R.transpose().triangularView<Eigen::Lower>().solve(selectors);
-  return R.triangularView<Eigen::Upper>().solve(intermediate);
+  R.transpose().triangularView<Eigen::Lower>().solveInPlace(selectors);
+  R.triangularView<Eigen::Upper>().solveInPlace(selectors);
+  return selectors;
 }
 
 /* ************************************************************************* */

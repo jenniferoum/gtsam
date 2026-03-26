@@ -365,9 +365,9 @@ Matrix covarianceColumns(const GaussianBayesNet& bayesNet,
     selectedOffset += dim;
   }
 
-  Matrix intermediate =
-      R.transpose().triangularView<Eigen::Lower>().solve(selectors);
-  return R.triangularView<Eigen::Upper>().solve(intermediate);
+  R.transpose().triangularView<Eigen::Lower>().solveInPlace(selectors);
+  R.triangularView<Eigen::Upper>().solveInPlace(selectors);
+  return selectors;
 }
 
 /// Extract a left-by-right cross-covariance block from packed selected columns.
@@ -714,8 +714,9 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
     if (variant == Variant::LegacyDense || variant == Variant::SteinerDense) {
       recovered = information.inverse();
     } else {
-      recovered = information.selfadjointView<Eigen::Upper>().llt().solve(
-          Matrix::Identity(information.rows(), information.cols()));
+      Eigen::LLT<Matrix> llt(information.selfadjointView<Eigen::Upper>());
+      recovered = Matrix::Identity(information.rows(), information.cols());
+      llt.solveInPlace(recovered);
     }
     const auto extractionEnd = chrono::steady_clock::now();
 

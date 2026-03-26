@@ -117,16 +117,16 @@ namespace gtsam {
   }
 
   /* ************************************************************************* */
-  Matrix GaussianBayesTree::marginalCovariance(Key key) const
-  {
+  Matrix GaussianBayesTree::marginalCovariance(Key key) const {
     const Matrix information = marginalFactor(key)->information();
     if (!information.allFinite()) {
       return Matrix::Zero(information.rows(), information.cols());
     }
-    const Matrix identity =
+    Eigen::LLT<Matrix> llt(information.selfadjointView<Eigen::Upper>());
+    Matrix covariance =
         Matrix::Identity(information.rows(), information.cols());
-    return information.selfadjointView<Eigen::Upper>().llt().solve(identity);
+    llt.solveInPlace(covariance);
+    return covariance;
   }
-
 
 } // \namespace gtsam
