@@ -719,7 +719,10 @@ virtual class GaussianBayesTree {
   gtsam::Matrix marginalCovariance(gtsam::Key key) const;
   gtsam::GaussianConditional* marginalFactor(gtsam::Key key) const;
   gtsam::GaussianFactorGraph* joint(gtsam::Key key1, gtsam::Key key2) const;
+  gtsam::GaussianFactorGraph* joint(const gtsam::KeyVector& queryKeys) const;
   gtsam::GaussianBayesNet* jointBayesNet(gtsam::Key key1, gtsam::Key key2) const;
+  gtsam::GaussianBayesNet* jointBayesNet(const gtsam::KeyVector& queryKeys) const;
+  void deleteCachedShortcuts();
 };
 
 #include <gtsam/linear/GaussianEliminationTree.h>

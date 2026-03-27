@@ -180,11 +180,21 @@ namespace gtsam {
      */
     sharedFactorGraph joint(Key j1, Key j2, const Eliminate& function = EliminationTraitsType::DefaultEliminate) const;
 
+    /** Return a joint factor graph on an arbitrary set of variables. */
+    sharedFactorGraph joint(
+        const KeyVector& keys,
+        const Eliminate& function = EliminationTraitsType::DefaultEliminate) const;
+
     /**
      * return joint on two variables as a BayesNet
      * Limitation: can only calculate joint if cliques are disjoint or one of them is root
      */
     sharedBayesNet jointBayesNet(Key j1, Key j2, const Eliminate& function = EliminationTraitsType::DefaultEliminate) const;
+
+    /** Return a joint marginal on an arbitrary set of variables as a BayesNet. */
+    sharedBayesNet jointBayesNet(
+        const KeyVector& keys,
+        const Eliminate& function = EliminationTraitsType::DefaultEliminate) const;
 
     /// @}   
     /// @name Graph Display

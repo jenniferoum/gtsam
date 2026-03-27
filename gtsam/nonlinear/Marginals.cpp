@@ -13,17 +13,180 @@
  * @file Marginals.cpp
  * @brief
  * @author Richard Roberts
+ * @author Frank Dellaert
  * @date May 14, 2012
  */
 
 #include <gtsam/base/timing.h>
 #include <gtsam/linear/JacobianFactor.h>
 #include <gtsam/linear/HessianFactor.h>
+#include <gtsam/linear/GaussianBayesNet.h>
 #include <gtsam/nonlinear/Marginals.h>
+
+#include <numeric>
 
 using namespace std;
 
 namespace gtsam {
+
+namespace {
+
+/* ************************************************************************* */
+// Return a sorted key list with duplicates removed.
+KeyVector uniqueSortedKeys(const KeyVector& keys) {
+  KeyVector result = keys;
+  std::sort(result.begin(), result.end());
+  result.erase(std::unique(result.begin(), result.end()), result.end());
+  return result;
+}
+
+/* ************************************************************************* */
+// Return keys in first-seen order with duplicates removed.
+KeyVector uniqueStableKeys(const KeyVector& keys) {
+  KeyVector result;
+  result.reserve(keys.size());
+  KeySet seen;
+  for (Key key : keys) {
+    if (seen.insert(key).second) {
+      result.push_back(key);
+    }
+  }
+  return result;
+}
+
+/* ************************************************************************* */
+// Look up the block dimension of each requested variable.
+std::vector<size_t> dimsForKeys(const KeyVector& keys, const Values& values) {
+  std::vector<size_t> dims;
+  dims.reserve(keys.size());
+  for (Key key : keys) {
+    dims.push_back(values.at(key).dim());
+  }
+  return dims;
+}
+
+/* ************************************************************************* */
+// Convert per-variable dimensions into cumulative block offsets.
+std::vector<size_t> blockOffsets(const std::vector<size_t>& dims) {
+  std::vector<size_t> offsets(dims.size() + 1, 0);
+  for (size_t i = 0; i < dims.size(); ++i) {
+    offsets[i + 1] = offsets[i] + dims[i];
+  }
+  return offsets;
+}
+
+/* ************************************************************************* */
+// Recover a covariance matrix from a symmetric information matrix.
+Matrix informationToCovariance(const Matrix& information) {
+  if (!information.allFinite()) {
+    return Matrix::Zero(information.rows(), information.cols());
+  }
+
+  Eigen::LLT<Matrix> llt(information.selfadjointView<Eigen::Upper>());
+  Matrix covariance = Matrix::Identity(information.rows(), information.cols());
+  llt.solveInPlace(covariance);
+  return covariance;
+}
+
+// Build the reduced joint factor graph for the requested variable set.
+GaussianFactorGraph reducedJointFactorGraph(
+    const GaussianBayesTree& bayesTree, Marginals::Factorization factorization,
+    const KeyVector& variables) {
+  if (factorization == Marginals::CHOLESKY) {
+    return *bayesTree.joint(variables, EliminatePreferCholesky);
+  } else if (factorization == Marginals::QR) {
+    return *bayesTree.joint(variables, EliminateQR);
+  }
+  throw std::runtime_error(
+      "Marginals::reducedJointFactorGraph: Unknown factorization");
+}
+
+/* ************************************************************************* */
+// Eliminate a reduced factor graph into a Bayes net ordered by the query keys.
+GaussianBayesNet queryBayesNet(const GaussianFactorGraph& factorGraph,
+                               Marginals::Factorization factorization,
+                               const KeyVector& variables) {
+  if (factorization == Marginals::CHOLESKY) {
+    return *factorGraph.marginalMultifrontalBayesNet(Ordering(variables),
+                                                     EliminatePreferCholesky);
+  } else if (factorization == Marginals::QR) {
+    return *factorGraph.marginalMultifrontalBayesNet(Ordering(variables),
+                                                     EliminateQR);
+  }
+  throw std::runtime_error("Marginals::queryBayesNet: Unknown factorization");
+}
+
+/* ************************************************************************* */
+// Recover only the covariance columns associated with selected variable blocks.
+Matrix covarianceColumns(const GaussianBayesNet& bayesNet,
+                         const KeyVector& orderedKeys,
+                         const std::vector<size_t>& dims,
+                         const std::vector<size_t>& selectedBlocks) {
+  const auto [R, rhs] = bayesNet.matrix(Ordering(orderedKeys));
+  (void)rhs;
+
+  const std::vector<size_t> offsets = blockOffsets(dims);
+  const size_t totalDim = offsets.back();
+
+  size_t selectedDim = 0;
+  for (size_t blockIndex : selectedBlocks) {
+    selectedDim += dims.at(blockIndex);
+  }
+
+  Matrix selectors = Matrix::Zero(totalDim, selectedDim);
+  size_t selectedOffset = 0;
+  for (size_t blockIndex : selectedBlocks) {
+    const size_t begin = offsets[blockIndex];
+    const size_t dim = dims[blockIndex];
+    selectors.block(begin, selectedOffset, dim, dim).setIdentity();
+    selectedOffset += dim;
+  }
+
+  R.transpose().triangularView<Eigen::Lower>().solveInPlace(selectors);
+  R.triangularView<Eigen::Upper>().solveInPlace(selectors);
+  return selectors;
+}
+
+/* ************************************************************************* */
+// Assemble a left-by-right block from packed selected covariance columns.
+Matrix assembleCrossBlock(const Matrix& selectedColumns,
+                          const KeyVector& orderedKeys,
+                          const std::vector<size_t>& dims,
+                          const KeyVector& left, const KeyVector& right) {
+  FastMap<Key, size_t> keyIndex = Ordering(orderedKeys).invert();
+  const std::vector<size_t> offsets = blockOffsets(dims);
+
+  size_t leftDim = 0;
+  for (Key key : left) {
+    leftDim += dims.at(keyIndex.at(key));
+  }
+  size_t rightDim = 0;
+  for (Key key : right) {
+    rightDim += dims.at(keyIndex.at(key));
+  }
+
+  Matrix result(leftDim, rightDim);
+  size_t rowOffset = 0;
+  for (Key leftKey : left) {
+    const size_t leftBlock = keyIndex.at(leftKey);
+    const size_t leftSize = dims[leftBlock];
+    const size_t leftBegin = offsets[leftBlock];
+    size_t columnOffset = 0;
+    size_t selectedOffset = 0;
+    for (Key rightKey : right) {
+      const size_t rightBlock = keyIndex.at(rightKey);
+      const size_t rightSize = dims[rightBlock];
+      result.block(rowOffset, columnOffset, leftSize, rightSize) =
+          selectedColumns.block(leftBegin, selectedOffset, leftSize, rightSize);
+      columnOffset += rightSize;
+      selectedOffset += rightSize;
+    }
+    rowOffset += leftSize;
+  }
+  return result;
+}
+
+}  // namespace
 
 /* ************************************************************************* */
 Marginals::Marginals(const NonlinearFactorGraph& graph, const Values& solution, Factorization factorization)
@@ -144,68 +307,111 @@ Matrix Marginals::marginalInformation(Key variable) const {
 /* ************************************************************************* */
 Matrix Marginals::marginalCovariance(Key variable) const {
   Matrix info = marginalInformation(variable);
-
-  // Deterministic constraints (e.g., NonlinearEquality) produce infinite
-  // information for the constrained variable. Treat those as zero covariance
-  // rather than attempting to invert an infinite matrix.
-  if (!info.allFinite())
-    return Matrix::Zero(info.rows(), info.cols());
-
-  return info.inverse();
+  return informationToCovariance(info);
 }
 
 /* ************************************************************************* */
-JointMarginal Marginals::jointMarginalCovariance(const KeyVector& variables) const {
-  JointMarginal info = jointMarginalInformation(variables);
-  info.blockMatrix_.invertInPlace();
-  return info;
+JointMarginal Marginals::jointMarginalCovariance(
+    const KeyVector& variables) const {
+  // Normalize the query key set so block order is deterministic.
+  const KeyVector variablesSorted = uniqueSortedKeys(variables);
+  if (variablesSorted.size() == 1) {
+    Matrix covariance = marginalCovariance(variablesSorted.front());
+    return JointMarginal(covariance, {static_cast<size_t>(covariance.rows())},
+                         variablesSorted);
+  }
+
+  // Reduce the Bayes tree query to a Bayes net on just the requested variables.
+  const GaussianFactorGraph jointFG =
+      reducedJointFactorGraph(bayesTree_, factorization_, variablesSorted);
+  const GaussianBayesNet bayesNet =
+      queryBayesNet(jointFG, factorization_, variablesSorted);
+  const std::vector<size_t> dims = dimsForKeys(variablesSorted, values_);
+
+  // Recover every covariance block by selecting every column block.
+  std::vector<size_t> allBlocks(variablesSorted.size());
+  std::iota(allBlocks.begin(), allBlocks.end(), 0);
+  Matrix covariance =
+      covarianceColumns(bayesNet, variablesSorted, dims, allBlocks);
+  return JointMarginal(covariance, dims, variablesSorted);
 }
 
 /* ************************************************************************* */
-JointMarginal Marginals::jointMarginalInformation(const KeyVector& variables) const {
+JointMarginal Marginals::jointMarginalInformation(
+    const KeyVector& variables) const {
+  // Normalize the query key set so the returned block layout is stable.
+  const KeyVector variablesSorted = uniqueSortedKeys(variables);
+  if (variablesSorted.empty()) {
+    return JointMarginal(Matrix(), std::vector<size_t>(), variablesSorted);
+  }
 
-  // If 2 variables, we can use the BayesTree::joint function, otherwise we
-  // have to use sequential elimination.
-  if(variables.size() == 1)
-  {
-    Matrix info = marginalInformation(variables.front());
+  // A single-variable query can reuse the existing marginal-factor path.
+  if (variablesSorted.size() == 1) {
+    Matrix info = marginalInformation(variablesSorted.front());
     std::vector<size_t> dims;
     dims.push_back(info.rows());
-    return JointMarginal(info, dims, variables);
-  }
-  else
-  {
-    // Compute joint marginal factor graph.
-    GaussianFactorGraph jointFG;
-    if(variables.size() == 2) {
-      if(factorization_ == CHOLESKY)
-        jointFG = *bayesTree_.joint(variables[0], variables[1], EliminatePreferCholesky);
-      else if(factorization_ == QR)
-        jointFG = *bayesTree_.joint(variables[0], variables[1], EliminateQR);
-    } else {
-      if(factorization_ == CHOLESKY)
-        jointFG = GaussianFactorGraph(*graph_.marginalMultifrontalBayesTree(variables, EliminatePreferCholesky));
-      else if(factorization_ == QR)
-        jointFG = GaussianFactorGraph(*graph_.marginalMultifrontalBayesTree(variables, EliminateQR));
-    }
+    return JointMarginal(info, dims, variablesSorted);
+  } else {
+    // Reduce the Bayes tree query and then materialize the reduced Hessian.
+    GaussianFactorGraph jointFG =
+        reducedJointFactorGraph(bayesTree_, factorization_, variablesSorted);
+    GaussianBayesNet bayesNet =
+        queryBayesNet(jointFG, factorization_, variablesSorted);
 
-    // Get information matrix
-    Matrix augmentedInfo = jointFG.augmentedHessian();
-    Matrix info = augmentedInfo.topLeftCorner(augmentedInfo.rows()-1, augmentedInfo.cols()-1);
+    // Get information matrix on the reduced query system.
+    const auto [R, rhs] = bayesNet.matrix(Ordering(variablesSorted));
+    (void)rhs;
+    Matrix info = R.transpose() * R;
 
-    // Information matrix will be returned with sorted keys
-    KeyVector variablesSorted = variables;
-    std::sort(variablesSorted.begin(), variablesSorted.end());
-
-    // Get dimensions from factor graph
+    // Record block dimensions in the same key order used for the Hessian.
     std::vector<size_t> dims;
     dims.reserve(variablesSorted.size());
-    for(const auto& key: variablesSorted) {
+    for (const auto& key : variablesSorted) {
       dims.push_back(values_.at(key).dim());
     }
 
     return JointMarginal(info, dims, variablesSorted);
   }
+}
+
+/* ************************************************************************* */
+Matrix Marginals::crossCovariance(const KeyVector& left,
+                                  const KeyVector& right) const {
+  // Preserve the requested left/right block order while removing duplicates.
+  const KeyVector leftUnique = uniqueStableKeys(left);
+  const KeyVector rightUnique = uniqueStableKeys(right);
+  KeyVector unionKeys = leftUnique;
+  unionKeys.insert(unionKeys.end(), rightUnique.begin(), rightUnique.end());
+  unionKeys = uniqueSortedKeys(unionKeys);
+
+  if (unionKeys.empty()) {
+    return Matrix();
+  }
+
+  if (unionKeys.size() == 1 && leftUnique == rightUnique) {
+    return marginalCovariance(unionKeys.front());
+  }
+
+  // Reduce to the union query once, then recover only the requested RHS blocks.
+  const GaussianFactorGraph jointFG =
+      reducedJointFactorGraph(bayesTree_, factorization_, unionKeys);
+  const GaussianBayesNet bayesNet =
+      queryBayesNet(jointFG, factorization_, unionKeys);
+  const std::vector<size_t> dims = dimsForKeys(unionKeys, values_);
+  FastMap<Key, size_t> keyIndex = Ordering(unionKeys).invert();
+
+  // Map each requested right-hand variable to its block in the reduced system.
+  std::vector<size_t> rightBlocks;
+  rightBlocks.reserve(rightUnique.size());
+  for (Key key : rightUnique) {
+    rightBlocks.push_back(keyIndex.at(key));
+  }
+
+  // Recover the selected columns and pack them back into the requested block layout.
+  const Matrix selectedColumns =
+      covarianceColumns(bayesNet, unionKeys, dims, rightBlocks);
+  return assembleCrossBlock(selectedColumns, unionKeys, dims, leftUnique,
+                            rightUnique);
 }
 
 /* ************************************************************************* */

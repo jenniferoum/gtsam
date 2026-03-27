@@ -170,6 +170,8 @@ class Marginals {
       const gtsam::KeyVector& variables) const;
   gtsam::JointMarginal jointMarginalInformation(
       const gtsam::KeyVector& variables) const;
+  gtsam::Matrix crossCovariance(const gtsam::KeyVector& left,
+                                const gtsam::KeyVector& right) const;
   void deleteCachedShortcuts();
 };
 
