@@ -259,16 +259,14 @@ TEST( GaussianBayesTree, balanced_smoother_joint )
   GaussianBayesNet actual3 = *bayesTree.jointBayesNet(X(1),X(4));
   EXPECT(assert_equal(expected3,actual3,tol));
 
-  //  // Check the joint density P(x4,x1), i.e. with a root variable, factored the other way
-  //  GaussianBayesNet expected4;
-  //  GaussianConditional::shared_ptr
-  //      parent4(new GaussianConditional(X(1), Z_2x1, -1.0*I/sigmax1, ones(2)));
-  //    expected4.push_front(parent4);
-  //  double sig41 = 0.668096;
-  //  Matrix A41 = -0.055794*I;
-  //  push_front(expected4,X(4), Z_2x1, I/sig41, X(1), A41/sig41, sigma);
-  //  GaussianBayesNet actual4 = *bayesTree.jointBayesNet(X(4),X(1));
-  //  EXPECT(assert_equal(expected4,actual4,tol));
+  // Check the joint density P(x4,x1), i.e. when the first queried clique is the ancestor
+  double sig41 = 0.668096;
+  Matrix A41 = -0.055794*I;
+  GaussianBayesNet expected4;
+  expected4.emplace_shared<GaussianConditional>(X(4), Z_2x1, I/sig41, X(1), A41/sig41);
+  expected4.emplace_shared<GaussianConditional>(X(1), Z_2x1, -1.0*I/sigmax1);
+  GaussianBayesNet actual4 = *bayesTree.jointBayesNet(X(4),X(1));
+  EXPECT(assert_equal(expected4, actual4, tol));
 }
 
 /* ************************************************************************* */
