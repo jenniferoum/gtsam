@@ -19,6 +19,7 @@
 #include <gtsam/slam/dataset.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <fstream>
@@ -36,6 +37,8 @@ using namespace gtsam;
 using namespace gtsam::eqvio;
 
 namespace {
+
+constexpr const char* kExampleName = "EqVIOFilterExample";
 
 /**
  * @brief Hardcoded reference values used for a lightweight smoke-style replay check.
@@ -85,6 +88,24 @@ std::vector<std::string> splitCsvLine(const std::string& line) {
   return cols;
 }
 
+/// Format a consistent exception prefix for this example.
+std::string formatError(const std::string& detail) {
+  return std::string(kExampleName) + ": " + detail;
+}
+
+/// Parse scalar/string helpers used by CSV rows and metadata.
+double parseDoubleOr(const std::string& s, double fallback = 0.0) {
+  return s.empty() ? fallback : std::stod(s);
+}
+
+size_t parseSizeOr(const std::string& s, size_t fallback = 0) {
+  return s.empty() ? fallback : static_cast<size_t>(std::stoull(s));
+}
+
+int parseIntOr(const std::string& s, int fallback = 0) {
+  return s.empty() ? fallback : std::stoi(s);
+}
+
 /**
  * @brief Read EqVIO replay CSV and convert to strongly typed event stream.
  *
@@ -98,27 +119,26 @@ std::vector<std::string> splitCsvLine(const std::string& line) {
 ReplayLog readReplayCsv(const std::string& csvPath) {
   std::ifstream in(csvPath);
   if (!in.is_open()) {
-    throw std::invalid_argument("EqVIOFilterCsvReplay: cannot open file: " +
-                                csvPath);
+    throw std::invalid_argument(formatError("cannot open file: " + csvPath));
   }
 
   std::string headerLine;
   if (!std::getline(in, headerLine)) {
-    throw std::invalid_argument("EqVIOFilterCsvReplay: empty file: " + csvPath);
+    throw std::invalid_argument(formatError("empty file: " + csvPath));
   }
 
   const std::vector<std::string> header = splitCsvLine(headerLine);
   std::unordered_map<std::string, size_t> index;
   for (size_t i = 0; i < header.size(); ++i) index[header[i]] = i;
 
-  const std::vector<std::string> required = {
+  const std::array<const char*, 21> required = {
       "row_type", "t_abs", "seq", "frame_idx", "landmark_id", "gx", "gy",
       "gz",       "ax",    "ay",  "az",        "bgx",         "bgy", "bgz",
       "bax",      "bay",   "baz", "u_norm",    "v_norm",      "key", "value"};
-  for (const auto& key : required) {
+  for (const char* key : required) {
     if (index.count(key) == 0) {
       throw std::invalid_argument(
-          "EqVIOFilterCsvReplay: missing required column: " + key);
+          formatError("missing required column: " + std::string(key)));
     }
   }
 
@@ -126,20 +146,9 @@ ReplayLog readReplayCsv(const std::string& csvPath) {
                            const std::string& key) -> std::string {
     const auto it = index.find(key);
     if (it == index.end()) {
-      throw std::invalid_argument(
-          "EqVIOFilterCsvReplay: missing required column: " + key);
+      throw std::invalid_argument(formatError("missing required column: " + key));
     }
     return (it->second < cells.size()) ? cells[it->second] : "";
-  };
-
-  const auto parseDoubleOr = [](const std::string& s, double fallback = 0.0) {
-    return s.empty() ? fallback : std::stod(s);
-  };
-  const auto parseSizeOr = [](const std::string& s, size_t fallback = 0) {
-    return s.empty() ? fallback : static_cast<size_t>(std::stoull(s));
-  };
-  const auto parseIntOr = [](const std::string& s, int fallback = 0) {
-    return s.empty() ? fallback : std::stoi(s);
   };
 
   ReplayLog log;
@@ -201,21 +210,20 @@ ReplayLog readReplayCsv(const std::string& csvPath) {
         ReplayEvent& event = log.events[it->second];
         if (event.frameIdx != frameIdx) {
           throw std::invalid_argument(
-              "EqVIOFilterCsvReplay: inconsistent frame_idx for vision seq=" +
-              std::to_string(seq));
+              formatError("inconsistent frame_idx for vision seq=" +
+                          std::to_string(seq)));
         }
         if (std::abs(event.tAbs - tAbs) > 1e-9) {
           throw std::invalid_argument(
-              "EqVIOFilterCsvReplay: inconsistent t_abs for vision seq=" +
-              std::to_string(seq));
+              formatError("inconsistent t_abs for vision seq=" +
+                          std::to_string(seq)));
         }
         event.vision[id] = Point2(u, v);
       }
       continue;
     }
 
-    throw std::invalid_argument("EqVIOFilterCsvReplay: unknown row_type: " +
-                                rowType);
+    throw std::invalid_argument(formatError("unknown row_type: " + rowType));
   }
 
   std::stable_sort(log.events.begin(), log.events.end(),
@@ -331,51 +339,41 @@ BufferedImuPropagation makeBufferedImuPropagation(
 /// Build runtime filter params from replay metadata, falling back to defaults for missing entries.
 EqVIOFilterParams paramsFromMetadata(const ReplayLog& log) {
   EqVIOFilterParams params;
-  params.initialPointDepth =
-      metadataFiniteDouble(log, "eqf.initial_point_depth", params.initialPointDepth);
-  params.initialPointVariance = metadataFiniteDouble(
-      log, "eqf.initial_point_variance", params.initialPointVariance);
-  params.measurementNoiseVariance = metadataFiniteDouble(
-      log, "eqf.measurement_noise_variance_norm", params.measurementNoiseVariance);
-  params.outlierThresholdAbs =
-      metadataFiniteDouble(log, "eqf.outlier_threshold_abs", params.outlierThresholdAbs);
-  params.outlierThresholdAbs = metadataFiniteDouble(
-      log, "eqf.outlier_threshold_abs_norm", params.outlierThresholdAbs);
-  params.outlierThresholdProb = metadataFiniteDouble(
-      log, "eqf.outlier_threshold_prob", params.outlierThresholdProb);
-  params.featureRetention =
-      metadataFiniteDouble(log, "eqf.feature_retention", params.featureRetention);
+  const auto setParam = [&log](double& field,
+                               std::initializer_list<const char*> keys) {
+    for (const char* key : keys) {
+      field = metadataFiniteDouble(log, key, field);
+    }
+  };
 
-  params.biasOmegaProcessVariance = metadataFiniteDouble(
-      log, "eqf.process_var_bias_omega", params.biasOmegaProcessVariance);
-  params.biasAccelProcessVariance = metadataFiniteDouble(
-      log, "eqf.process_var_bias_accel", params.biasAccelProcessVariance);
-  params.attitudeProcessVariance = metadataFiniteDouble(
-      log, "eqf.process_var_attitude", params.attitudeProcessVariance);
-  params.positionProcessVariance = metadataFiniteDouble(
-      log, "eqf.process_var_position", params.positionProcessVariance);
-  params.velocityProcessVariance = metadataFiniteDouble(
-      log, "eqf.process_var_velocity", params.velocityProcessVariance);
-  params.cameraAttitudeProcessVariance = metadataFiniteDouble(
-      log, "eqf.process_var_cam_attitude", params.cameraAttitudeProcessVariance);
-  params.cameraPositionProcessVariance = metadataFiniteDouble(
-      log, "eqf.process_var_cam_position", params.cameraPositionProcessVariance);
-  params.pointProcessVariance =
-      metadataFiniteDouble(log, "eqf.process_var_point", params.pointProcessVariance);
+  setParam(params.initialPointDepth, {"eqf.initial_point_depth"});
+  setParam(params.initialPointVariance, {"eqf.initial_point_variance"});
+  setParam(params.measurementNoiseVariance, {"eqf.measurement_noise_variance_norm"});
+  setParam(params.outlierThresholdAbs,
+           {"eqf.outlier_threshold_abs", "eqf.outlier_threshold_abs_norm"});
+  setParam(params.outlierThresholdProb, {"eqf.outlier_threshold_prob"});
+  setParam(params.featureRetention, {"eqf.feature_retention"});
+  setParam(params.biasOmegaProcessVariance, {"eqf.process_var_bias_omega"});
+  setParam(params.biasAccelProcessVariance, {"eqf.process_var_bias_accel"});
+  setParam(params.attitudeProcessVariance, {"eqf.process_var_attitude"});
+  setParam(params.positionProcessVariance, {"eqf.process_var_position"});
+  setParam(params.velocityProcessVariance, {"eqf.process_var_velocity"});
+  setParam(params.cameraAttitudeProcessVariance, {"eqf.process_var_cam_attitude"});
+  setParam(params.cameraPositionProcessVariance, {"eqf.process_var_cam_position"});
+  setParam(params.pointProcessVariance, {"eqf.process_var_point"});
 
   params.inputNoise.setZero();
-  params.inputNoise.block<3, 3>(0, 0).setIdentity();
-  params.inputNoise.block<3, 3>(3, 3).setIdentity();
-  params.inputNoise.block<3, 3>(6, 6).setIdentity();
-  params.inputNoise.block<3, 3>(9, 9).setIdentity();
-  params.inputNoise.block<3, 3>(0, 0) *=
-      metadataFiniteDouble(log, "eqf.input_var_gyr", params.inputNoise(0, 0));
-  params.inputNoise.block<3, 3>(3, 3) *=
-      metadataFiniteDouble(log, "eqf.input_var_acc", params.inputNoise(3, 3));
-  params.inputNoise.block<3, 3>(6, 6) *= metadataFiniteDouble(
-      log, "eqf.input_var_gyr_bias_walk", params.inputNoise(6, 6));
-  params.inputNoise.block<3, 3>(9, 9) *= metadataFiniteDouble(
-      log, "eqf.input_var_acc_bias_walk", params.inputNoise(9, 9));
+  for (int idx : {0, 3, 6, 9}) {
+    params.inputNoise.block<3, 3>(idx, idx).setIdentity();
+  }
+  const auto setInputVariance = [&log, &params](int idx, const char* key) {
+    const double variance = metadataFiniteDouble(log, key, params.inputNoise(idx, idx));
+    params.inputNoise.block<3, 3>(idx, idx) *= variance;
+  };
+  setInputVariance(0, "eqf.input_var_gyr");
+  setInputVariance(3, "eqf.input_var_acc");
+  setInputVariance(6, "eqf.input_var_gyr_bias_walk");
+  setInputVariance(9, "eqf.input_var_acc_bias_walk");
 
   return params;
 }
@@ -393,20 +391,18 @@ State initialReferenceState(const ReplayLog& log) {
 /// Construct initial covariance from metadata overrides with sensible defaults.
 Matrix initialCovarianceFromMetadata(const ReplayLog& log, const State& xi0) {
   Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim());
-  Sigma0.block<3, 3>(0, 0) *=
-      metadataFiniteDouble(log, "eqf.initial_var_bias_omega", 0.1);
-  Sigma0.block<3, 3>(3, 3) *=
-      metadataFiniteDouble(log, "eqf.initial_var_bias_accel", 0.1);
-  Sigma0.block<3, 3>(6, 6) *=
-      metadataFiniteDouble(log, "eqf.initial_var_attitude", 1e-4);
-  Sigma0.block<3, 3>(9, 9) *=
-      metadataFiniteDouble(log, "eqf.initial_var_position", 1e-4);
-  Sigma0.block<3, 3>(12, 12) *=
-      metadataFiniteDouble(log, "eqf.initial_var_velocity", 1e-2);
-  Sigma0.block<3, 3>(15, 15) *=
-      metadataFiniteDouble(log, "eqf.initial_var_cam_attitude", 1e-5);
-  Sigma0.block<3, 3>(18, 18) *=
-      metadataFiniteDouble(log, "eqf.initial_var_cam_position", 1e-4);
+  const auto setInitialVarianceBlock = [&log, &Sigma0](int idx, const char* key,
+                                                       double fallback) {
+    Sigma0.block<3, 3>(idx, idx) *= metadataFiniteDouble(log, key, fallback);
+  };
+
+  setInitialVarianceBlock(0, "eqf.initial_var_bias_omega", 0.1);
+  setInitialVarianceBlock(3, "eqf.initial_var_bias_accel", 0.1);
+  setInitialVarianceBlock(6, "eqf.initial_var_attitude", 1e-4);
+  setInitialVarianceBlock(9, "eqf.initial_var_position", 1e-4);
+  setInitialVarianceBlock(12, "eqf.initial_var_velocity", 1e-2);
+  setInitialVarianceBlock(15, "eqf.initial_var_cam_attitude", 1e-5);
+  setInitialVarianceBlock(18, "eqf.initial_var_cam_position", 1e-4);
   return Sigma0;
 }
 

@@ -167,8 +167,10 @@ Matrix23 _EqFoutputMatrixCiStarBase(
   return drhoSym * adjQInv * m2g;
 }
 
-/// Internal innovation lift used by `liftInnovation`.
-Vector _liftInnovation(const Vector& totalInnovation, const State& xi0) {
+}  // namespace
+
+/// Lift innovation from chart coordinates to group tangent coordinates.
+Vector liftInnovation(const Vector& totalInnovation, const State& xi0) {
   if (totalInnovation.size() != xi0.dim()) {
     throw std::invalid_argument(
         "liftInnovation: innovation dimension mismatch");
@@ -181,7 +183,8 @@ Vector _liftInnovation(const Vector& totalInnovation, const State& xi0) {
   lift.segment<6>(0) = totalInnovation.segment<6>(6);
 
   const Vector3 gammaV = totalInnovation.segment<3>(12);
-  lift.segment<3>(6) = -gammaV - Rot3::Hat(lift.segment<3>(0)) * xi0.sensor.velocity;
+  lift.segment<3>(6) =
+      -gammaV - Rot3::Hat(lift.segment<3>(0)) * xi0.sensor.velocity;
 
   lift.segment<6>(15) =
       totalInnovation.segment<6>(15) +
@@ -199,8 +202,6 @@ Vector _liftInnovation(const Vector& totalInnovation, const State& xi0) {
 
   return lift;
 }
-
-}  // namespace
 
 /// EqF state matrix construction in inverse-depth coordinates.
 Matrix EqFStateMatrixA(const VioGroup& X, const State& xi0,
@@ -372,11 +373,6 @@ Matrix EqFoutputMatrixC(
     throw std::runtime_error("EqFoutputMatrixC produced NaN/Inf");
   }
   return C;
-}
-
-/// Lift innovation from chart coordinates to group tangent coordinates.
-Vector liftInnovation(const Vector& totalInnovation, const State& xi0) {
-  return _liftInnovation(totalInnovation, xi0);
 }
 
 /// Apply right action on sensor block only.
