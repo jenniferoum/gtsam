@@ -130,9 +130,6 @@ class GTSAM_EXPORT Marginals {
   /** Compute the joint marginal information of several variables */
   JointMarginal jointMarginalInformation(const KeyVector& variables) const;
 
-  /** Compute the cross-covariance block between two variable sets. */
-  Matrix crossCovariance(const KeyVector& left, const KeyVector& right) const;
-
   /** Delete cached Bayes tree shortcuts created while computing marginals */
   void deleteCachedShortcuts();
 

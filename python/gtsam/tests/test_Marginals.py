@@ -71,26 +71,32 @@ def create_planar_slam_problem():
 class TestMarginals(GtsamTestCase):
     """Tests for Marginals wrapper extensions."""
 
-    def test_cross_covariance(self):
-        """crossCovariance should match blocks from the full joint covariance."""
+    def test_joint_marginal_blocks(self):
+        """JointMarginal blocks should match the full joint covariance."""
         graph, values, (x1, _, x3, l1, l2) = create_planar_slam_problem()
         marginals = gtsam.Marginals(graph, values)
 
-        left = [l2, x3]
-        right = [l1, x1]
         union_keys = [x1, l1, l2, x3]
-
-        actual = marginals.crossCovariance(left, right)
         joint = marginals.jointMarginalCovariance(union_keys)
+        full = joint.fullMatrix()
+        ordered_keys = sorted(set(union_keys))
+        dims = values.dims()
 
-        expected = np.vstack(
-            [
-                np.hstack([joint.at(l2, l1), joint.at(l2, x1)]),
-                np.hstack([joint.at(x3, l1), joint.at(x3, x1)]),
-            ]
-        )
+        offsets = {}
+        offset = 0
+        for key in ordered_keys:
+            offsets[key] = offset
+            offset += dims[key]
 
-        np.testing.assert_allclose(actual, expected, atol=1e-8)
+        def block(key_i, key_j):
+            row = offsets[key_i]
+            col = offsets[key_j]
+            return full[row : row + dims[key_i], col : col + dims[key_j]]
+
+        np.testing.assert_allclose(joint.at(l2, l2), block(l2, l2), atol=1e-8)
+        np.testing.assert_allclose(joint.at(x1, l2), block(x1, l2), atol=1e-8)
+        np.testing.assert_allclose(joint.at(l1, x3), block(l1, x3), atol=1e-8)
+        np.testing.assert_allclose(joint.at(x3, x3), block(x3, x3), atol=1e-8)
 
 
 if __name__ == "__main__":

@@ -41,20 +41,6 @@ KeyVector uniqueSortedKeys(const KeyVector& keys) {
 }
 
 /* ************************************************************************* */
-// Return keys in first-seen order with duplicates removed.
-KeyVector uniqueStableKeys(const KeyVector& keys) {
-  KeyVector result;
-  result.reserve(keys.size());
-  KeySet seen;
-  for (Key key : keys) {
-    if (seen.insert(key).second) {
-      result.push_back(key);
-    }
-  }
-  return result;
-}
-
-/* ************************************************************************* */
 // Look up the block dimension of each requested variable.
 std::vector<size_t> dimsForKeys(const KeyVector& keys, const Values& values) {
   std::vector<size_t> dims;
@@ -145,45 +131,6 @@ Matrix covarianceColumns(const GaussianBayesNet& bayesNet,
   R.transpose().triangularView<Eigen::Lower>().solveInPlace(selectors);
   R.triangularView<Eigen::Upper>().solveInPlace(selectors);
   return selectors;
-}
-
-/* ************************************************************************* */
-// Assemble a left-by-right block from packed selected covariance columns.
-Matrix assembleCrossBlock(const Matrix& selectedColumns,
-                          const KeyVector& orderedKeys,
-                          const std::vector<size_t>& dims,
-                          const KeyVector& left, const KeyVector& right) {
-  FastMap<Key, size_t> keyIndex = Ordering(orderedKeys).invert();
-  const std::vector<size_t> offsets = blockOffsets(dims);
-
-  size_t leftDim = 0;
-  for (Key key : left) {
-    leftDim += dims.at(keyIndex.at(key));
-  }
-  size_t rightDim = 0;
-  for (Key key : right) {
-    rightDim += dims.at(keyIndex.at(key));
-  }
-
-  Matrix result(leftDim, rightDim);
-  size_t rowOffset = 0;
-  for (Key leftKey : left) {
-    const size_t leftBlock = keyIndex.at(leftKey);
-    const size_t leftSize = dims[leftBlock];
-    const size_t leftBegin = offsets[leftBlock];
-    size_t columnOffset = 0;
-    size_t selectedOffset = 0;
-    for (Key rightKey : right) {
-      const size_t rightBlock = keyIndex.at(rightKey);
-      const size_t rightSize = dims[rightBlock];
-      result.block(rowOffset, columnOffset, leftSize, rightSize) =
-          selectedColumns.block(leftBegin, selectedOffset, leftSize, rightSize);
-      columnOffset += rightSize;
-      selectedOffset += rightSize;
-    }
-    rowOffset += leftSize;
-  }
-  return result;
 }
 
 }  // namespace
@@ -372,46 +319,6 @@ JointMarginal Marginals::jointMarginalInformation(
 
     return JointMarginal(info, dims, variablesSorted);
   }
-}
-
-/* ************************************************************************* */
-Matrix Marginals::crossCovariance(const KeyVector& left,
-                                  const KeyVector& right) const {
-  // Preserve the requested left/right block order while removing duplicates.
-  const KeyVector leftUnique = uniqueStableKeys(left);
-  const KeyVector rightUnique = uniqueStableKeys(right);
-  KeyVector unionKeys = leftUnique;
-  unionKeys.insert(unionKeys.end(), rightUnique.begin(), rightUnique.end());
-  unionKeys = uniqueSortedKeys(unionKeys);
-
-  if (unionKeys.empty()) {
-    return Matrix();
-  }
-
-  if (unionKeys.size() == 1 && leftUnique == rightUnique) {
-    return marginalCovariance(unionKeys.front());
-  }
-
-  // Reduce to the union query once, then recover only the requested RHS blocks.
-  const GaussianFactorGraph jointFG =
-      reducedJointFactorGraph(bayesTree_, factorization_, unionKeys);
-  const GaussianBayesNet bayesNet =
-      queryBayesNet(jointFG, factorization_, unionKeys);
-  const std::vector<size_t> dims = dimsForKeys(unionKeys, values_);
-  FastMap<Key, size_t> keyIndex = Ordering(unionKeys).invert();
-
-  // Map each requested right-hand variable to its block in the reduced system.
-  std::vector<size_t> rightBlocks;
-  rightBlocks.reserve(rightUnique.size());
-  for (Key key : rightUnique) {
-    rightBlocks.push_back(keyIndex.at(key));
-  }
-
-  // Recover the selected columns and pack them back into the requested block layout.
-  const Matrix selectedColumns =
-      covarianceColumns(bayesNet, unionKeys, dims, rightBlocks);
-  return assembleCrossBlock(selectedColumns, unionKeys, dims, leftUnique,
-                            rightUnique);
 }
 
 /* ************************************************************************* */
