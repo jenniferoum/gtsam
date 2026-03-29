@@ -19,6 +19,7 @@
 
 #include <cassert>
 #include <stdexcept>
+#include <tuple>
 
 namespace gtsam {
 namespace eqvio {
@@ -41,37 +42,38 @@ Vector _measurementVector(const VisionMeasurement& measurement) {
   return v;
 }
 
-/// Input bundle used by automatic EqF predict path for one IMU hold.
-struct _PropagationInput {
-  IMUInput imu;
-  double dt = 0.0;
-  Matrix D_lift;
-};
+/// Automatic-predict input bundle `(imu, dt, D_lift)`.
+using _PropagationInput = std::tuple<IMUInput, double, Matrix>;
 
-/// Minimal input orbit for EqVIO propagation (identity action on input bundle).
-struct _PropagationInputOrbit {
-  explicit _PropagationInputOrbit(const _PropagationInput& in) : input(in) {}
-  _PropagationInput operator()(const VioGroup&) const { return input; }
-  _PropagationInput input;
+/// Minimal input-action wrapper with ABC-style `InputAction::Orbit` shape.
+struct InputAction {
+  struct Orbit {
+    explicit Orbit(const _PropagationInput& input) : input_(input) {}
+    _PropagationInput operator()(const VioGroup&) const { return input_; }
+   private:
+    _PropagationInput input_;
+  };
 };
 
 /// Lift functor compatible with EquivariantFilter::predict automatic-A path.
-struct _PropagationLift {
-  explicit _PropagationLift(const _PropagationInput& in) : input(in) {}
+struct Lift {
+  explicit Lift(const _PropagationInput& in)
+      : imu_(std::get<0>(in)), dt_(std::get<1>(in)), D_lift_(std::get<2>(in)) {}
 
   Vector operator()(const State& xi,
                     OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H = {}) const {
     const Vector y0 =
-        (VioGroup::Logmap(liftVelocityDiscrete(xi, input.imu, input.dt)) /
-         input.dt)
+        (VioGroup::Logmap(liftVelocityDiscrete(xi, imu_, dt_)) / dt_)
             .eval();
     if (H) {
-      *H = input.D_lift;
+      *H = D_lift_;
     }
     return y0;
   }
 
-  _PropagationInput input;
+  IMUInput imu_;
+  double dt_;
+  Matrix D_lift_;
 };
 
 }  // namespace
@@ -160,9 +162,9 @@ void EqVIOFilter::propagate(const std::vector<IMUInput>& imuInputs,
     const Matrix D_lift =
         Dphi0.completeOrthogonalDecomposition().pseudoInverse() * A_target;
 
-    const _PropagationInput input{imu, dt, D_lift};
-    const _PropagationLift lift_u(input);
-    const _PropagationInputOrbit psi_u(input);
+    const _PropagationInput u{imu, dt, D_lift};
+    const Lift lift_u(u);
+    const InputAction::Orbit psi_u(u);
 
     const Matrix B = EqFInputMatrixB(groupEstimate(), referenceState());
     const Matrix Qc =
