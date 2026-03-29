@@ -105,6 +105,7 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
    */
   void predict(const std::vector<IMUInput>& imuInputs,
                  const std::vector<double>& dts);
+                 
   /**
    * @brief Apply one visual correction step with dynamic landmark management.
    *
