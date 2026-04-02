@@ -529,8 +529,18 @@ class ISAM2 {
   bool equals(const gtsam::ISAM2& other, double tol) const;
   void print(string s = "", const gtsam::KeyFormatter& keyFormatter =
                                 gtsam::DefaultKeyFormatter) const;
+  size_t size() const;
+  bool empty() const;
+  size_t numCachedSeparatorMarginals() const;
   void printStats() const;
   void saveGraph(string s) const;
+  gtsam::GaussianConditional* marginalFactor(gtsam::Key key) const;
+  gtsam::GaussianFactorGraph* joint(gtsam::Key key1, gtsam::Key key2) const;
+  gtsam::GaussianFactorGraph* joint(const gtsam::KeyVector& queryKeys) const;
+  gtsam::GaussianBayesNet* jointBayesNet(gtsam::Key key1, gtsam::Key key2) const;
+  gtsam::GaussianBayesNet* jointBayesNet(
+      const gtsam::KeyVector& queryKeys) const;
+  void deleteCachedShortcuts();
 
   gtsam::ISAM2Result update();
   gtsam::ISAM2Result update(const gtsam::NonlinearFactorGraph& newFactors,
