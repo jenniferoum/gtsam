@@ -18,7 +18,6 @@
 #include <gtsam_unstable/navigation/EqVIOFilter.h>
 
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <map>
 #include <numeric>
@@ -166,91 +165,6 @@ void EqVIOFilter::update(const VisionMeasurement& measurement, const Matrix& R) 
   static const auto kDefaultCamera = std::make_shared<CameraModel>(
       Pose3::Identity(), Cal3_S2(1.0, 1.0, 0.0, 0.0, 0.0));
   update(measurement, kDefaultCamera, R);
-}
-
-/// Override reference-state camera extrinsics while preserving group/covariance.
-void EqVIOFilter::setCameraOffset(const Pose3& body_T_camera) {
-  State xi_ref = referenceState();
-  xi_ref.sensor.cameraOffset = body_T_camera;
-  resetReferenceAndGroup(xi_ref, errorCovariance(), groupEstimate());
-}
-
-/// Override reference covariance while preserving reference state/group.
-void EqVIOFilter::setReferenceCovariance(const Matrix& Sigma) {
-  const int d = referenceState().dim();
-  if (Sigma.rows() != d || Sigma.cols() != d) {
-    throw std::invalid_argument(
-        "EqVIOFilter::setReferenceCovariance: Sigma dimension mismatch");
-  }
-  resetReferenceAndGroup(referenceState(), Sigma, groupEstimate());
-}
-
-/// Set full IMU input-noise covariance matrix.
-void EqVIOFilter::setInputNoise(const Matrix& inputNoise) {
-  if (inputNoise.rows() != IMUInput::CompDim ||
-      inputNoise.cols() != IMUInput::CompDim) {
-    throw std::invalid_argument(
-        "EqVIOFilter::setInputNoise: expected 12x12 matrix");
-  }
-  params_.inputNoise = inputNoise;
-}
-
-/// Set scalar vision measurement noise variance used by default update path.
-void EqVIOFilter::setMeasurementNoiseVariance(double variance) {
-  if (variance <= 0.0 || !std::isfinite(variance)) {
-    throw std::invalid_argument(
-        "EqVIOFilter::setMeasurementNoiseVariance: variance must be positive");
-  }
-  params_.measurementNoiseVariance = variance;
-}
-
-/// Set depth/variance used for newly initialized landmarks.
-void EqVIOFilter::setInitialLandmarkParams(double depth, double variance) {
-  if (depth <= 0.0 || variance <= 0.0 || !std::isfinite(depth) ||
-      !std::isfinite(variance)) {
-    throw std::invalid_argument(
-        "EqVIOFilter::setInitialLandmarkParams: depth/variance must be positive");
-  }
-  params_.initialPointDepth = depth;
-  params_.initialPointVariance = variance;
-}
-
-/// Set outlier rejection configuration.
-void EqVIOFilter::setOutlierParams(double thresholdAbs, double thresholdProb,
-                                   double featureRetention) {
-  if (thresholdAbs <= 0.0 || thresholdProb <= 0.0 ||
-      featureRetention < 0.0 || featureRetention > 1.0 ||
-      !std::isfinite(thresholdAbs) || !std::isfinite(thresholdProb) ||
-      !std::isfinite(featureRetention)) {
-    throw std::invalid_argument(
-        "EqVIOFilter::setOutlierParams: invalid threshold/retention values");
-  }
-  params_.outlierThresholdAbs = thresholdAbs;
-  params_.outlierThresholdProb = thresholdProb;
-  params_.featureRetention = featureRetention;
-}
-
-/// Set process-noise variances for sensor and landmark blocks.
-void EqVIOFilter::setProcessVariances(double biasOmega, double biasAccel,
-                                      double attitude, double position,
-                                      double velocity, double cameraAttitude,
-                                      double cameraPosition, double point) {
-  const std::array<double, 8> vars = {biasOmega,      biasAccel, attitude,
-                                      position,       velocity,  cameraAttitude,
-                                      cameraPosition, point};
-  if (std::any_of(vars.begin(), vars.end(),
-                  [](double v) { return v < 0.0 || !std::isfinite(v); })) {
-    throw std::invalid_argument(
-        "EqVIOFilter::setProcessVariances: all variances must be non-negative");
-  }
-  params_.biasOmegaProcessVariance = biasOmega;
-  params_.biasAccelProcessVariance = biasAccel;
-  params_.attitudeProcessVariance = attitude;
-  params_.positionProcessVariance = position;
-  params_.velocityProcessVariance = velocity;
-  params_.cameraAttitudeProcessVariance = cameraAttitude;
-  params_.cameraPositionProcessVariance = cameraPosition;
-  params_.pointProcessVariance = point;
 }
 
 /// Identity covariance helper sized for current sensor + landmark dimensions.

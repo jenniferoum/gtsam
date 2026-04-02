@@ -818,6 +818,7 @@ virtual class ProjectionFactorRollingShutter : gtsam::NoiseModelFactor {
 //*************************************************************************
 // navigation (EqVIO)
 //*************************************************************************
+#include <gtsam_unstable/navigation/EqVIOState.h>
 #include <gtsam_unstable/navigation/EqVIOFilter.h>
 namespace eqvio {
 
@@ -827,24 +828,56 @@ class IMUInput {
            const gtsam::Vector3& gyrBiasVel, const gtsam::Vector3& accBiasVel);
 };
 
+class Landmark {
+  Landmark();
+  gtsam::Point3 p;
+};
+
+class SensorState {
+  SensorState();
+  gtsam::imuBias::ConstantBias inputBias;
+  gtsam::Pose3 pose;
+  gtsam::Vector3 velocity;
+  gtsam::Pose3 cameraOffset;
+  gtsam::Vector3 gravityDir() const;
+};
+
+class State {
+  State();
+  gtsam::eqvio::SensorState sensor;
+  size_t n() const;
+  int dim() const;
+};
+
+class EqVIOFilterParams {
+  EqVIOFilterParams();
+  double initialPointDepth;
+  double initialPointVariance;
+  double measurementNoiseVariance;
+  double outlierThresholdAbs;
+  double outlierThresholdProb;
+  double featureRetention;
+  double biasOmegaProcessVariance;
+  double biasAccelProcessVariance;
+  double attitudeProcessVariance;
+  double positionProcessVariance;
+  double velocityProcessVariance;
+  double cameraAttitudeProcessVariance;
+  double cameraPositionProcessVariance;
+  double pointProcessVariance;
+  gtsam::Matrix inputNoise;
+};
+
 class EqVIOFilter {
   EqVIOFilter();
+  EqVIOFilter(const gtsam::eqvio::EqVIOFilterParams& params);
+  EqVIOFilter(const gtsam::eqvio::State& xi_ref, const gtsam::Matrix& Sigma,
+              const gtsam::eqvio::EqVIOFilterParams& params);
   void initializeFromIMU(const gtsam::eqvio::IMUInput& imu);
   void predict(const std::vector<gtsam::eqvio::IMUInput>& imuInputs,
                const std::vector<double>& dts);
   void update(const std::map<gtsam::Key, gtsam::Point2>& measurement,
               const gtsam::Matrix& R);
-  void setCameraOffset(const gtsam::Pose3& body_T_camera);
-  void setReferenceCovariance(const gtsam::Matrix& Sigma);
-  void setInputNoise(const gtsam::Matrix& inputNoise);
-  void setMeasurementNoiseVariance(double variance);
-  void setInitialLandmarkParams(double depth, double variance);
-  void setOutlierParams(double thresholdAbs, double thresholdProb,
-                        double featureRetention);
-  void setProcessVariances(double biasOmega, double biasAccel, double attitude,
-                           double position, double velocity,
-                           double cameraAttitude, double cameraPosition,
-                           double point);
 
   bool isInitialized() const;
   size_t landmarkCount() const;

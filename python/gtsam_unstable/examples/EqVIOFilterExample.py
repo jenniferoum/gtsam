@@ -269,47 +269,48 @@ def _initial_covariance_from_metadata(metadata: Dict[str, str]) -> np.ndarray:
     return Sigma0
 
 
-def _configure_filter_from_metadata(
-    filter_eqf: gtsam_unstable.eqvio.EqVIOFilter, metadata: Dict[str, str]
-) -> float:
-    initial_point_depth = _metadata_finite_float(metadata, "eqf.initial_point_depth", 10.0)
-    initial_point_variance = _metadata_finite_float(
+def _params_from_metadata(
+    metadata: Dict[str, str],
+) -> gtsam_unstable.eqvio.EqVIOFilterParams:
+    params = gtsam_unstable.eqvio.EqVIOFilterParams()
+    params.initialPointDepth = _metadata_finite_float(metadata, "eqf.initial_point_depth", 10.0)
+    params.initialPointVariance = _metadata_finite_float(
         metadata, "eqf.initial_point_variance", 1.0
     )
-    measurement_noise_variance = _metadata_finite_float(
+    params.measurementNoiseVariance = _metadata_finite_float(
         metadata, "eqf.measurement_noise_variance_norm", 1e-4
     )
     outlier_threshold_abs = _metadata_finite_float(metadata, "eqf.outlier_threshold_abs", 1e8)
     outlier_threshold_abs = _metadata_finite_float(
         metadata, "eqf.outlier_threshold_abs_norm", outlier_threshold_abs
     )
-    outlier_threshold_prob = _metadata_finite_float(
+    params.outlierThresholdAbs = outlier_threshold_abs
+    params.outlierThresholdProb = _metadata_finite_float(
         metadata, "eqf.outlier_threshold_prob", 1e8
     )
-    feature_retention = _metadata_finite_float(metadata, "eqf.feature_retention", 0.3)
-
-    bias_omega_process_variance = _metadata_finite_float(
+    params.featureRetention = _metadata_finite_float(metadata, "eqf.feature_retention", 0.3)
+    params.biasOmegaProcessVariance = _metadata_finite_float(
         metadata, "eqf.process_var_bias_omega", 0.001
     )
-    bias_accel_process_variance = _metadata_finite_float(
+    params.biasAccelProcessVariance = _metadata_finite_float(
         metadata, "eqf.process_var_bias_accel", 0.001
     )
-    attitude_process_variance = _metadata_finite_float(
+    params.attitudeProcessVariance = _metadata_finite_float(
         metadata, "eqf.process_var_attitude", 0.001
     )
-    position_process_variance = _metadata_finite_float(
+    params.positionProcessVariance = _metadata_finite_float(
         metadata, "eqf.process_var_position", 0.001
     )
-    velocity_process_variance = _metadata_finite_float(
+    params.velocityProcessVariance = _metadata_finite_float(
         metadata, "eqf.process_var_velocity", 0.001
     )
-    camera_attitude_process_variance = _metadata_finite_float(
+    params.cameraAttitudeProcessVariance = _metadata_finite_float(
         metadata, "eqf.process_var_cam_attitude", 0.001
     )
-    camera_position_process_variance = _metadata_finite_float(
+    params.cameraPositionProcessVariance = _metadata_finite_float(
         metadata, "eqf.process_var_cam_position", 0.001
     )
-    point_process_variance = _metadata_finite_float(
+    params.pointProcessVariance = _metadata_finite_float(
         metadata, "eqf.process_var_point", 0.001
     )
 
@@ -322,24 +323,8 @@ def _configure_filter_from_metadata(
     }
     for idx, variance in input_variances.items():
         input_noise[idx : idx + 3, idx : idx + 3] = np.eye(3) * variance
-
-    filter_eqf.setInitialLandmarkParams(initial_point_depth, initial_point_variance)
-    filter_eqf.setMeasurementNoiseVariance(measurement_noise_variance)
-    filter_eqf.setOutlierParams(
-        outlier_threshold_abs, outlier_threshold_prob, feature_retention
-    )
-    filter_eqf.setProcessVariances(
-        bias_omega_process_variance,
-        bias_accel_process_variance,
-        attitude_process_variance,
-        position_process_variance,
-        velocity_process_variance,
-        camera_attitude_process_variance,
-        camera_position_process_variance,
-        point_process_variance,
-    )
-    filter_eqf.setInputNoise(input_noise)
-    return measurement_noise_variance
+    params.inputNoise = input_noise
+    return params
 
 
 def main() -> None:
@@ -348,9 +333,15 @@ def main() -> None:
 
     camera_offset = _camera_offset_from_metadata(log.metadata)
     initial_covariance = _initial_covariance_from_metadata(log.metadata)
+    params = _params_from_metadata(log.metadata)
+    xi_ref = gtsam_unstable.eqvio.State()
+    sensor = gtsam_unstable.eqvio.SensorState()
+    if camera_offset is not None:
+        sensor.cameraOffset = camera_offset
+    xi_ref.sensor = sensor
 
     filter_eqf: Optional[gtsam_unstable.eqvio.EqVIOFilter] = None
-    measurement_noise_variance = 1e-4
+    measurement_noise_variance = params.measurementNoiseVariance
     imu_buffer: List[TimestampedImu] = []
     gravity_initialized = False
     current_time = -1.0
@@ -362,13 +353,9 @@ def main() -> None:
     for event in log.events:
         if event.kind == "imu":
             if filter_eqf is None:
-                filter_eqf = gtsam_unstable.eqvio.EqVIOFilter()
-                measurement_noise_variance = _configure_filter_from_metadata(
-                    filter_eqf, log.metadata
+                filter_eqf = gtsam_unstable.eqvio.EqVIOFilter(
+                    xi_ref, initial_covariance, params
                 )
-                filter_eqf.setReferenceCovariance(initial_covariance)
-                if camera_offset is not None:
-                    filter_eqf.setCameraOffset(camera_offset)
             if not gravity_initialized and event.imu is not None:
                 filter_eqf.initializeFromIMU(event.imu)
                 current_time = event.t_abs
