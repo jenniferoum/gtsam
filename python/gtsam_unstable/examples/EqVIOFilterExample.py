@@ -327,6 +327,7 @@ def _params_from_metadata(
     return params
 
 
+
 def main() -> None:
     csv_path = findExampleDataFile("EqVIOdata_eurocmav_room1_10sec.csv")
     log = read_replay_csv(csv_path)
