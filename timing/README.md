@@ -50,6 +50,11 @@ rather than from only the earliest windows. This makes the `w10000` versus
 `w20000` comparison reflect trajectory-wide local supports rather than a prefix
 of the trajectory.
 
+The fixed linearization point for these batch covariance timings is now obtained
+from a sequential `ISAM2` solve rather than from a one-shot batch optimizer.
+This avoids the poor large-loop initializations that can occur when the dataset
+provides only odometric seed poses.
+
 ### Generate incremental `ISAM2` covariance CSV
 
 Run from `build/`:
@@ -58,16 +63,21 @@ Run from `build/`:
 ./timing/timeISAM2Covariance \
   --dataset w20000.txt \
   --query-repeats 5 \
-  --output ../timing/results/bayes_tree_covariance/isam2_w20000.csv
+  --output ../timing/results/bayes_tree_covariance/isam2_w20000.csv \
+  --snapshot-dir ../timing/results/bayes_tree_covariance/isam2_support_snapshots
 ```
 
 This writes:
 
 - `timing/results/bayes_tree_covariance/isam2_w20000.csv`
+- `timing/results/bayes_tree_covariance/isam2_support_snapshots/snapshots.csv`
+- `timing/results/bayes_tree_covariance/isam2_support_snapshots/*.dot`
 
 The incremental CSV contains one row per update step, recording both the
 `ISAM2.update(...)` time and the repeated query time for the pairwise joint
 covariance on `{x0, xt}`.
+The snapshot directory stores compressed-support Graphviz views for five
+representative incremental steps.
 
 ### Export `w100` visual data
 
@@ -79,7 +89,15 @@ Run from `build/`:
   --output-dir ../timing/results/bayes_tree_covariance/visuals
 ```
 
-This writes the CSV files used for the `w100` query and covariance figures.
+This writes:
+
+- the `w100` pose/query/covariance CSVs used for the geometric query figures
+- `w10000_cliques.csv`
+- `w20000_cliques.csv`
+
+The latter two files store the final optimized trajectories with one clique-size value
+per pose, so the report can compare the elimination geometry of the two larger datasets
+on a shared color scale.
 
 ### Generate figures
 
@@ -90,6 +108,7 @@ python3 timing/plot_bayes_tree_covariance.py \
   --input timing/results/bayes_tree_covariance/summary.csv \
   --per-query-input timing/results/bayes_tree_covariance/per_query.csv \
   --incremental-input timing/results/bayes_tree_covariance/isam2_w20000.csv \
+  --incremental-snapshot-dir timing/results/bayes_tree_covariance/isam2_support_snapshots \
   --output-dir ../BayesTreeCovariance/figures/generated \
   --copy-csv-dir ../BayesTreeCovariance/data \
   --visual-data-dir timing/results/bayes_tree_covariance/visuals
@@ -102,15 +121,17 @@ This generates:
 - `results-ordering.pdf`
 - `results-structure.pdf`
 - `results-local-diagnostics.pdf`
+- `results-clique-sizes.pdf`
 - `results-cross.pdf`
+- `results-isam2-support.pdf`
 - `results-isam2-w20000.pdf`
 - `results-w100-queries.pdf`
 - `results-w100-covariance.pdf`
 
 ## Notes
 
-- The benchmark timings measure covariance-query work after optimization and
-  linearization.
+- The benchmark timings measure covariance-query work after obtaining a final
+  estimate with sequential `ISAM2` and then linearizing once at that estimate.
 - Each distinct query is run once as an untimed warmup and then `--repeats`
   times as measured repetitions.
 - `raw.csv` stores one row per measured repetition.

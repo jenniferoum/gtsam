@@ -13,7 +13,9 @@ Author: Codex 5.4, prompted by Frank Dellaert
 import argparse
 import csv
 import math
+import subprocess
 import shutil
+import tempfile
 from collections import defaultdict
 from pathlib import Path
 
@@ -95,6 +97,20 @@ def to_incremental_float(rows):
             "max_separator_dim",
         ):
             row[field] = float(row[field])
+    return rows
+
+
+def load_snapshot_rows(path):
+    """Load support-snapshot metadata rows."""
+    with open(path, newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    for row in rows:
+        row["step_index"] = int(row["step_index"])
+        row["current_key"] = int(row["current_key"])
+        row["pose_count"] = int(row["pose_count"])
+        row["support_cliques"] = int(row["support_cliques"])
+        row["compressed_cliques"] = int(row["compressed_cliques"])
+        row["max_separator_dim"] = int(row["max_separator_dim"])
     return rows
 
 
@@ -556,6 +572,28 @@ def rolling_median(values, window):
     return np.array(medians)
 
 
+def crop_rendered_graph(image, pad=6):
+    """Crop transparent/white margins from a rendered Graphviz image."""
+    if image.ndim == 2:
+        mask = image < 0.99
+    elif image.shape[2] == 4:
+        alpha = image[:, :, 3]
+        mask = alpha > 0.02
+    else:
+        mask = np.any(image[:, :, :3] < 0.99, axis=2)
+
+    rows = np.where(mask.any(axis=1))[0]
+    cols = np.where(mask.any(axis=0))[0]
+    if len(rows) == 0 or len(cols) == 0:
+        return image
+
+    row_begin = max(0, rows[0] - pad)
+    row_end = min(image.shape[0], rows[-1] + pad + 1)
+    col_begin = max(0, cols[0] - pad)
+    col_end = min(image.shape[1], cols[-1] + pad + 1)
+    return image[row_begin:row_end, col_begin:col_end]
+
+
 def plot_isam2_incremental(rows, output_path):
     """Plot ISAM2 update and pairwise covariance-query timing over time."""
     steps = np.array([row["step_index"] for row in rows])
@@ -590,6 +628,44 @@ def plot_isam2_incremental(rows, output_path):
     plt.close(figure)
 
 
+def plot_isam2_support_snapshots(snapshot_dir, output_path):
+    """Render a five-panel figure of support-subtree snapshots over time."""
+    metadata_path = snapshot_dir / "snapshots.csv"
+    rows = sorted(load_snapshot_rows(metadata_path), key=lambda row: row["step_index"])
+    if not rows:
+        return
+
+    with tempfile.TemporaryDirectory() as temp_dir_name:
+        temp_dir = Path(temp_dir_name)
+        figure, axes = plt.subplots(1, len(rows), figsize=(12.5, 3.6))
+        if len(rows) == 1:
+            axes = [axes]
+
+        for ax, row in zip(axes, rows):
+            dot_path = snapshot_dir / row["dot_file"]
+            png_path = temp_dir / dot_path.with_suffix(".png").name
+            subprocess.run(
+                ["dot", "-Tpng", str(dot_path), "-o", str(png_path)],
+                check=True,
+            )
+            image = crop_rendered_graph(plt.imread(png_path))
+            ax.imshow(image, aspect="auto")
+            ax.axis("off")
+            ax.set_title(
+                "\n".join(
+                    [
+                        rf"$t={row['pose_count']},\ |\mathcal{{T}}_\mathcal{{Q}}|={row['support_cliques']}$",
+                        rf"$|\widetilde{{\mathcal{{T}}}}_\mathcal{{Q}}|={row['compressed_cliques']},\ \max |S|={row['max_separator_dim']}$",
+                    ]
+                ),
+                fontsize=12,
+            )
+
+        figure.tight_layout()
+        figure.savefig(output_path)
+        plt.close(figure)
+
+
 def load_key_list(path):
     """Load a single-column key CSV."""
     with open(path, newline="") as handle:
@@ -610,6 +686,20 @@ def load_pose_rows(path):
         row["in_local"] = int(row["in_local"])
         row["in_wide"] = int(row["in_wide"])
     return rows
+
+
+def load_clique_pose_rows(path):
+    """Load pose rows colored by clique size."""
+    with open(path, newline="") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+    for row in rows:
+        row["key"] = int(row["key"])
+        row["x"] = float(row["x"])
+        row["y"] = float(row["y"])
+        row["theta"] = float(row["theta"])
+        row["clique_size"] = float(row["clique_size"])
+    return sorted(rows, key=lambda row: row["key"])
 
 
 def load_edge_rows(path):
@@ -909,12 +999,62 @@ def plot_pose2_marginals(data_dir, output_path):
     plt.close(figure)
 
 
+def plot_clique_size_comparison(data_dir, output_path):
+    """Render final trajectories colored by COLAMD clique size."""
+    dataset_specs = [
+        ("w10000", data_dir / "w10000_cliques.csv"),
+        ("w20000", data_dir / "w20000_cliques.csv"),
+    ]
+    dataset_rows = [(label, load_clique_pose_rows(path)) for label, path in dataset_specs]
+    all_sizes = [row["clique_size"] for _, rows in dataset_rows for row in rows]
+    vmin = min(all_sizes)
+    vmax = max(all_sizes)
+
+    figure, axes = plt.subplots(
+        1,
+        3,
+        figsize=(12.4, 4.8),
+        gridspec_kw={"width_ratios": [1.0, 1.0, 0.05]},
+    )
+    trajectory_axes = axes[:2]
+    colorbar_axis = axes[2]
+    scatter = None
+    for ax, (label, rows) in zip(trajectory_axes, dataset_rows):
+        x_values = [row["x"] for row in rows]
+        y_values = [row["y"] for row in rows]
+        clique_sizes = [row["clique_size"] for row in rows]
+        ax.plot(x_values, y_values, color="#d8d8d8", linewidth=0.45, zorder=1)
+        scatter = ax.scatter(
+            x_values,
+            y_values,
+            c=clique_sizes,
+            cmap="viridis",
+            vmin=vmin,
+            vmax=vmax,
+            s=7,
+            linewidths=0.0,
+            zorder=2,
+            rasterized=True,
+        )
+        ax.set_title(label)
+        ax.set_aspect("equal", adjustable="box")
+        ax.grid(True, alpha=0.18)
+        ax.set_xlabel("x")
+    trajectory_axes[0].set_ylabel("y")
+    colorbar = figure.colorbar(scatter, cax=colorbar_axis)
+    colorbar.set_label("COLAMD clique size (variables)")
+    figure.subplots_adjust(left=0.07, right=0.95, bottom=0.15, top=0.88, wspace=0.28)
+    figure.savefig(output_path)
+    plt.close(figure)
+
+
 def main():
     """Parse arguments and generate all requested benchmark figures."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
     parser.add_argument("--per-query-input", default="")
     parser.add_argument("--incremental-input", default="")
+    parser.add_argument("--incremental-snapshot-dir", default="")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--copy-csv-dir", default="")
     parser.add_argument("--visual-data-dir", default="")
@@ -956,12 +1096,20 @@ def main():
         plot_isam2_incremental(
             incremental_rows, output_dir / "results-isam2-w20000.pdf"
         )
+    if args.incremental_snapshot_dir:
+        plot_isam2_support_snapshots(
+            Path(args.incremental_snapshot_dir),
+            output_dir / "results-isam2-support.pdf",
+        )
 
     if args.visual_data_dir:
         visual_data_dir = Path(args.visual_data_dir)
         plot_w100_queries(visual_data_dir, output_dir / "results-w100-queries.pdf")
         plot_pose2_marginals(
             visual_data_dir, output_dir / "results-w100-covariance.pdf"
+        )
+        plot_clique_size_comparison(
+            visual_data_dir, output_dir / "results-clique-sizes.pdf"
         )
 
     if args.copy_csv_dir:

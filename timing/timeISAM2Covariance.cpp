@@ -30,6 +30,8 @@
 #include <iostream>
 #include <numeric>
 #include <optional>
+#include <set>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -43,6 +45,18 @@ namespace {
 /// Structural statistics for one localized query support.
 struct SupportStats {
   size_t supportCliques = 0;
+  size_t compressedCliques = 0;
+  size_t maxFrontalDim = 0;
+  size_t maxSeparatorDim = 0;
+};
+
+/// Structural data for one localized query support.
+template <class CLIQUE>
+struct SupportAnalysis {
+  shared_ptr<CLIQUE> root;
+  unordered_set<shared_ptr<CLIQUE>> support;
+  unordered_set<shared_ptr<CLIQUE>> queryCliques;
+  unordered_map<shared_ptr<CLIQUE>, size_t> supportChildren;
   size_t compressedCliques = 0;
   size_t maxFrontalDim = 0;
   size_t maxSeparatorDim = 0;
@@ -64,6 +78,17 @@ struct StepResult {
   size_t maxFrontalDim = 0;
   size_t maxSeparatorDim = 0;
   size_t numCachedSeparatorMarginals = 0;
+};
+
+/// Metadata for one exported support snapshot.
+struct SnapshotRecord {
+  size_t stepIndex = 0;
+  Key currentKey = 0;
+  size_t poseCount = 0;
+  size_t supportCliques = 0;
+  size_t compressedCliques = 0;
+  size_t maxSeparatorDim = 0;
+  string dotFile;
 };
 
 /// Return all Pose2 keys in sorted order.
@@ -102,11 +127,10 @@ shared_ptr<CLIQUE> findLowestCommonAncestor(const shared_ptr<CLIQUE>& lhs,
   return nullptr;
 }
 
-/// Estimate support size and clique-width statistics for a query.
+/// Collect the exact support subtree and its basic statistics for a query.
 template <class BAYESTREE>
-SupportStats analyzeSupport(const BAYESTREE& bayesTree,
-                            const KeyVector& queryKeys,
-                            const Values& values) {
+SupportAnalysis<typename BAYESTREE::Clique> collectSupportAnalysis(
+    const BAYESTREE& bayesTree, const KeyVector& queryKeys, const Values& values) {
   using Clique = typename BAYESTREE::Clique;
   vector<shared_ptr<Clique>> queryCliques;
   unordered_set<shared_ptr<Clique>> seen;
@@ -170,7 +194,138 @@ SupportStats analyzeSupport(const BAYESTREE& bayesTree,
         max(maxSeparatorDim, totalDimension(conditional->parents(), values));
   }
 
-  return {support.size(), compressed, maxFrontalDim, maxSeparatorDim};
+  SupportAnalysis<Clique> analysis;
+  analysis.root = root;
+  analysis.support = std::move(support);
+  analysis.queryCliques =
+      unordered_set<shared_ptr<Clique>>(queryCliques.begin(), queryCliques.end());
+  analysis.supportChildren = std::move(supportChildren);
+  analysis.compressedCliques = compressed;
+  analysis.maxFrontalDim = maxFrontalDim;
+  analysis.maxSeparatorDim = maxSeparatorDim;
+  return analysis;
+}
+
+/// Estimate support size and clique-width statistics for a query.
+template <class BAYESTREE>
+SupportStats analyzeSupport(const BAYESTREE& bayesTree,
+                            const KeyVector& queryKeys,
+                            const Values& values) {
+  const auto analysis = collectSupportAnalysis(bayesTree, queryKeys, values);
+  return {analysis.support.size(), analysis.compressedCliques,
+          analysis.maxFrontalDim, analysis.maxSeparatorDim};
+}
+
+/// Choose five representative incremental steps for support snapshots.
+vector<size_t> chooseSnapshotSteps(size_t stepLimit) {
+  if (stepLimit == 0) {
+    return {};
+  }
+  if (stepLimit <= 5) {
+    vector<size_t> steps(stepLimit);
+    iota(steps.begin(), steps.end(), 0);
+    return steps;
+  }
+
+  set<size_t> chosen;
+  chosen.insert(min<size_t>(100, stepLimit - 1));
+  chosen.insert(stepLimit / 4);
+  chosen.insert(stepLimit / 2);
+  chosen.insert((3 * stepLimit) / 4);
+  chosen.insert(stepLimit - 1);
+  return vector<size_t>(chosen.begin(), chosen.end());
+}
+
+/// Return a stable node identifier for one clique.
+template <class CLIQUE>
+string cliqueNodeId(const shared_ptr<CLIQUE>& clique) {
+  return "n" + to_string(clique->conditional()->firstFrontalKey());
+}
+
+/// Return true if the clique survives support compression.
+template <class CLIQUE>
+bool isCompressedNode(const shared_ptr<CLIQUE>& clique,
+                      const SupportAnalysis<CLIQUE>& analysis) {
+  return clique == analysis.root || analysis.queryCliques.count(clique) > 0 ||
+         analysis.supportChildren.at(clique) > 1;
+}
+
+/// Write one compressed-support snapshot in DOT format.
+template <class CLIQUE>
+void writeSupportSnapshotDot(const filesystem::path& path,
+                             const SupportAnalysis<CLIQUE>& analysis,
+                             const SnapshotRecord& record) {
+  vector<shared_ptr<CLIQUE>> cliques;
+  for (const auto& clique : analysis.support) {
+    if (isCompressedNode(clique, analysis)) {
+      cliques.push_back(clique);
+    }
+  }
+  sort(cliques.begin(), cliques.end(),
+       [](const shared_ptr<CLIQUE>& lhs, const shared_ptr<CLIQUE>& rhs) {
+         return lhs->conditional()->firstFrontalKey() <
+                rhs->conditional()->firstFrontalKey();
+       });
+
+  ofstream os(path);
+  os << "digraph G {\n";
+  os << "  graph [rankdir=LR, splines=false, nodesep=0.5, ranksep=0.35, "
+        "margin=0.02, dpi=180];\n";
+  os << "  node [shape=circle, width=0.32, height=0.32, fixedsize=true, "
+        "label=\"\", style=filled, fillcolor=\"#8fb3d1\", color=\"#4c6a88\", "
+        "penwidth=1.2];\n";
+  os << "  edge [color=\"#667788\", arrowsize=0.55, penwidth=1.4, "
+        "fontname=\"Helvetica\", fontsize=11];\n";
+
+  for (const auto& clique : cliques) {
+    const string nodeId = cliqueNodeId(clique);
+    string fillColor = "#8fb3d1";
+    string borderColor = "#4c6a88";
+    if (analysis.root && clique == analysis.root) {
+      fillColor = "#f0c36a";
+      borderColor = "#a06b00";
+    }
+    if (analysis.queryCliques.count(clique)) {
+      fillColor = "#c94c4c";
+      borderColor = "#7c1f1f";
+    }
+    os << "  " << nodeId << " [fillcolor=\"" << fillColor << "\", color=\""
+       << borderColor << "\"];\n";
+  }
+
+  for (const auto& clique : cliques) {
+    if (clique == analysis.root) {
+      continue;
+    }
+    size_t rawCliques = 1;
+    auto current = clique;
+    auto parent = current->parent();
+    while (parent && analysis.support.count(parent) &&
+           !isCompressedNode(parent, analysis)) {
+      current = parent;
+      parent = current->parent();
+      ++rawCliques;
+    }
+    if (parent && analysis.support.count(parent)) {
+      os << "  " << cliqueNodeId(parent) << " -> " << cliqueNodeId(clique)
+         << " [label=\"" << rawCliques << "\"];\n";
+    }
+  }
+  os << "}\n";
+}
+
+/// Write support-snapshot metadata to CSV.
+void writeSnapshotCsv(const filesystem::path& path,
+                      const vector<SnapshotRecord>& records) {
+  ofstream os(path);
+  os << "step_index,current_key,pose_count,support_cliques,compressed_cliques,"
+        "max_separator_dim,dot_file\n";
+  for (const auto& record : records) {
+    os << record.stepIndex << ',' << record.currentKey << ','
+       << record.poseCount << ',' << record.supportCliques << ','
+       << record.compressedCliques << ',' << record.maxSeparatorDim << ','
+       << record.dotFile << '\n';
+  }
 }
 
 /// Compute the median of a small sample vector.
@@ -257,6 +412,9 @@ int main(int argc, char** argv) {
       (filesystem::path("timing") / "results" / "bayes_tree_covariance" /
        "isam2_w20000.csv")
           .string());
+  const filesystem::path snapshotDir = argumentOrDefault(
+      argv, argv + argc, "--snapshot-dir",
+      (outputPath.parent_path() / "isam2_support_snapshots").string());
   const size_t queryRepeats =
       sizeTArgumentOrDefault(argv, argv + argc, "--query-repeats", 5);
   const size_t maxSteps =
@@ -286,11 +444,15 @@ int main(int argc, char** argv) {
 
   vector<StepResult> results;
   results.reserve(allPoseKeys.size());
+  vector<SnapshotRecord> snapshots;
   size_t factorCount = 0;
   size_t nextMeasurement = 0;
 
   const size_t stepLimit =
       maxSteps == 0 ? allPoseKeys.size() : min(maxSteps, allPoseKeys.size());
+  const vector<size_t> snapshotStepVector = chooseSnapshotSteps(stepLimit);
+  const set<size_t> snapshotSteps(snapshotStepVector.begin(),
+                                  snapshotStepVector.end());
   for (size_t stepIndex = 0; stepIndex < stepLimit; ++stepIndex) {
     const Key currentKey = allPoseKeys[stepIndex];
     NonlinearFactorGraph newFactors;
@@ -354,37 +516,43 @@ int main(int argc, char** argv) {
     factorCount += newFactors.size();
 
     const KeyVector queryKeys{firstKey, currentKey};
-    try {
-      (void)isam2.jointMarginalCovariance(queryKeys);
-    } catch (const std::exception& error) {
-      cerr << "Warmup covariance query failed at step " << stepIndex << " key "
-           << currentKey << ": " << error.what() << endl;
-      throw;
-    }
-
     vector<double> queryTimes;
     queryTimes.reserve(queryRepeats);
-    for (size_t repeatIndex = 0; repeatIndex < queryRepeats; ++repeatIndex) {
-      const auto queryStart = chrono::steady_clock::now();
-      JointMarginal covariance;
+    if (queryRepeats > 0) {
       try {
-        covariance = isam2.jointMarginalCovariance(queryKeys);
+        (void)isam2.jointMarginalCovariance(queryKeys);
       } catch (const std::exception& error) {
-        cerr << "Covariance query failed at step " << stepIndex << " key "
-             << currentKey << " repeat " << repeatIndex << ": "
-             << error.what() << endl;
+        cerr << "Warmup covariance query failed at step " << stepIndex << " key "
+             << currentKey << ": " << error.what() << endl;
         throw;
       }
-      const auto queryEnd = chrono::steady_clock::now();
-      volatile double checksum = covariance.fullMatrix().sum();
-      (void)checksum;
-      queryTimes.push_back(
-          chrono::duration<double, milli>(queryEnd - queryStart).count());
+
+      for (size_t repeatIndex = 0; repeatIndex < queryRepeats; ++repeatIndex) {
+        const auto queryStart = chrono::steady_clock::now();
+        JointMarginal covariance;
+        try {
+          covariance = isam2.jointMarginalCovariance(queryKeys);
+        } catch (const std::exception& error) {
+          cerr << "Covariance query failed at step " << stepIndex << " key "
+               << currentKey << " repeat " << repeatIndex << ": "
+               << error.what() << endl;
+          throw;
+        }
+        const auto queryEnd = chrono::steady_clock::now();
+        volatile double checksum = covariance.fullMatrix().sum();
+        (void)checksum;
+        queryTimes.push_back(
+            chrono::duration<double, milli>(queryEnd - queryStart).count());
+      }
     }
 
     const Values& linearizationPoint = isam2.getLinearizationPoint();
-    const SupportStats supportStats =
-        analyzeSupport(isam2, queryKeys, linearizationPoint);
+    const auto supportAnalysis =
+        collectSupportAnalysis(isam2, queryKeys, linearizationPoint);
+    const SupportStats supportStats = {supportAnalysis.support.size(),
+                                       supportAnalysis.compressedCliques,
+                                       supportAnalysis.maxFrontalDim,
+                                       supportAnalysis.maxSeparatorDim};
     const GaussianFactorGraph reducedGraph =
         *isam2.joint(queryKeys, parameters.getEliminationFunction());
 
@@ -405,10 +573,30 @@ int main(int argc, char** argv) {
     result.maxSeparatorDim = supportStats.maxSeparatorDim;
     result.numCachedSeparatorMarginals = isam2.numCachedSeparatorMarginals();
     results.push_back(result);
+
+    if (snapshotSteps.count(stepIndex)) {
+      filesystem::create_directories(snapshotDir);
+      const string dotFile =
+          "support_step_" + to_string(stepIndex + 1) + ".dot";
+      SnapshotRecord record;
+      record.stepIndex = stepIndex;
+      record.currentKey = currentKey;
+      record.poseCount = stepIndex + 1;
+      record.supportCliques = supportStats.supportCliques;
+      record.compressedCliques = supportStats.compressedCliques;
+      record.maxSeparatorDim = supportStats.maxSeparatorDim;
+      record.dotFile = dotFile;
+      writeSupportSnapshotDot(snapshotDir / dotFile, supportAnalysis, record);
+      snapshots.push_back(record);
+    }
   }
 
   filesystem::create_directories(outputPath.parent_path());
   writeCsv(outputPath, results);
+  if (!snapshots.empty()) {
+    filesystem::create_directories(snapshotDir);
+    writeSnapshotCsv(snapshotDir / "snapshots.csv", snapshots);
+  }
   cout << "Wrote incremental timing results to " << outputPath << endl;
   return 0;
 }

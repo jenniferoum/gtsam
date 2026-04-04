@@ -20,9 +20,10 @@
 #include <gtsam/linear/GaussianBayesNet.h>
 #include <gtsam/linear/GaussianBayesTree.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
-#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+#include <gtsam/nonlinear/ISAM2.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
+#include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/dataset.h>
 
 #include <algorithm>
@@ -33,6 +34,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -220,6 +222,92 @@ KeyVector poseKeys(const Values& values) {
   }
   sort(keys.begin(), keys.end());
   return keys;
+}
+
+/// Compute a final pose-graph estimate with sequential iSAM2 updates.
+Values solveSequentiallyWithISAM2(const NonlinearFactorGraph& graph,
+                                  const Values& initial) {
+  const KeyVector allPoseKeys = poseKeys(initial);
+  if (allPoseKeys.empty()) {
+    return Values();
+  }
+
+  unordered_map<Key, size_t> stepByKey;
+  for (size_t index = 0; index < allPoseKeys.size(); ++index) {
+    stepByKey[allPoseKeys[index]] = index;
+  }
+
+  ISAM2Params parameters;
+  parameters.optimizationParams = ISAM2GaussNewtonParams();
+  parameters.relinearizeSkip = 1;
+  parameters.relinearizeThreshold = 0.01;
+  ISAM2 isam2(parameters);
+
+  const auto priorNoise = noiseModel::Diagonal::Sigmas(
+      (Vector(3) << 1e-6, 1e-6, 1e-6).finished());
+  size_t nextFactor = 0;
+
+  for (size_t stepIndex = 0; stepIndex < allPoseKeys.size(); ++stepIndex) {
+    const Key currentKey = allPoseKeys[stepIndex];
+    NonlinearFactorGraph newFactors;
+    Values newTheta;
+
+    if (stepIndex == 0) {
+      newTheta.insert(currentKey, initial.at<Pose2>(currentKey));
+      newFactors.addPrior(currentKey, initial.at<Pose2>(currentKey), priorNoise);
+    }
+
+    optional<Pose2> predictedPose;
+    while (nextFactor < graph.size()) {
+      const auto& factor = graph[nextFactor];
+      size_t newestStep = 0;
+      bool allKeysKnown = true;
+      for (Key key : factor->keys()) {
+        const auto it = stepByKey.find(key);
+        if (it == stepByKey.end()) {
+          allKeysKnown = false;
+          break;
+        }
+        newestStep = max(newestStep, it->second);
+      }
+      if (!allKeysKnown) {
+        ++nextFactor;
+        continue;
+      }
+      if (newestStep > stepIndex) {
+        break;
+      }
+
+      newFactors.push_back(factor);
+      if (stepIndex > 0) {
+        const Key previousKey = allPoseKeys[stepIndex - 1];
+        const auto between = dynamic_pointer_cast<const BetweenFactor<Pose2>>(factor);
+        if (between && isam2.valueExists(previousKey)) {
+          if (between->key1() == previousKey && between->key2() == currentKey) {
+            predictedPose = isam2.calculateEstimate<Pose2>(previousKey) *
+                            between->measured();
+          } else if (between->key1() == currentKey &&
+                     between->key2() == previousKey) {
+            predictedPose = isam2.calculateEstimate<Pose2>(previousKey) *
+                            between->measured().inverse();
+          }
+        }
+      }
+      ++nextFactor;
+    }
+
+    if (stepIndex > 0 && !isam2.valueExists(currentKey)) {
+      if (predictedPose) {
+        newTheta.insert(currentKey, *predictedPose);
+      } else {
+        newTheta.insert(currentKey, initial.at<Pose2>(currentKey));
+      }
+    }
+
+    isam2.update(newFactors, newTheta);
+  }
+
+  return isam2.calculateEstimate();
 }
 
 /// Return the variable dimensions for a key list.
@@ -1061,17 +1149,15 @@ int main(int argc, char** argv) {
     cout << "Loading " << datasetName << endl;
     const auto [graphPtr, initialPtr] =
         load2D(findExampleDataFile(datasetName));
-    const KeyVector anchoredPoseKeys = poseKeys(*initialPtr);
+    cout << "Solving sequentially with iSAM2 for " << datasetName << endl;
+    Values result = solveSequentiallyWithISAM2(*graphPtr, *initialPtr);
+    const KeyVector anchoredPoseKeys = poseKeys(result);
     if (!anchoredPoseKeys.empty()) {
       graphPtr->addPrior(anchoredPoseKeys.front(),
-                         initialPtr->at<Pose2>(anchoredPoseKeys.front()),
+                         result.at<Pose2>(anchoredPoseKeys.front()),
                          noiseModel::Diagonal::Sigmas(
                              (Vector(3) << 1e-6, 1e-6, 1e-6).finished()));
     }
-
-    cout << "Optimizing " << datasetName << endl;
-    LevenbergMarquardtOptimizer optimizer(*graphPtr, *initialPtr);
-    Values result = optimizer.optimize();
     GaussianFactorGraph linearGraph = *graphPtr->linearize(result);
     const KeyVector poseKeyList = poseKeys(result);
     const vector<QueryCase> workload = buildWorkload(poseKeyList);
