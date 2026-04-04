@@ -831,11 +831,6 @@ class IMUInput {
   gtsam::Vector3 accBiasVel;
 };
 
-class Landmark {
-  Landmark();
-  gtsam::Point3 p;
-};
-
 class SensorState {
   SensorState();
   gtsam::imuBias::ConstantBias inputBias;
@@ -873,7 +868,7 @@ class EqVIOFilterParams {
 class EqVIOFilter {
   EqVIOFilter(const gtsam::eqvio::EqVIOFilterParams& params);
   EqVIOFilter(const gtsam::eqvio::State& xi_ref, const gtsam::Matrix& Sigma,
-              const std::vector<gtsam::Key>& landmarkKeys,
+              const gtsam::KeyVector& landmarkKeys,
               const gtsam::eqvio::EqVIOFilterParams& params);
   void initializeFromIMU(const gtsam::eqvio::IMUInput& imu);
   void predict(const std::vector<gtsam::eqvio::IMUInput>& imuInputs,

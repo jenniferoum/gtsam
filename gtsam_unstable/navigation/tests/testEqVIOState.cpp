@@ -75,19 +75,19 @@ SensorState MakeSensor2() {
   return s;
 }
 
-std::vector<Landmark> Lms0() { return {}; }
+std::vector<Point3> Lms0() { return {}; }
 
-std::vector<Landmark> Lms1A() { return {{Point3(1.0, -0.5, 4.0)}}; }
+std::vector<Point3> Lms1A() { return {{Point3(1.0, -0.5, 4.0)}}; }
 
-std::vector<Landmark> Lms1B() { return {{Point3(0.8, -0.3, 3.7)}}; }
+std::vector<Point3> Lms1B() { return {{Point3(0.8, -0.3, 3.7)}}; }
 
-std::vector<Landmark> Lms3A() {
+std::vector<Point3> Lms3A() {
   return {{Point3(1.0, -0.5, 4.0)},
           {Point3(-0.6, 0.4, 3.2)},
           {Point3(0.2, 0.7, 5.1)}};
 }
 
-std::vector<Landmark> Lms3B() {
+std::vector<Point3> Lms3B() {
   return {{Point3(0.9, -0.45, 3.8)},
           {Point3(-0.5, 0.35, 3.4)},
           {Point3(0.1, 0.65, 4.9)}};

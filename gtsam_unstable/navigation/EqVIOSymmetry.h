@@ -63,15 +63,8 @@ GTSAM_UNSTABLE_EXPORT VioGroup liftVelocityDiscrete(const State& state,
  * landmarks.
  */
 GTSAM_UNSTABLE_EXPORT VisionMeasurement
-measureSystemState(const State& state, const std::vector<Key>& landmarkIds,
+measureSystemState(const State& state, const KeyVector& landmarkIds,
                    const std::shared_ptr<const CameraModel>& camera);
-
-/**
- * @brief Generate ideal image measurements with sequential keys `0..n-1`.
- * @throws std::invalid_argument if `camera` is null.
- */
-GTSAM_UNSTABLE_EXPORT VisionMeasurement measureSystemState(
-    const State& state, const std::shared_ptr<const CameraModel>& camera);
 
 /**
  * @brief EqF linearization blocks used by EqVIO.
@@ -100,7 +93,7 @@ EqFoutputMatrixCi(const Point3& q0, const SOT3& QHat,
                   const std::shared_ptr<const CameraModel>& camera);
 /// Stacked output matrix for all currently observed landmarks.
 GTSAM_UNSTABLE_EXPORT Matrix
-EqFoutputMatrixC(const State& xi0, const std::vector<Key>& landmarkIds,
+EqFoutputMatrixC(const State& xi0, const KeyVector& landmarkIds,
                  const VioGroup& X, const VisionMeasurement& y,
                  const std::shared_ptr<const CameraModel>& camera,
                  bool useEquivariance = true);

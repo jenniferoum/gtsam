@@ -22,7 +22,6 @@
 #include <gtsam_unstable/navigation/EqVIOSymmetry.h>
 
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 namespace gtsam {
@@ -58,9 +57,8 @@ struct EqVIOFilterParams {
   double pointProcessVariance = 0.001;
   /// IMU driving noise covariance in stacked order `[gyr, acc, gyr_bias_walk,
   /// acc_bias_walk]`.
-  Eigen::Matrix<double, IMUInput::CompDim, IMUInput::CompDim> inputNoise =
-      Eigen::Matrix<double, IMUInput::CompDim, IMUInput::CompDim>::Identity() *
-      1e-3;
+  Eigen::Matrix<double, 12, 12> inputNoise =
+      Eigen::Matrix<double, 12, 12>::Identity() * 1e-3;
 };
 
 /**
@@ -81,9 +79,9 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   EqVIOFilterParams params_;
   bool initialized_ = false;
   // Runtime key ordering aligned with `cameraLandmarks` and covariance blocks.
-  std::vector<Key> landmarkKeys_;
+  KeyVector landmarkKeys_;
   std::vector<size_t> missedFrameCounts_;
-  std::unordered_map<Key, size_t> landmarkIndexByKey_;
+  FastMap<Key, size_t> landmarkIndexByKey_;
 
  public:
   /// Construct with explicit parameter bundle and default identity initial
@@ -92,8 +90,7 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   /// Construct with explicit initial reference state, covariance, landmark
   /// keys, and parameters.
   EqVIOFilter(const State& xi_ref, const Matrix& Sigma,
-              const std::vector<Key>& landmarkKeys,
-              const EqVIOFilterParams& params);
+              const KeyVector& landmarkKeys, const EqVIOFilterParams& params);
 
   /**
    * @brief Initialize filter attitude from gravity direction in an IMU sample.
@@ -134,16 +131,18 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
 
   /// True after IMU-based initialization.
   bool isInitialized() const { return initialized_; }
+
   /// Number of currently tracked landmarks.
   size_t landmarkCount() const { return state().n(); }
+
   /// Current estimated body position in world frame.
   Point3 position() const { return state().sensor.pose.translation(); }
+
   /// Current estimated body velocity in world frame.
   Vector3 velocity() const { return state().sensor.velocity; }
 
  private:
-  /// Allocate identity covariance with dimension `SensorState::CompDim +
-  /// 3*nLandmarks`.
+  /// Allocate identity covariance with dimension `21 + 3*nLandmarks`.
   static Matrix defaultCovariance(size_t nLandmarks);
 
   /// Build process noise matrix for current state dimension.
@@ -155,22 +154,28 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
                         const Matrix& outputGainMatrix);
 
   /// Validate/store externally supplied landmark keys for seeded states.
-  void setLandmarkKeys(const std::vector<Key>& landmarkKeys);
+  void setLandmarkKeys(const KeyVector& landmarkKeys);
+
   /// Refresh the key-to-index lookup cache after any structure change.
   void rebuildLandmarkIndex();
+
   /// Batch landmark add/remove bookkeeping around one vision update.
   void reconcileLandmarks(VisionMeasurement& measurement,
                           const std::shared_ptr<const CameraModel>& camera);
+
   /// Compute absolute-residual outliers and erase them from `measurement`.
-  std::vector<Key> detectOutliers(
+  KeyVector detectOutliers(
       VisionMeasurement& measurement,
       const std::shared_ptr<const CameraModel>& camera) const;
+
   /// Return keys whose associated SOT3 scale is numerically invalid.
-  std::vector<Key> invalidLandmarkKeys() const;
+  KeyVector invalidLandmarkKeys() const;
+
   /// Rebuild state, group, covariance, and lookup caches in one pass.
   void applyLandmarkStructureChange(
       const std::vector<size_t>& retainedIndices,
-      const std::vector<std::pair<Key, Landmark>>& newLandmarks);
+      const std::vector<std::pair<Key, Point3>>& newLandmarks);
+
   /// Rebuild covariance after applying a batch landmark structure change.
   Matrix rebuildCovariance(const std::vector<size_t>& retainedIndices,
                            size_t newLandmarkCount) const;

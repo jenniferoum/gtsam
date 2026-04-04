@@ -85,7 +85,6 @@ inline SOT3 MakeSOT3(const SO3& R, double scale) {
 
 /// IMU input bundle used by EqVIO propagation.
 struct GTSAM_UNSTABLE_EXPORT IMUInput {
-  static constexpr int CompDim = 12;
   using Vector12 = Eigen::Matrix<double, 12, 1>;
 
   double stamp = -1.0;
@@ -184,25 +183,19 @@ inline Matrix23 projectionJacobian(const CameraModel& camera,
   if (std::abs(y.z()) < 1e-12) {
     throw std::invalid_argument("projectionJacobian: z is near zero");
   }
-
-  const double invz = 1.0 / y.z();
-  const double invz2 = invz * invz;
-  const double fx = camera.calibration().fx();
-  const double fy = camera.calibration().fy();
-  const double s = camera.calibration().skew();
-
-  Matrix23 J;
-  J << fx * invz, s * invz, -(fx * y.x() + s * y.y()) * invz2, 0.0, fy * invz,
-      -fy * y.y() * invz2;
-  return J;
+  Matrix23 Dpn_dy;
+  Matrix22 Dpi_dpn;
+  const Point2 pn = PinholeBase::Project(Point3(y), Dpn_dy);
+  camera.calibration().uncalibrate(pn, {}, Dpi_dpn);
+  return Dpi_dpn * Dpn_dy;
 }
 
 /// Vision measurement keyed by landmark id.
 using VisionMeasurement = std::map<Key, Point2>;
 
 /// Ordered landmark ids matching map iteration order.
-inline std::vector<Key> measurementIds(const VisionMeasurement& measurement) {
-  std::vector<Key> ids;
+inline KeyVector measurementIds(const VisionMeasurement& measurement) {
+  KeyVector ids;
   ids.reserve(measurement.size());
   for (const auto& item : measurement) {
     ids.push_back(item.first);
@@ -226,8 +219,8 @@ struct Lift {
   Lift(const IMUInput& imu, double dt) : imu_(imu), dt_(dt) {}
 
   Vector operator()(
-      const State& xi, OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H = {})
-      const {
+      const State& xi,
+      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H = {}) const {
     const Vector y0 =
         (VioGroup::Logmap(liftVelocityDiscrete(xi, imu_, dt_)) / dt_).eval();
     if (H) *H = Matrix();

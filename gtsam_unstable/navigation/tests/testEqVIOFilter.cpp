@@ -39,8 +39,8 @@ State MakeState1() {
   return State(sensor, {{Point3(0.3, -0.15, 4.5)}});
 }
 
-std::vector<Key> Keys1() { return {42}; }
-std::vector<Key> Keys2() { return {10, 20}; }
+KeyVector Keys1() { return {42}; }
+KeyVector Keys2() { return {10, 20}; }
 
 Se23 MakeA(const Rot3& R, const Point3& t, const Vector3& w) {
   Se23::Matrix3K x;
@@ -142,7 +142,7 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
   out.cameraLandmarks.resize(state.n());
 
   for (size_t i = 0; i < state.n(); ++i) {
-    out.cameraLandmarks[i].p = c1Tc0.transformFrom(state.cameraLandmarks[i].p);
+    out.cameraLandmarks[i] = c1Tc0.transformFrom(state.cameraLandmarks[i]);
   }
 
   out.sensor.cameraOffset = sensor.cameraOffset;
@@ -274,7 +274,8 @@ TEST(EqVIOFilter, VisionUpdate) {
 
   auto camera =
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
-  const VisionMeasurement meas = measureSystemState(filter.state(), Keys1(), camera);
+  const VisionMeasurement meas =
+      measureSystemState(filter.state(), Keys1(), camera);
   filter.update(meas, camera);
 
   EXPECT_LONGS_EQUAL(1, filter.state().n());
@@ -330,7 +331,8 @@ TEST(EqVIOFilter, SeededLandmarkKeys) {
   EqVIOFilter filter(xi0, Sigma0, Keys1(), params);
   auto camera =
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
-  const VisionMeasurement meas = measureSystemState(filter.state(), Keys1(), camera);
+  const VisionMeasurement meas =
+      measureSystemState(filter.state(), Keys1(), camera);
   filter.update(meas, camera);
 
   EXPECT_LONGS_EQUAL(1, filter.state().n());
@@ -364,11 +366,11 @@ TEST(EqVIOFilter, BatchLandmarkStructureChange) {
   meas2[4] = camera->project2(Point3(-0.2, -0.2, 3.7));
   filter.update(meas2, camera);
   EXPECT_LONGS_EQUAL(4, filter.state().n());
-  EXPECT_LONGS_EQUAL(SensorState::CompDim + 12, filter.errorCovariance().rows());
+  EXPECT_LONGS_EQUAL(33, filter.errorCovariance().rows());
 
   filter.update(meas2, camera);
   EXPECT_LONGS_EQUAL(3, filter.state().n());
-  EXPECT_LONGS_EQUAL(SensorState::CompDim + 9, filter.errorCovariance().rows());
+  EXPECT_LONGS_EQUAL(30, filter.errorCovariance().rows());
 }
 
 // Verifies supplied R does not override the absolute-residual outlier gate.
@@ -403,18 +405,22 @@ TEST(VIOEqFMatrices, ShapesAndFinite) {
     const State& xi0 = pair.first;
     const VioGroup& X = pair.second;
     const IMUInput imu = ImuFixture();
+    KeyVector ids;
+    ids.reserve(xi0.n());
+    for (size_t i = 0; i < xi0.n(); ++i) {
+      ids.push_back(100 + 10 * i);
+    }
     const VisionMeasurement y =
-        measureSystemState(stateGroupAction(X, xi0), camera);
+        measureSystemState(stateGroupAction(X, xi0), ids, camera);
 
     const Matrix A = EqFStateMatrixA(X, xi0, imu);
     const Matrix B = EqFInputMatrixB(X, xi0);
-    const Matrix C =
-        EqFoutputMatrixC(xi0, measurementIds(y), X, y, camera, true);
+    const Matrix C = EqFoutputMatrixC(xi0, ids, X, y, camera, true);
 
     EXPECT_LONGS_EQUAL(xi0.dim(), A.rows());
     EXPECT_LONGS_EQUAL(xi0.dim(), A.cols());
     EXPECT_LONGS_EQUAL(xi0.dim(), B.rows());
-    EXPECT_LONGS_EQUAL(IMUInput::CompDim, B.cols());
+    EXPECT_LONGS_EQUAL(12, B.cols());
     EXPECT_LONGS_EQUAL(2 * static_cast<long>(y.size()), C.rows());
     EXPECT_LONGS_EQUAL(xi0.dim(), C.cols());
 

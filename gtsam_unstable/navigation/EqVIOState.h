@@ -32,28 +32,11 @@ namespace gtsam {
 namespace eqvio {
 
 /**
- * @brief One visual landmark state block.
- *
- * Stores a 3D landmark position. The Lie/chart dimension contribution is 3.
- */
-struct GTSAM_UNSTABLE_EXPORT Landmark {
-  static constexpr int CompDim = 3;
-
-  /// Landmark position in world coordinates.
-  Point3 p = Z_3x1;
-
-  void print(const std::string& s = "") const;
-  bool equals(const Landmark& other, double tol = 1e-9) const;
-};
-
-/**
  * @brief Sensor-side EqVIO state block (bias, body pose, velocity, extrinsics).
  *
  * This is the 21D sensor component of the full EqVIO state manifold.
  */
 struct GTSAM_UNSTABLE_EXPORT SensorState {
-  static constexpr int CompDim = 21;
-
   /// IMU bias state.
   Bias inputBias = Bias::Identity();
   /// Body/IMU pose in world frame.
@@ -80,12 +63,12 @@ class GTSAM_UNSTABLE_EXPORT State {
   using ChartJacobian = OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic>;
 
   SensorState sensor;
-  std::vector<Landmark> cameraLandmarks;
+  std::vector<Point3> cameraLandmarks;
 
   /// Construct default-initialized state.
   State() = default;
   /// Construct from explicit sensor and landmark blocks.
-  State(const SensorState& sensor_, const std::vector<Landmark>& lms);
+  State(const SensorState& sensor_, const std::vector<Point3>& lms);
 
   /// Number of landmarks.
   size_t n() const;

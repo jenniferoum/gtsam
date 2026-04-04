@@ -51,23 +51,23 @@ inline Se23 MakeA(const Rot3& R, const Point3& t, const Vector3& w) {
   return Se23(R, x);
 }
 
-inline State RandomStateElement(const std::vector<Key>& ids) {
+inline State RandomStateElement(const KeyVector& ids) {
   SensorState sensor;
   sensor.inputBias = Bias(Vector3::Random(), Vector3::Random());
   sensor.pose = Pose3::Expmap(Vector6::Random());
   sensor.velocity = Vector3::Random();
   sensor.cameraOffset = Pose3::Expmap(Vector6::Random());
 
-  std::vector<Landmark> lms(ids.size());
+  std::vector<Point3> lms(ids.size());
   for (size_t i = 0; i < ids.size(); ++i) {
     Point3 p = 10.0 * Vector3::Random();
     p.z() = std::abs(p.z()) + 1.0;
-    lms[i] = Landmark{p};
+    lms[i] = p;
   }
   return State(sensor, lms);
 }
 
-inline VioGroup RandomGroupElement(const std::vector<Key>& ids) {
+inline VioGroup RandomGroupElement(const KeyVector& ids) {
   const Pose3 Apose = Pose3::Expmap(Vector6::Random());
   const Vector3 w = Vector3::Random();
   const Pose3 B = Pose3::Expmap(Vector6::Random());
@@ -96,8 +96,7 @@ inline IMUInput RandomVelocityElement() {
 }
 
 inline VisionMeasurement RandomVisionMeasurement(
-    const std::vector<Key>& ids,
-    const std::shared_ptr<const CameraModel>& camera) {
+    const KeyVector& ids, const std::shared_ptr<const CameraModel>& camera) {
   VisionMeasurement measurement;
 
   for (Key id : ids) {
@@ -158,7 +157,7 @@ inline double StateDistance(const State& xi1, const State& xi2) {
   dist += (xi1.sensor.velocity - xi2.sensor.velocity).norm();
 
   for (size_t i = 0; i < xi1.n(); ++i) {
-    dist += (xi1.cameraLandmarks[i].p - xi2.cameraLandmarks[i].p).norm();
+    dist += (xi1.cameraLandmarks[i] - xi2.cameraLandmarks[i]).norm();
   }
   return dist;
 }
@@ -224,7 +223,7 @@ inline Vector liftVelocity(const State& state, const IMUInput& velocity) {
 
   // Lift the landmark transform velocities
   for (size_t i = 0; i < N; ++i) {
-    const Vector3 p = state.cameraLandmarks[i].p;
+    const Vector3 p = state.cameraLandmarks[i];
     Vector4 W;
     W.head<3>() = omegaC + Rot3::Hat(p) * vC / p.squaredNorm();
     W(3) = p.dot(vC) / p.squaredNorm();
@@ -243,8 +242,8 @@ namespace {
 constexpr int kEqvioActionReps = 25;
 constexpr double kEqvioNearZero = 1e-12;
 
-std::vector<Key> QIdsForMeasurement(const VioGroup& X,
-                                    const VisionMeasurement& measurement) {
+KeyVector QIdsForMeasurement(const VioGroup& X,
+                             const VisionMeasurement& measurement) {
   if (N_landmarkCount(X) == 0) return {};
   if (measurement.size() != N_landmarkCount(X)) {
     throw std::invalid_argument(
@@ -262,7 +261,7 @@ VisionMeasurement outputGroupAction(
     throw std::invalid_argument("outputGroupAction: camera model is null");
   }
 
-  const std::vector<Key> qIds = QIdsForMeasurement(X, measurement);
+  const KeyVector qIds = QIdsForMeasurement(X, measurement);
   if (qIds.size() != Q.size()) {
     throw std::invalid_argument(
         "outputGroupAction: invalid Q-to-id mapping cardinality");
@@ -312,15 +311,15 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
   out.cameraLandmarks.resize(state.n());
 
   for (size_t i = 0; i < state.n(); ++i) {
-    out.cameraLandmarks[i].p = c1Tc0.transformFrom(state.cameraLandmarks[i].p);
+    out.cameraLandmarks[i] = c1Tc0.transformFrom(state.cameraLandmarks[i]);
   }
 
   out.sensor.cameraOffset = sensor.cameraOffset;
   return out;
 }
 
-std::vector<Landmark> Lms0() { return {}; }
-std::vector<Landmark> Lms3() {
+std::vector<Point3> Lms0() { return {}; }
+std::vector<Point3> Lms3() {
   return {{Point3(1.0, -0.3, 4.2)},
           {Point3(-0.7, 0.4, 3.1)},
           {Point3(0.2, 0.8, 5.5)}};
@@ -464,7 +463,7 @@ TEST(Symmetry, JacobiansN3) {
 // Verifies eqvio-ported state action identity and composition checks.
 TEST(Symmetry, StateActionEqvioPort) {
   srand(0);
-  const std::vector<Key> ids = {0, 1, 2, 3, 4};
+  const KeyVector ids = {0, 1, 2, 3, 4};
   const VioGroup groupId = makeVioGroupIdentity(ids.size());
 
   for (int rep = 0; rep < kEqvioActionReps; ++rep) {
@@ -487,7 +486,7 @@ TEST(Symmetry, StateActionEqvioPort) {
 // Verifies eqvio-ported output action identity and composition checks.
 TEST(Symmetry, OutputActionEqvioPort) {
   srand(0);
-  const std::vector<Key> ids = {0, 1, 2, 3, 4};
+  const KeyVector ids = {0, 1, 2, 3, 4};
   const VioGroup groupId = makeVioGroupIdentity(ids.size());
   const auto camera = CreateDefaultCamera();
 
@@ -512,7 +511,7 @@ TEST(Symmetry, OutputActionEqvioPort) {
 // Verifies measurement equivariance under group action.
 TEST(Symmetry, OutputEquivarianceEqvioPort) {
   srand(0);
-  const std::vector<Key> ids = {0, 1, 2, 3, 4, 5};
+  const KeyVector ids = {0, 1, 2, 3, 4, 5};
   const auto camera = CreateDefaultCamera();
 
   for (int rep = 0; rep < kEqvioActionReps; ++rep) {

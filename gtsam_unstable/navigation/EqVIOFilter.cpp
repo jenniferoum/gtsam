@@ -21,7 +21,6 @@
 #include <cassert>
 #include <numeric>
 #include <stdexcept>
-#include <unordered_set>
 
 namespace gtsam {
 namespace eqvio {
@@ -51,7 +50,7 @@ EqVIOFilter::EqVIOFilter(const EqVIOFilterParams& params)
  * must provide a matching external key ordering.
  */
 EqVIOFilter::EqVIOFilter(const State& xi_ref, const Matrix& Sigma,
-                         const std::vector<Key>& landmarkKeys,
+                         const KeyVector& landmarkKeys,
                          const EqVIOFilterParams& params)
     : Base(State(), defaultCovariance(0), makeVioGroupIdentity()),
       params_(params) {
@@ -141,10 +140,9 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
 
   innovationUpdate(matchedMeasurement, camera, R);
 
-  const std::vector<Key> invalidKeys = invalidLandmarkKeys();
+  const KeyVector invalidKeys = invalidLandmarkKeys();
   if (!invalidKeys.empty()) {
-    const std::unordered_set<Key> invalidKeySet(invalidKeys.begin(),
-                                                invalidKeys.end());
+    const KeySet invalidKeySet(invalidKeys.begin(), invalidKeys.end());
     std::vector<size_t> retainedIndices;
     retainedIndices.reserve(landmarkKeys_.size());
     for (size_t i = 0; i < landmarkKeys_.size(); ++i) {
@@ -160,15 +158,14 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
 
 /// Identity covariance helper sized for current sensor + landmark dimensions.
 Matrix EqVIOFilter::defaultCovariance(size_t nLandmarks) {
-  const int d = SensorState::CompDim + 3 * static_cast<int>(nLandmarks);
+  const int d = 21 + 3 * static_cast<int>(nLandmarks);
   return Matrix::Identity(d, d);
 }
 
 /// Build block-diagonal process covariance from scalar per-component variances.
 Matrix EqVIOFilter::stateProcessNoise(size_t nLandmarks) const {
-  Matrix Q =
-      Matrix::Identity(SensorState::CompDim + 3 * static_cast<int>(nLandmarks),
-                       SensorState::CompDim + 3 * static_cast<int>(nLandmarks));
+  Matrix Q = Matrix::Identity(21 + 3 * static_cast<int>(nLandmarks),
+                              21 + 3 * static_cast<int>(nLandmarks));
   Q.block<3, 3>(0, 0) *= params_.biasOmegaProcessVariance;
   Q.block<3, 3>(3, 3) *= params_.biasAccelProcessVariance;
   Q.block<3, 3>(6, 6) *= params_.attitudeProcessVariance;
@@ -177,8 +174,7 @@ Matrix EqVIOFilter::stateProcessNoise(size_t nLandmarks) const {
   Q.block<3, 3>(15, 15) *= params_.cameraAttitudeProcessVariance;
   Q.block<3, 3>(18, 18) *= params_.cameraPositionProcessVariance;
   if (nLandmarks > 0) {
-    Q.block(SensorState::CompDim, SensorState::CompDim,
-            3 * static_cast<int>(nLandmarks),
+    Q.block(21, 21, 3 * static_cast<int>(nLandmarks),
             3 * static_cast<int>(nLandmarks)) *= params_.pointProcessVariance;
   }
   return Q;
@@ -196,10 +192,11 @@ void EqVIOFilter::innovationUpdate(
     const Matrix& outputGainMatrix) {
   if (measurement.empty()) return;
   if (!camera) {
-    throw std::invalid_argument("EqVIOFilter::innovationUpdate: camera is null");
+    throw std::invalid_argument(
+        "EqVIOFilter::innovationUpdate: camera is null");
   }
 
-  const std::vector<Key> observedKeys = measurementIds(measurement);
+  const KeyVector observedKeys = measurementIds(measurement);
   VisionMeasurement estimatedMeasurement;
   const State& estimate = state();
   for (Key key : observedKeys) {
@@ -209,7 +206,7 @@ void EqVIOFilter::innovationUpdate(
           "EqVIOFilter::innovationUpdate: measurement key not in filter state");
     }
     estimatedMeasurement[key] =
-        camera->project2(estimate.cameraLandmarks[it->second].p);
+        camera->project2(estimate.cameraLandmarks[it->second]);
   }
   const Matrix Ct =
       EqFoutputMatrixC(referenceState(), landmarkKeys_, groupEstimate(),
@@ -231,17 +228,15 @@ void EqVIOFilter::innovationUpdate(
 /**
  * @brief Validate/store landmark keys for the current state dimension.
  */
-void EqVIOFilter::setLandmarkKeys(const std::vector<Key>& landmarkKeys) {
+void EqVIOFilter::setLandmarkKeys(const KeyVector& landmarkKeys) {
   if (landmarkKeys.size() != referenceState().n()) {
     throw std::invalid_argument(
         "EqVIOFilter::setLandmarkKeys: key count must match landmark count");
   }
 
-  std::unordered_set<Key> uniqueKeys;
-  uniqueKeys.reserve(landmarkKeys.size());
+  KeySet uniqueKeys;
   for (Key key : landmarkKeys) {
-    const auto [_, inserted] = uniqueKeys.insert(key);
-    if (!inserted) {
+    if (!uniqueKeys.insert(key).second) {
       throw std::invalid_argument(
           "EqVIOFilter::setLandmarkKeys: duplicate landmark key");
     }
@@ -255,7 +250,6 @@ void EqVIOFilter::setLandmarkKeys(const std::vector<Key>& landmarkKeys) {
 /// Refresh the O(1) lookup table aligned with `landmarkKeys_`.
 void EqVIOFilter::rebuildLandmarkIndex() {
   landmarkIndexByKey_.clear();
-  landmarkIndexByKey_.reserve(landmarkKeys_.size());
   for (size_t i = 0; i < landmarkKeys_.size(); ++i) {
     landmarkIndexByKey_[landmarkKeys_[i]] = i;
   }
@@ -272,11 +266,11 @@ void EqVIOFilter::reconcileLandmarks(
     VisionMeasurement& measurement,
     const std::shared_ptr<const CameraModel>& camera) {
   if (!camera && !measurement.empty()) {
-    throw std::invalid_argument("EqVIOFilter::reconcileLandmarks: camera is null");
+    throw std::invalid_argument(
+        "EqVIOFilter::reconcileLandmarks: camera is null");
   }
 
-  std::unordered_set<Key> observedKeys;
-  observedKeys.reserve(measurement.size());
+  KeySet observedKeys;
   for (const auto& [key, _] : measurement) {
     observedKeys.insert(key);
   }
@@ -289,9 +283,9 @@ void EqVIOFilter::reconcileLandmarks(
     }
   }
 
-  std::vector<Key> removalKeys = detectOutliers(measurement, camera);
+  KeyVector removalKeys = detectOutliers(measurement, camera);
 
-  const std::vector<Key> invalidKeys = invalidLandmarkKeys();
+  const KeyVector invalidKeys = invalidLandmarkKeys();
   removalKeys.insert(removalKeys.end(), invalidKeys.begin(), invalidKeys.end());
   for (size_t i = 0; i < landmarkKeys_.size(); ++i) {
     if (missedFrameCounts_[i] > kMaxMissedFrames) {
@@ -299,7 +293,7 @@ void EqVIOFilter::reconcileLandmarks(
     }
   }
 
-  std::unordered_set<Key> removalKeySet(removalKeys.begin(), removalKeys.end());
+  const KeySet removalKeySet(removalKeys.begin(), removalKeys.end());
   std::vector<size_t> retainedIndices;
   retainedIndices.reserve(landmarkKeys_.size());
   for (size_t i = 0; i < landmarkKeys_.size(); ++i) {
@@ -308,13 +302,13 @@ void EqVIOFilter::reconcileLandmarks(
     }
   }
 
-  std::vector<std::pair<Key, Landmark>> newLandmarks;
+  std::vector<std::pair<Key, Point3>> newLandmarks;
   newLandmarks.reserve(measurement.size());
   for (const auto& [key, coordinate] : measurement) {
     if (landmarkIndexByKey_.count(key) != 0) continue;
 
-    Landmark landmark{undistortPoint(*camera, coordinate) *
-                      params_.initialPointDepth};
+    const Point3 landmark =
+        undistortPoint(*camera, coordinate) * params_.initialPointDepth;
     newLandmarks.emplace_back(key, landmark);
   }
 
@@ -331,7 +325,7 @@ void EqVIOFilter::reconcileLandmarks(
  * This keeps the example/runtime path cheap and avoids using a partial
  * innovation covariance proxy for gating.
  */
-std::vector<Key> EqVIOFilter::detectOutliers(
+KeyVector EqVIOFilter::detectOutliers(
     VisionMeasurement& measurement,
     const std::shared_ptr<const CameraModel>& camera) const {
   const size_t maxOutliers = static_cast<size_t>(
@@ -355,13 +349,14 @@ std::vector<Key> EqVIOFilter::detectOutliers(
     }
   }
 
-  std::sort(residuals.begin(), residuals.end(),
-            [](const auto& lhs, const auto& rhs) { return lhs.second > rhs.second; });
+  std::sort(
+      residuals.begin(), residuals.end(),
+      [](const auto& lhs, const auto& rhs) { return lhs.second > rhs.second; });
   if (residuals.size() > maxOutliers) {
     residuals.resize(maxOutliers);
   }
 
-  std::vector<Key> outlierKeys;
+  KeyVector outlierKeys;
   outlierKeys.reserve(residuals.size());
   for (const auto& [lmId, _] : residuals) {
     measurement.erase(lmId);
@@ -371,9 +366,9 @@ std::vector<Key> EqVIOFilter::detectOutliers(
 }
 
 /// Return keys whose landmark-group scale has become numerically invalid.
-std::vector<Key> EqVIOFilter::invalidLandmarkKeys() const {
+KeyVector EqVIOFilter::invalidLandmarkKeys() const {
   const LandmarkGroup& Q = std::get<3>(decompose(groupEstimate()));
-  std::vector<Key> invalidKeys;
+  KeyVector invalidKeys;
   invalidKeys.reserve(Q.size());
   for (size_t i = 0; i < Q.size(); ++i) {
     const double scale = SOT3Scale(Q[i]);
@@ -393,7 +388,7 @@ std::vector<Key> EqVIOFilter::invalidLandmarkKeys() const {
  */
 void EqVIOFilter::applyLandmarkStructureChange(
     const std::vector<size_t>& retainedIndices,
-    const std::vector<std::pair<Key, Landmark>>& newLandmarks) {
+    const std::vector<std::pair<Key, Point3>>& newLandmarks) {
   const State& currentReference = referenceState();
   const auto& [A, Beta, B, Q] = decompose(groupEstimate());
 
@@ -402,7 +397,7 @@ void EqVIOFilter::applyLandmarkStructureChange(
   nextReference.cameraLandmarks.reserve(retainedIndices.size() +
                                         newLandmarks.size());
 
-  std::vector<Key> nextKeys;
+  KeyVector nextKeys;
   std::vector<size_t> nextMissedFrameCounts;
   std::vector<SOT3> nextQ;
   nextKeys.reserve(retainedIndices.size() + newLandmarks.size());
@@ -426,8 +421,7 @@ void EqVIOFilter::applyLandmarkStructureChange(
 
   const Matrix nextCovariance =
       rebuildCovariance(retainedIndices, newLandmarks.size());
-  const VioGroup nextGroup =
-      makeVioGroup(A, Beta, B, LandmarkGroup(nextQ));
+  const VioGroup nextGroup = makeVioGroup(A, Beta, B, LandmarkGroup(nextQ));
 
   resetReferenceAndGroup(nextReference, nextCovariance, nextGroup);
   landmarkKeys_ = std::move(nextKeys);
@@ -442,32 +436,28 @@ Matrix EqVIOFilter::rebuildCovariance(
   const int retainedLandmarkCount = static_cast<int>(retainedIndices.size());
   const int newLandmarkBlockCount = static_cast<int>(newLandmarkCount);
   const int newDimension =
-      SensorState::CompDim + 3 * (retainedLandmarkCount + newLandmarkBlockCount);
+      21 + 3 * (retainedLandmarkCount + newLandmarkBlockCount);
 
   Matrix rebuilt = Matrix::Zero(newDimension, newDimension);
-  rebuilt.block(0, 0, SensorState::CompDim, SensorState::CompDim) =
-      currentCovariance.block(0, 0, SensorState::CompDim, SensorState::CompDim);
+  rebuilt.block(0, 0, 21, 21) = currentCovariance.block(0, 0, 21, 21);
 
   for (size_t newI = 0; newI < retainedIndices.size(); ++newI) {
-    const int srcI =
-        SensorState::CompDim + 3 * static_cast<int>(retainedIndices[newI]);
-    const int dstI = SensorState::CompDim + 3 * static_cast<int>(newI);
+    const int srcI = 21 + 3 * static_cast<int>(retainedIndices[newI]);
+    const int dstI = 21 + 3 * static_cast<int>(newI);
 
-    rebuilt.block(0, dstI, SensorState::CompDim, 3) =
-        currentCovariance.block(0, srcI, SensorState::CompDim, 3);
-    rebuilt.block(dstI, 0, 3, SensorState::CompDim) =
-        currentCovariance.block(srcI, 0, 3, SensorState::CompDim);
+    rebuilt.block(0, dstI, 21, 3) = currentCovariance.block(0, srcI, 21, 3);
+    rebuilt.block(dstI, 0, 3, 21) = currentCovariance.block(srcI, 0, 3, 21);
 
     for (size_t newJ = 0; newJ < retainedIndices.size(); ++newJ) {
-      const int srcJ =
-          SensorState::CompDim + 3 * static_cast<int>(retainedIndices[newJ]);
-      const int dstJ = SensorState::CompDim + 3 * static_cast<int>(newJ);
-      rebuilt.block(dstI, dstJ, 3, 3) = currentCovariance.block(srcI, srcJ, 3, 3);
+      const int srcJ = 21 + 3 * static_cast<int>(retainedIndices[newJ]);
+      const int dstJ = 21 + 3 * static_cast<int>(newJ);
+      rebuilt.block(dstI, dstJ, 3, 3) =
+          currentCovariance.block(srcI, srcJ, 3, 3);
     }
   }
 
   if (newLandmarkBlockCount > 0) {
-    const int newOffset = SensorState::CompDim + 3 * retainedLandmarkCount;
+    const int newOffset = 21 + 3 * retainedLandmarkCount;
     rebuilt.block(newOffset, newOffset, 3 * newLandmarkBlockCount,
                   3 * newLandmarkBlockCount) =
         Matrix::Identity(3 * newLandmarkBlockCount, 3 * newLandmarkBlockCount) *
