@@ -40,21 +40,13 @@ inline int stateLandmarkOffset(size_t landmarkIndex) {
 /// Extract body transform component `bTb'` from full group element.
 Pose3 bTbPrimeFromGroup(const VioGroup& X) {
   const Se23& A = std::get<0>(decompose(X));
-  return Pose3(A.rotation(), A.x(0));
+  return Pose3(A.rotation(), A.x(1));
 }
 
 /// Extract translational velocity offset `w` from Se23 block.
 Vector3 AW(const VioGroup& X) {
   const Se23& A = std::get<0>(decompose(X));
-  return A.x(1);
-}
-
-/// Build Se23 element from rotation, translation, and velocity columns.
-Se23 MakeA(const Rot3& R, const Point3& x0, const Vector3& w) {
-  Se23::Matrix3K x;
-  x.col(0) = x0;
-  x.col(1) = w;
-  return Se23(R, x);
+  return A.x(0);
 }
 
 /// Construct the shortest-arc rotation that maps first vector to second vector.
@@ -192,14 +184,17 @@ Vector liftInnovation(const Vector& totalInnovation, const State& xi0) {
   Vector lift = Vector::Zero(21 + 4 * N);
 
   lift.segment<6>(9) = totalInnovation.segment<6>(0);
-  lift.segment<6>(0) = totalInnovation.segment<6>(6);
+  lift.segment<3>(0) = totalInnovation.segment<3>(6);
+  lift.segment<3>(6) = totalInnovation.segment<3>(9);
 
   const Vector3 gammaV = totalInnovation.segment<3>(12);
-  lift.segment<3>(6) = -gammaV - Rot3::Hat(lift.segment<3>(0)) * xi0.velocity();
+  lift.segment<3>(3) = -gammaV - Rot3::Hat(lift.segment<3>(0)) * xi0.velocity();
 
-  lift.segment<6>(15) =
-      totalInnovation.segment<6>(15) +
-      xi0.cameraOffset.inverse().AdjointMap() * lift.segment<6>(0);
+  Vector6 poseLift;
+  poseLift << lift.segment<3>(0), lift.segment<3>(6);
+
+  lift.segment<6>(15) = totalInnovation.segment<6>(15) +
+                        xi0.cameraOffset.inverse().AdjointMap() * poseLift;
 
   for (size_t i = 0; i < N; ++i) {
     const Point3 qi0 = xi0.cameraLandmarks[i];
@@ -402,7 +397,7 @@ State stateGroupAction(const VioGroup& X, const State& state) {
       bTbPrime.rotation().unrotate(state.velocity() - w);
   out.bias = state.bias + Beta;
   out.kinematics =
-      MakeA(nextPose.rotation(), nextPose.translation(), nextVelocity);
+      Se23(nextPose.rotation(), nextVelocity, nextPose.translation());
   out.cameraOffset =
       bTbPrime.inverse().compose(state.cameraOffset).compose(cTcPrime);
   out.cameraLandmarks.resize(Q.size());
@@ -453,7 +448,7 @@ VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
 
   LandmarkGroup Q(q);
   const Bias beta(dt * velocity.accBiasVel, dt * velocity.gyrBiasVel);
-  const Se23 b0Tb1Kinematics = MakeA(b0Tb1.rotation(), b0Tb1.translation(), w);
+  const Se23 b0Tb1Kinematics = Se23(b0Tb1.rotation(), w, b0Tb1.translation());
   return makeVioGroup(b0Tb1Kinematics, beta, c0Tc1, Q);
 }
 

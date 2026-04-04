@@ -45,7 +45,7 @@ class GTSAM_UNSTABLE_EXPORT State {
   using Jacobian = Matrix;
   using ChartJacobian = OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic>;
 
-  /// Body pose/velocity block stored as SE_2(3).
+  /// Body kinematics block stored as SE_2(3) in EqVIO `(R, v, p)` order.
   Se23 kinematics = Se23::Identity();
   /// IMU bias state.
   Bias bias = Bias::Identity();

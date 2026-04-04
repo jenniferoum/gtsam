@@ -55,20 +55,6 @@ void testChartDerivativesN(TestResult& result_, const std::string& name_,
                       H2, 1e-5));
 }
 
-Se23 MakeKinematics(const Pose3& pose, const Vector3& velocity) {
-  Se23::Matrix3K x;
-  x.col(0) = pose.translation();
-  x.col(1) = velocity;
-  return Se23(pose.rotation(), x);
-}
-
-State MakeState(const Bias& bias, const Pose3& pose, const Vector3& velocity,
-                const Pose3& cameraOffset,
-                const std::vector<Point3>& cameraLandmarks) {
-  return State(MakeKinematics(pose, velocity), bias, cameraOffset,
-               cameraLandmarks);
-}
-
 std::vector<Point3> Lms0() { return {}; }
 
 std::vector<Point3> Lms1A() { return {{Point3(1.0, -0.5, 4.0)}}; }
@@ -88,47 +74,47 @@ std::vector<Point3> Lms3B() {
 }
 
 State MakeState0A() {
-  return MakeState(
-      Bias(Vector3(0.03, -0.01, 0.02), Vector3(0.1, -0.2, 0.05)),
-      Pose3(Rot3::RzRyRx(0.2, -0.1, 0.15), Point3(0.4, -0.2, 1.0)),
-      Vector3(0.5, -0.3, 0.2),
-      Pose3(Rot3::RzRyRx(-0.08, 0.04, -0.03), Point3(0.1, 0.0, 0.05)), Lms0());
+  return State(Se23(Rot3::RzRyRx(0.2, -0.1, 0.15), Vector3(0.5, -0.3, 0.2),
+                    Point3(0.4, -0.2, 1.0)),
+               Bias(Vector3(0.03, -0.01, 0.02), Vector3(0.1, -0.2, 0.05)),
+               Pose3(Rot3::RzRyRx(-0.08, 0.04, -0.03), Point3(0.1, 0.0, 0.05)),
+               Lms0());
 }
 State MakeState0B() {
-  return MakeState(
+  return State(
+      Se23(Rot3::RzRyRx(-0.1, 0.2, -0.25), Vector3(-0.2, 0.4, -0.1),
+           Point3(-0.3, 0.5, 0.8)),
       Bias(Vector3(0.02, 0.05, -0.06), Vector3(-0.04, 0.07, -0.03)),
-      Pose3(Rot3::RzRyRx(-0.1, 0.2, -0.25), Point3(-0.3, 0.5, 0.8)),
-      Vector3(-0.2, 0.4, -0.1),
       Pose3(Rot3::RzRyRx(0.06, -0.03, 0.02), Point3(-0.05, 0.02, 0.09)),
       Lms0());
 }
 State MakeState1A() {
-  return MakeState(
-      Bias(Vector3(0.03, -0.01, 0.02), Vector3(0.1, -0.2, 0.05)),
-      Pose3(Rot3::RzRyRx(0.2, -0.1, 0.15), Point3(0.4, -0.2, 1.0)),
-      Vector3(0.5, -0.3, 0.2),
-      Pose3(Rot3::RzRyRx(-0.08, 0.04, -0.03), Point3(0.1, 0.0, 0.05)), Lms1A());
+  return State(Se23(Rot3::RzRyRx(0.2, -0.1, 0.15), Vector3(0.5, -0.3, 0.2),
+                    Point3(0.4, -0.2, 1.0)),
+               Bias(Vector3(0.03, -0.01, 0.02), Vector3(0.1, -0.2, 0.05)),
+               Pose3(Rot3::RzRyRx(-0.08, 0.04, -0.03), Point3(0.1, 0.0, 0.05)),
+               Lms1A());
 }
 State MakeState1B() {
-  return MakeState(
+  return State(
+      Se23(Rot3::RzRyRx(-0.1, 0.2, -0.25), Vector3(-0.2, 0.4, -0.1),
+           Point3(-0.3, 0.5, 0.8)),
       Bias(Vector3(0.02, 0.05, -0.06), Vector3(-0.04, 0.07, -0.03)),
-      Pose3(Rot3::RzRyRx(-0.1, 0.2, -0.25), Point3(-0.3, 0.5, 0.8)),
-      Vector3(-0.2, 0.4, -0.1),
       Pose3(Rot3::RzRyRx(0.06, -0.03, 0.02), Point3(-0.05, 0.02, 0.09)),
       Lms1B());
 }
 State MakeState3A() {
-  return MakeState(
-      Bias(Vector3(0.03, -0.01, 0.02), Vector3(0.1, -0.2, 0.05)),
-      Pose3(Rot3::RzRyRx(0.2, -0.1, 0.15), Point3(0.4, -0.2, 1.0)),
-      Vector3(0.5, -0.3, 0.2),
-      Pose3(Rot3::RzRyRx(-0.08, 0.04, -0.03), Point3(0.1, 0.0, 0.05)), Lms3A());
+  return State(Se23(Rot3::RzRyRx(0.2, -0.1, 0.15), Vector3(0.5, -0.3, 0.2),
+                    Point3(0.4, -0.2, 1.0)),
+               Bias(Vector3(0.03, -0.01, 0.02), Vector3(0.1, -0.2, 0.05)),
+               Pose3(Rot3::RzRyRx(-0.08, 0.04, -0.03), Point3(0.1, 0.0, 0.05)),
+               Lms3A());
 }
 State MakeState3B() {
-  return MakeState(
+  return State(
+      Se23(Rot3::RzRyRx(-0.1, 0.2, -0.25), Vector3(-0.2, 0.4, -0.1),
+           Point3(-0.3, 0.5, 0.8)),
       Bias(Vector3(0.02, 0.05, -0.06), Vector3(-0.04, 0.07, -0.03)),
-      Pose3(Rot3::RzRyRx(-0.1, 0.2, -0.25), Point3(-0.3, 0.5, 0.8)),
-      Vector3(-0.2, 0.4, -0.1),
       Pose3(Rot3::RzRyRx(0.06, -0.03, 0.02), Point3(-0.05, 0.02, 0.09)),
       Lms3B());
 }

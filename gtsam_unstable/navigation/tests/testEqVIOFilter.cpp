@@ -29,61 +29,42 @@ using namespace gtsam::eqvio;
 
 namespace {
 
-State MakeState(const Bias& bias, const Pose3& pose, const Vector3& velocity,
-                const Pose3& cameraOffset,
-                const std::vector<Point3>& cameraLandmarks) {
-  Se23::Matrix3K x;
-  x.col(0) = pose.translation();
-  x.col(1) = velocity;
-  return State(Se23(pose.rotation(), x), bias, cameraOffset, cameraLandmarks);
-}
-
 State MakeState1() {
-  return MakeState(
-      Bias(Vector3(0.03, -0.01, 0.02), Vector3(0.1, -0.2, 0.05)),
-      Pose3(Rot3::RzRyRx(0.2, -0.1, 0.15), Point3(0.4, -0.2, 1.0)),
-      Vector3(0.5, -0.3, 0.2),
-      Pose3(Rot3::RzRyRx(-0.08, 0.04, -0.03), Point3(0.1, 0.0, 0.05)),
-      {{Point3(0.3, -0.15, 4.5)}});
+  return State(Se23(Rot3::RzRyRx(0.2, -0.1, 0.15), Vector3(0.5, -0.3, 0.2),
+                    Point3(0.4, -0.2, 1.0)),
+               Bias(Vector3(0.03, -0.01, 0.02), Vector3(0.1, -0.2, 0.05)),
+               Pose3(Rot3::RzRyRx(-0.08, 0.04, -0.03), Point3(0.1, 0.0, 0.05)),
+               {{Point3(0.3, -0.15, 4.5)}});
 }
 
 KeyVector Keys1() { return {42}; }
 KeyVector Keys2() { return {10, 20}; }
 
-Se23 MakeA(const Rot3& R, const Point3& t, const Vector3& w) {
-  Se23::Matrix3K x;
-  x.col(0) = t;
-  x.col(1) = w;
-  return Se23(R, x);
-}
-
 State State0() {
-  return MakeState(
-      Bias((Vector3() << 0.01, -0.02, 0.03).finished(),
-           (Vector3() << 0.04, -0.01, 0.02).finished()),
-      Pose3(Rot3::RzRyRx(0.1, -0.05, 0.2), Point3(0.3, -0.4, 1.2)),
-      Vector3(0.2, -0.1, 0.05),
-      Pose3(Rot3::RzRyRx(-0.02, 0.03, -0.01), Point3(0.1, 0.02, 0.08)), {});
+  return State(Se23(Rot3::RzRyRx(0.1, -0.05, 0.2), Vector3(0.2, -0.1, 0.05),
+                    Point3(0.3, -0.4, 1.2)),
+               Bias((Vector3() << 0.01, -0.02, 0.03).finished(),
+                    (Vector3() << 0.04, -0.01, 0.02).finished()),
+               Pose3(Rot3::RzRyRx(-0.02, 0.03, -0.01), Point3(0.1, 0.02, 0.08)),
+               {});
 }
 State State1() {
-  return MakeState(
-      Bias((Vector3() << 0.01, -0.02, 0.03).finished(),
-           (Vector3() << 0.04, -0.01, 0.02).finished()),
-      Pose3(Rot3::RzRyRx(0.1, -0.05, 0.2), Point3(0.3, -0.4, 1.2)),
-      Vector3(0.2, -0.1, 0.05),
-      Pose3(Rot3::RzRyRx(-0.02, 0.03, -0.01), Point3(0.1, 0.02, 0.08)),
-      {{Point3(0.8, -0.2, 4.5)}});
+  return State(Se23(Rot3::RzRyRx(0.1, -0.05, 0.2), Vector3(0.2, -0.1, 0.05),
+                    Point3(0.3, -0.4, 1.2)),
+               Bias((Vector3() << 0.01, -0.02, 0.03).finished(),
+                    (Vector3() << 0.04, -0.01, 0.02).finished()),
+               Pose3(Rot3::RzRyRx(-0.02, 0.03, -0.01), Point3(0.1, 0.02, 0.08)),
+               {{Point3(0.8, -0.2, 4.5)}});
 }
 State State3() {
-  return MakeState(
-      Bias((Vector3() << 0.01, -0.02, 0.03).finished(),
-           (Vector3() << 0.04, -0.01, 0.02).finished()),
-      Pose3(Rot3::RzRyRx(0.1, -0.05, 0.2), Point3(0.3, -0.4, 1.2)),
-      Vector3(0.2, -0.1, 0.05),
-      Pose3(Rot3::RzRyRx(-0.02, 0.03, -0.01), Point3(0.1, 0.02, 0.08)),
-      {{Point3(0.8, -0.2, 4.5)},
-       {Point3(-0.6, 0.3, 3.8)},
-       {Point3(0.1, 0.7, 5.2)}});
+  return State(Se23(Rot3::RzRyRx(0.1, -0.05, 0.2), Vector3(0.2, -0.1, 0.05),
+                    Point3(0.3, -0.4, 1.2)),
+               Bias((Vector3() << 0.01, -0.02, 0.03).finished(),
+                    (Vector3() << 0.04, -0.01, 0.02).finished()),
+               Pose3(Rot3::RzRyRx(-0.02, 0.03, -0.01), Point3(0.1, 0.02, 0.08)),
+               {{Point3(0.8, -0.2, 4.5)},
+                {Point3(-0.6, 0.3, 3.8)},
+                {Point3(0.1, 0.7, 5.2)}});
 }
 
 VioGroup Group0() { return makeVioGroupIdentity(0); }
@@ -91,8 +72,8 @@ VioGroup Group1() {
   const SOT3 q1(SO3::Expmap((Vector3() << 0.02, -0.01, 0.03).finished()),
                 std::log(1.1));
   return makeVioGroup(
-      MakeA(Rot3::RzRyRx(0.03, -0.02, 0.01), Point3(0.05, -0.01, 0.02),
-            Vector3(0.01, -0.02, 0.03)),
+      Se23(Rot3::RzRyRx(0.03, -0.02, 0.01), Vector3(0.01, -0.02, 0.03),
+           Point3(0.05, -0.01, 0.02)),
       Bias((Vector3() << 0.01, 0.0, -0.01).finished(),
            (Vector3() << 0.02, -0.01, 0.03).finished()),
       Pose3(Rot3::RzRyRx(-0.01, 0.02, -0.03), Point3(0.02, 0.01, -0.01)),
@@ -106,8 +87,8 @@ VioGroup Group3() {
   const SOT3 q3(SO3::Expmap((Vector3() << 0.01, 0.02, 0.01).finished()),
                 std::log(1.05));
   return makeVioGroup(
-      MakeA(Rot3::RzRyRx(0.03, -0.02, 0.01), Point3(0.05, -0.01, 0.02),
-            Vector3(0.01, -0.02, 0.03)),
+      Se23(Rot3::RzRyRx(0.03, -0.02, 0.01), Vector3(0.01, -0.02, 0.03),
+           Point3(0.05, -0.01, 0.02)),
       Bias((Vector3() << 0.01, 0.0, -0.01).finished(),
            (Vector3() << 0.02, -0.01, 0.03).finished()),
       Pose3(Rot3::RzRyRx(-0.01, 0.02, -0.03), Point3(0.02, 0.01, -0.01)),
@@ -163,7 +144,7 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
   }
 
   out.kinematics =
-      MakeA(nextPose.rotation(), nextPose.translation(), nextVelocity);
+      Se23(nextPose.rotation(), nextVelocity, nextPose.translation());
   out.cameraOffset = state.cameraOffset;
   return out;
 }

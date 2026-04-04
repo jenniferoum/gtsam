@@ -44,30 +44,17 @@ inline std::shared_ptr<const CameraModel> CreateDefaultCamera() {
       Pose3::Identity(), Cal3_S2(450.0, 450.0, 0.0, 400.0, 240.0));
 }
 
-inline Se23 MakeA(const Rot3& R, const Point3& t, const Vector3& w) {
-  Se23::Matrix3K x;
-  x.col(0) = t;
-  x.col(1) = w;
-  return Se23(R, x);
-}
-
-inline State MakeState(const Bias& bias, const Pose3& pose,
-                       const Vector3& velocity, const Pose3& cameraOffset,
-                       const std::vector<Point3>& cameraLandmarks) {
-  return State(MakeA(pose.rotation(), pose.translation(), velocity), bias,
-               cameraOffset, cameraLandmarks);
-}
-
 inline State RandomStateElement(const KeyVector& ids) {
+  const Pose3 pose = Pose3::Expmap(Vector6::Random());
   std::vector<Point3> lms(ids.size());
   for (size_t i = 0; i < ids.size(); ++i) {
     Point3 p = 10.0 * Vector3::Random();
     p.z() = std::abs(p.z()) + 1.0;
     lms[i] = p;
   }
-  return MakeState(Bias(Vector3::Random(), Vector3::Random()),
-                   Pose3::Expmap(Vector6::Random()), Vector3::Random(),
-                   Pose3::Expmap(Vector6::Random()), lms);
+  return State(Se23(pose.rotation(), Vector3::Random(), pose.translation()),
+               Bias(Vector3::Random(), Vector3::Random()),
+               Pose3::Expmap(Vector6::Random()), lms);
 }
 
 inline VioGroup RandomGroupElement(const KeyVector& ids) {
@@ -84,7 +71,7 @@ inline VioGroup RandomGroupElement(const KeyVector& ids) {
     Q[i] = SOT3(SO3::Expmap(Vector3(0.0, 0.0, yaw)), std::log(scale));
   }
 
-  return makeVioGroup(MakeA(Apose.rotation(), Apose.translation(), w), beta, B,
+  return makeVioGroup(Se23(Apose.rotation(), w, Apose.translation()), beta, B,
                       LandmarkGroup(Q));
 }
 
@@ -315,7 +302,7 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
   }
 
   out.kinematics =
-      MakeA(nextPose.rotation(), nextPose.translation(), nextVelocity);
+      Se23(nextPose.rotation(), nextVelocity, nextPose.translation());
   out.cameraOffset = state.cameraOffset;
   return out;
 }
@@ -328,18 +315,18 @@ std::vector<Point3> Lms3() {
 }
 
 State State0() {
-  return MakeState(
-      Bias(Vector3(0.01, -0.02, 0.04), Vector3(0.05, -0.04, 0.03)),
-      Pose3(Rot3::RzRyRx(0.1, -0.2, 0.25), Point3(0.4, -0.1, 1.0)),
-      Vector3(0.3, -0.2, 0.1),
-      Pose3(Rot3::RzRyRx(-0.03, 0.05, -0.02), Point3(0.1, 0.02, 0.07)), Lms0());
+  return State(Se23(Rot3::RzRyRx(0.1, -0.2, 0.25), Vector3(0.3, -0.2, 0.1),
+                    Point3(0.4, -0.1, 1.0)),
+               Bias(Vector3(0.01, -0.02, 0.04), Vector3(0.05, -0.04, 0.03)),
+               Pose3(Rot3::RzRyRx(-0.03, 0.05, -0.02), Point3(0.1, 0.02, 0.07)),
+               Lms0());
 }
 State State3() {
-  return MakeState(
-      Bias(Vector3(0.01, -0.02, 0.04), Vector3(0.05, -0.04, 0.03)),
-      Pose3(Rot3::RzRyRx(0.1, -0.2, 0.25), Point3(0.4, -0.1, 1.0)),
-      Vector3(0.3, -0.2, 0.1),
-      Pose3(Rot3::RzRyRx(-0.03, 0.05, -0.02), Point3(0.1, 0.02, 0.07)), Lms3());
+  return State(Se23(Rot3::RzRyRx(0.1, -0.2, 0.25), Vector3(0.3, -0.2, 0.1),
+                    Point3(0.4, -0.1, 1.0)),
+               Bias(Vector3(0.01, -0.02, 0.04), Vector3(0.05, -0.04, 0.03)),
+               Pose3(Rot3::RzRyRx(-0.03, 0.05, -0.02), Point3(0.1, 0.02, 0.07)),
+               Lms3());
 }
 
 VioGroup Group0() {
@@ -347,7 +334,7 @@ VioGroup Group0() {
   const Point3 t(0.05, -0.02, 0.03);
   const Vector3 w(0.01, -0.03, 0.02);
   return makeVioGroup(
-      MakeA(R, t, w),
+      Se23(R, w, t),
       Bias(Vector3(-0.02, 0.01, 0.0), Vector3(0.01, -0.01, 0.02)),
       Pose3(Rot3::RzRyRx(-0.02, 0.01, 0.03), Point3(0.02, 0.0, -0.01)),
       LandmarkGroup(0));
@@ -364,7 +351,7 @@ VioGroup Group3() {
   const SOT3 q3(SO3::Expmap((Vector3() << 0.02, 0.01, 0.03).finished()),
                 std::log(1.05));
   return makeVioGroup(
-      MakeA(R, t, w),
+      Se23(R, w, t),
       Bias(Vector3(-0.02, 0.01, 0.0), Vector3(0.01, -0.01, 0.02)),
       Pose3(Rot3::RzRyRx(-0.02, 0.01, 0.03), Point3(0.02, 0.0, -0.01)),
       LandmarkGroup({q1, q2, q3}));
@@ -381,7 +368,7 @@ VioGroup Group3b() {
   const SOT3 q3(SO3::Expmap((Vector3() << 0.01, 0.02, -0.02).finished()),
                 std::log(1.08));
   return makeVioGroup(
-      MakeA(R, t, w),
+      Se23(R, w, t),
       Bias(Vector3(0.02, 0.01, -0.01), Vector3(-0.02, 0.03, -0.01)),
       Pose3(Rot3::RzRyRx(0.01, -0.02, 0.04), Point3(-0.01, 0.03, 0.02)),
       LandmarkGroup({q1, q2, q3}));

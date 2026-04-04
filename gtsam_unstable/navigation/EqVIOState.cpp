@@ -20,17 +20,6 @@
 namespace gtsam {
 namespace eqvio {
 
-namespace {
-
-Se23 makeKinematics(const Pose3& pose, const Vector3& velocity) {
-  Se23::Matrix3K x;
-  x.col(0) = pose.translation();
-  x.col(1) = velocity;
-  return Se23(pose.rotation(), x);
-}
-
-}  // namespace
-
 State::State(const Se23& kinematics_, const Bias& bias_,
              const Pose3& cameraOffset_, const std::vector<Point3>& lms)
     : kinematics(kinematics_),
@@ -43,10 +32,10 @@ size_t State::n() const { return cameraLandmarks.size(); }
 int State::dim() const { return stateDim(n()); }
 
 Pose3 State::pose() const {
-  return Pose3(kinematics.rotation(), kinematics.x(0));
+  return Pose3(kinematics.rotation(), kinematics.x(1));
 }
 
-Vector3 State::velocity() const { return kinematics.x(1); }
+Vector3 State::velocity() const { return kinematics.x(0); }
 
 Vector3 State::gravityDir() const {
   return kinematics.rotation().unrotate(Vector3::UnitZ());
@@ -65,7 +54,8 @@ State State::retract(const TangentVector& v, ChartJacobian H1,
   const Pose3 nextPose = currentPose.retract(
       v.segment<6>(6), H1 ? &Hpose1 : nullptr, H2 ? &Hpose2 : nullptr);
   const Vector3 nextVelocity = currentVelocity + v.segment<3>(12);
-  out.kinematics = makeKinematics(nextPose, nextVelocity);
+  out.kinematics =
+      Se23(nextPose.rotation(), nextVelocity, nextPose.translation());
   out.cameraOffset = cameraOffset.retract(
       v.segment<6>(15), H1 ? &Hcam1 : nullptr, H2 ? &Hcam2 : nullptr);
 

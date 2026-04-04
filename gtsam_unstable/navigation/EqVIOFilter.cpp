@@ -82,8 +82,7 @@ void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
   Quaternion q;
   q.setFromTwoVectors(approxGravity.normalized(), Vector3::UnitZ());
   const Rot3 R0(q);
-  Se23::Matrix3K x = Se23::Matrix3K::Zero();
-  xi_ref.kinematics = Se23(R0, x);
+  xi_ref.kinematics = Se23(R0, Vector3::Zero(), Point3::Zero());
   initialized_ = true;
   resetReferenceAndGroup(xi_ref, errorCovariance(), groupEstimate());
 }
