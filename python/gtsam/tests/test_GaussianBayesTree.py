@@ -51,6 +51,23 @@ def subset_vector_values(values, keys):
 class TestGaussianBayesTree(GtsamTestCase):
     """Tests for GaussianBayesTree wrapper extensions."""
 
+    def test_marginal_information_and_covariance(self):
+        """Single-key GaussianBayesTree marginals should match Marginals."""
+        graph, keys = create_linear_chain()
+        bayes_tree = graph.eliminateMultifrontal()
+        solution = graph.optimize()
+        marginals = gtsam.Marginals(graph, solution)
+
+        expected_info = marginals.marginalInformation(keys[2])
+        expected_covariance = marginals.marginalCovariance(keys[2])
+
+        np.testing.assert_allclose(
+            bayes_tree.marginalInformation(keys[2]), expected_info, atol=1e-9
+        )
+        np.testing.assert_allclose(
+            bayes_tree.marginalCovariance(keys[2]), expected_covariance, atol=1e-9
+        )
+
     def test_joint_key_vector(self):
         """joint(KeyVector) should preserve the queried joint covariance."""
         graph, keys = create_linear_chain()
@@ -86,6 +103,27 @@ class TestGaussianBayesTree(GtsamTestCase):
 
         for key in query_keys:
             np.testing.assert_allclose(actual.at(key), solution.at(key), atol=1e-9)
+
+    def test_joint_marginal_information_and_covariance(self):
+        """Joint GaussianBayesTree marginals should match Marginals."""
+        graph, keys = create_linear_chain()
+        bayes_tree = graph.eliminateMultifrontal()
+        solution = graph.optimize()
+        query_keys = [keys[3], keys[0], keys[2]]
+
+        marginals = gtsam.Marginals(graph, solution)
+        expected_covariance = marginals.jointMarginalCovariance(query_keys).fullMatrix()
+        expected_information = (
+            marginals.jointMarginalInformation(query_keys).fullMatrix()
+        )
+
+        actual_covariance = bayes_tree.jointMarginalCovariance(query_keys).fullMatrix()
+        actual_information = (
+            bayes_tree.jointMarginalInformation(query_keys).fullMatrix()
+        )
+
+        np.testing.assert_allclose(actual_covariance, expected_covariance, atol=1e-9)
+        np.testing.assert_allclose(actual_information, expected_information, atol=1e-9)
 
     def test_delete_cached_shortcuts(self):
         """deleteCachedShortcuts should clear caches created by query shortcuts."""

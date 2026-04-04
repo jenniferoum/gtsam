@@ -20,9 +20,10 @@
 #include <gtsam/linear/GaussianBayesNet.h>
 #include <gtsam/linear/GaussianBayesTree.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
-#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+#include <gtsam/nonlinear/ISAM2.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
+#include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/dataset.h>
 
 #include <algorithm>
@@ -33,6 +34,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -56,6 +58,7 @@ enum class Variant {
 struct QueryCase {
   string family;
   size_t querySize;
+  size_t sampleStart = 0;
   KeyVector keys;
   KeyVector left;
   KeyVector right;
@@ -66,6 +69,8 @@ struct QueryCase {
 struct SupportStats {
   size_t supportCliques = 0;
   size_t compressedCliques = 0;
+  size_t maxFrontalDim = 0;
+  size_t maxSeparatorDim = 0;
 };
 
 /// Timing result for one query under one variant.
@@ -78,12 +83,15 @@ struct RawResult {
   size_t querySize = 0;
   size_t queryIndex = 0;
   size_t repeatIndex = 0;
+  size_t sampleStart = 0;
   double totalMs = 0.0;
   double reductionMs = 0.0;
   double extractionMs = 0.0;
   size_t supportCliques = 0;
   size_t compressedCliques = 0;
   size_t reducedStateDim = 0;
+  size_t maxFrontalDim = 0;
+  size_t maxSeparatorDim = 0;
 };
 
 /// Grouping key for per-query aggregation across repeated timings.
@@ -134,6 +142,7 @@ struct PerQueryResult {
   size_t querySize = 0;
   size_t queryIndex = 0;
   size_t repeats = 0;
+  size_t sampleStart = 0;
   double meanTotalMs = 0.0;
   double meanReductionMs = 0.0;
   double meanExtractionMs = 0.0;
@@ -146,6 +155,8 @@ struct PerQueryResult {
   size_t supportCliques = 0;
   size_t compressedCliques = 0;
   size_t reducedStateDim = 0;
+  size_t maxFrontalDim = 0;
+  size_t maxSeparatorDim = 0;
 };
 
 /// Grouping key for aggregating repeated benchmark queries.
@@ -190,6 +201,8 @@ struct SummaryValue {
   vector<double> supportCliques;
   vector<double> compressedCliques;
   vector<double> reducedStateDim;
+  vector<double> maxFrontalDim;
+  vector<double> maxSeparatorDim;
   size_t repeats = 0;
 };
 
@@ -209,6 +222,92 @@ KeyVector poseKeys(const Values& values) {
   }
   sort(keys.begin(), keys.end());
   return keys;
+}
+
+/// Compute a final pose-graph estimate with sequential iSAM2 updates.
+Values solveSequentiallyWithISAM2(const NonlinearFactorGraph& graph,
+                                  const Values& initial) {
+  const KeyVector allPoseKeys = poseKeys(initial);
+  if (allPoseKeys.empty()) {
+    return Values();
+  }
+
+  unordered_map<Key, size_t> stepByKey;
+  for (size_t index = 0; index < allPoseKeys.size(); ++index) {
+    stepByKey[allPoseKeys[index]] = index;
+  }
+
+  ISAM2Params parameters;
+  parameters.optimizationParams = ISAM2GaussNewtonParams();
+  parameters.relinearizeSkip = 1;
+  parameters.relinearizeThreshold = 0.01;
+  ISAM2 isam2(parameters);
+
+  const auto priorNoise = noiseModel::Diagonal::Sigmas(
+      (Vector(3) << 1e-6, 1e-6, 1e-6).finished());
+  size_t nextFactor = 0;
+
+  for (size_t stepIndex = 0; stepIndex < allPoseKeys.size(); ++stepIndex) {
+    const Key currentKey = allPoseKeys[stepIndex];
+    NonlinearFactorGraph newFactors;
+    Values newTheta;
+
+    if (stepIndex == 0) {
+      newTheta.insert(currentKey, initial.at<Pose2>(currentKey));
+      newFactors.addPrior(currentKey, initial.at<Pose2>(currentKey), priorNoise);
+    }
+
+    optional<Pose2> predictedPose;
+    while (nextFactor < graph.size()) {
+      const auto& factor = graph[nextFactor];
+      size_t newestStep = 0;
+      bool allKeysKnown = true;
+      for (Key key : factor->keys()) {
+        const auto it = stepByKey.find(key);
+        if (it == stepByKey.end()) {
+          allKeysKnown = false;
+          break;
+        }
+        newestStep = max(newestStep, it->second);
+      }
+      if (!allKeysKnown) {
+        ++nextFactor;
+        continue;
+      }
+      if (newestStep > stepIndex) {
+        break;
+      }
+
+      newFactors.push_back(factor);
+      if (stepIndex > 0) {
+        const Key previousKey = allPoseKeys[stepIndex - 1];
+        const auto between = dynamic_pointer_cast<const BetweenFactor<Pose2>>(factor);
+        if (between && isam2.valueExists(previousKey)) {
+          if (between->key1() == previousKey && between->key2() == currentKey) {
+            predictedPose = isam2.calculateEstimate<Pose2>(previousKey) *
+                            between->measured();
+          } else if (between->key1() == currentKey &&
+                     between->key2() == previousKey) {
+            predictedPose = isam2.calculateEstimate<Pose2>(previousKey) *
+                            between->measured().inverse();
+          }
+        }
+      }
+      ++nextFactor;
+    }
+
+    if (stepIndex > 0 && !isam2.valueExists(currentKey)) {
+      if (predictedPose) {
+        newTheta.insert(currentKey, *predictedPose);
+      } else {
+        newTheta.insert(currentKey, initial.at<Pose2>(currentKey));
+      }
+    }
+
+    isam2.update(newFactors, newTheta);
+  }
+
+  return isam2.calculateEstimate();
 }
 
 /// Return the variable dimensions for a key list.
@@ -239,6 +338,16 @@ size_t totalDimension(const KeySet& keys, const Values& values) {
   return dim;
 }
 
+/// Sum the dimensions of an ordered key range.
+template <class RANGE>
+size_t totalDimension(const RANGE& keys, const Values& values) {
+  size_t dim = 0;
+  for (Key key : keys) {
+    dim += values.at(key).dim();
+  }
+  return dim;
+}
+
 /// Compute the lowest common ancestor of two Bayes-tree cliques.
 template <class CLIQUE>
 shared_ptr<CLIQUE> findLowestCommonAncestor(const shared_ptr<CLIQUE>& lhs,
@@ -255,11 +364,14 @@ shared_ptr<CLIQUE> findLowestCommonAncestor(const shared_ptr<CLIQUE>& lhs,
   return nullptr;
 }
 
-/// Estimate the support size and compressed size for a query.
-SupportStats analyzeSupport(const GaussianBayesTree& bayesTree,
-                            const KeyVector& queryKeys) {
-  vector<GaussianBayesTree::sharedClique> queryCliques;
-  unordered_set<GaussianBayesTree::sharedClique> seen;
+/// Estimate support size and clique-width statistics for a query.
+template <class BAYESTREE>
+SupportStats analyzeSupport(const BAYESTREE& bayesTree,
+                            const KeyVector& queryKeys,
+                            const Values& values) {
+  using Clique = typename BAYESTREE::Clique;
+  vector<shared_ptr<Clique>> queryCliques;
+  unordered_set<shared_ptr<Clique>> seen;
   for (Key key : queryKeys) {
     auto clique = bayesTree.clique(key);
     if (seen.insert(clique).second) {
@@ -275,7 +387,7 @@ SupportStats analyzeSupport(const GaussianBayesTree& bayesTree,
     root = findLowestCommonAncestor(root, queryCliques[i]);
   }
 
-  unordered_set<GaussianBayesTree::sharedClique> support;
+  unordered_set<shared_ptr<Clique>> support;
   support.insert(root);
   for (const auto& clique : queryCliques) {
     for (auto current = clique; current && current != root;
@@ -284,7 +396,7 @@ SupportStats analyzeSupport(const GaussianBayesTree& bayesTree,
     }
   }
 
-  unordered_map<GaussianBayesTree::sharedClique, size_t> supportChildren;
+  unordered_map<shared_ptr<Clique>, size_t> supportChildren;
   for (const auto& clique : support) {
     supportChildren[clique] = 0;
   }
@@ -298,8 +410,8 @@ SupportStats analyzeSupport(const GaussianBayesTree& bayesTree,
     }
   }
 
-  unordered_set<GaussianBayesTree::sharedClique> querySet(queryCliques.begin(),
-                                                          queryCliques.end());
+  unordered_set<shared_ptr<Clique>> querySet(queryCliques.begin(),
+                                             queryCliques.end());
   size_t compressed = 1;
   for (const auto& clique : support) {
     if (clique == root) {
@@ -310,7 +422,17 @@ SupportStats analyzeSupport(const GaussianBayesTree& bayesTree,
     }
   }
 
-  return {support.size(), compressed};
+  size_t maxFrontalDim = 0;
+  size_t maxSeparatorDim = 0;
+  for (const auto& clique : support) {
+    const auto conditional = clique->conditional();
+    maxFrontalDim =
+        max(maxFrontalDim, totalDimension(conditional->frontals(), values));
+    maxSeparatorDim =
+        max(maxSeparatorDim, totalDimension(conditional->parents(), values));
+  }
+
+  return {support.size(), compressed, maxFrontalDim, maxSeparatorDim};
 }
 
 /// Build the legacy reduced factor graph by marginal re-elimination.
@@ -502,37 +624,26 @@ double stddev(const vector<double>& values) {
   return sqrt(sumSquares / static_cast<double>(values.size()));
 }
 
-/// Sample representative starting indices across a window range.
-vector<size_t> sampledStarts(size_t maxStartInclusive, size_t maxQueries,
-                             size_t stride = 1) {
+/// Sample evenly spaced starting indices across a valid range.
+vector<size_t> sampledStarts(size_t maxStartInclusive, size_t maxQueries) {
   vector<size_t> starts;
-  if (maxStartInclusive == 0) {
+  if (maxQueries == 0) {
+    return starts;
+  }
+  if (maxStartInclusive == 0 || maxQueries == 1) {
     starts.push_back(0);
     return starts;
   }
 
-  for (size_t start = 0;
-       start <= maxStartInclusive && starts.size() < maxQueries;
-       start += stride) {
-    starts.push_back(start);
+  const size_t sampleCount = min(maxQueries, maxStartInclusive + 1);
+  starts.reserve(sampleCount);
+  for (size_t i = 0; i < sampleCount; ++i) {
+    const double alpha =
+        sampleCount == 1 ? 0.0 : double(i) / double(sampleCount - 1);
+    starts.push_back(static_cast<size_t>(llround(alpha * maxStartInclusive)));
   }
-  if (starts.size() > maxQueries) {
-    starts.resize(maxQueries);
-  }
-  if (starts.size() < maxQueries && starts.back() != maxStartInclusive) {
-    starts.push_back(maxStartInclusive);
-  }
-
-  if (starts.size() > maxQueries) {
-    vector<size_t> reduced;
-    reduced.reserve(maxQueries);
-    for (size_t i = 0; i < maxQueries; ++i) {
-      const size_t index = static_cast<size_t>(
-          llround((starts.size() - 1) * (double(i) / double(maxQueries - 1))));
-      reduced.push_back(starts[index]);
-    }
-    starts = reduced;
-  }
+  sort(starts.begin(), starts.end());
+  starts.erase(unique(starts.begin(), starts.end()), starts.end());
   return starts;
 }
 
@@ -544,11 +655,11 @@ vector<QueryCase> generateLocalWindows(const KeyVector& poseKeys,
     return queries;
   }
   const size_t maxStart = poseKeys.size() - querySize;
-  for (size_t start :
-       sampledStarts(maxStart, maxQueries, max<size_t>(1, querySize / 2))) {
+  for (size_t start : sampledStarts(maxStart, maxQueries)) {
     QueryCase query;
     query.family = "local_window";
     query.querySize = querySize;
+    query.sampleStart = start;
     query.keys.assign(poseKeys.begin() + start,
                       poseKeys.begin() + start + querySize);
     queries.push_back(query);
@@ -563,12 +674,11 @@ vector<QueryCase> generateSinglePoseQueries(const KeyVector& poseKeys,
   if (poseKeys.empty()) {
     return queries;
   }
-  for (size_t start :
-       sampledStarts(poseKeys.size() - 1, maxQueries,
-                     max<size_t>(1, poseKeys.size() / maxQueries))) {
+  for (size_t start : sampledStarts(poseKeys.size() - 1, maxQueries)) {
     QueryCase query;
     query.family = "single_pose";
     query.querySize = 1;
+    query.sampleStart = start;
     query.keys = {poseKeys[start]};
     queries.push_back(query);
   }
@@ -582,10 +692,11 @@ vector<QueryCase> generatePairPoseQueries(const KeyVector& poseKeys,
   if (poseKeys.size() < 2) {
     return queries;
   }
-  for (size_t start : sampledStarts(poseKeys.size() - 2, maxQueries, 1)) {
+  for (size_t start : sampledStarts(poseKeys.size() - 2, maxQueries)) {
     QueryCase query;
     query.family = "pair_pose";
     query.querySize = 2;
+    query.sampleStart = start;
     query.keys = {poseKeys[start], poseKeys[start + 1]};
     queries.push_back(query);
   }
@@ -605,6 +716,7 @@ vector<QueryCase> generateRepeatedOverlap(const KeyVector& poseKeys,
     QueryCase query;
     query.family = "overlap_window";
     query.querySize = querySize;
+    query.sampleStart = start;
     query.keys.assign(poseKeys.begin() + start,
                       poseKeys.begin() + start + querySize);
     queries.push_back(query);
@@ -630,6 +742,7 @@ vector<QueryCase> generateWideSeparated(const KeyVector& poseKeys,
     QueryCase query;
     query.family = "wide_separated";
     query.querySize = querySize;
+    query.sampleStart = static_cast<size_t>(llround(offset));
     size_t previous = 0;
     for (size_t j = 0; j < querySize; ++j) {
       size_t index = static_cast<size_t>(llround(offset + gap * j));
@@ -700,7 +813,8 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
                          const QueryCase& query, size_t queryIndex,
                          size_t repeatIndex) {
   const KeyVector orderedKeys = uniqueSortedKeys(query.keys);
-  const SupportStats supportStats = analyzeSupport(bayesTree, orderedKeys);
+  const SupportStats supportStats =
+      analyzeSupport(bayesTree, orderedKeys, values);
 
   if (orderedKeys.size() == 1) {
     const auto reductionStart = chrono::steady_clock::now();
@@ -732,6 +846,7 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
     result.querySize = query.querySize;
     result.queryIndex = queryIndex;
     result.repeatIndex = repeatIndex;
+    result.sampleStart = query.sampleStart;
     result.reductionMs =
         chrono::duration<double, milli>(reductionEnd - reductionStart).count();
     result.extractionMs =
@@ -741,6 +856,8 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
     result.supportCliques = 1;
     result.compressedCliques = 1;
     result.reducedStateDim = information.rows();
+    result.maxFrontalDim = information.rows();
+    result.maxSeparatorDim = 0;
     return result;
   }
 
@@ -808,6 +925,7 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
   result.querySize = query.querySize;
   result.queryIndex = queryIndex;
   result.repeatIndex = repeatIndex;
+  result.sampleStart = query.sampleStart;
   result.reductionMs =
       chrono::duration<double, milli>(reductionEnd - reductionStart).count();
   result.extractionMs =
@@ -816,6 +934,8 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
   result.supportCliques = supportStats.supportCliques;
   result.compressedCliques = supportStats.compressedCliques;
   result.reducedStateDim = totalDimension(reducedGraph.keys(), values);
+  result.maxFrontalDim = supportStats.maxFrontalDim;
+  result.maxSeparatorDim = supportStats.maxSeparatorDim;
   return result;
 }
 
@@ -824,18 +944,20 @@ void writeRawCsv(const filesystem::path& path,
                  const vector<RawResult>& results) {
   ofstream os(path);
   os << "dataset,ordering,query_family,mode,variant,query_size,query_index,"
-        "repeat_index,"
+        "repeat_index,sample_start,"
         "total_ms,reduction_ms,extraction_ms,support_cliques,compressed_"
         "cliques,"
-        "reduced_state_dim\n";
+        "reduced_state_dim,max_frontal_dim,max_separator_dim\n";
   os << fixed << setprecision(6);
   for (const auto& result : results) {
     os << result.dataset << ',' << result.ordering << ',' << result.family
        << ',' << result.mode << ',' << result.variant << ',' << result.querySize
        << ',' << result.queryIndex << ',' << result.repeatIndex << ','
-       << result.totalMs << ',' << result.reductionMs << ','
+       << result.sampleStart << ',' << result.totalMs << ','
+       << result.reductionMs << ','
        << result.extractionMs << ',' << result.supportCliques << ','
-       << result.compressedCliques << ',' << result.reducedStateDim << '\n';
+       << result.compressedCliques << ',' << result.reducedStateDim << ','
+       << result.maxFrontalDim << ',' << result.maxSeparatorDim << '\n';
   }
 }
 
@@ -846,9 +968,12 @@ vector<PerQueryResult> aggregatePerQueryResults(
     vector<double> totalMs;
     vector<double> reductionMs;
     vector<double> extractionMs;
+    size_t sampleStart = 0;
     size_t supportCliques = 0;
     size_t compressedCliques = 0;
     size_t reducedStateDim = 0;
+    size_t maxFrontalDim = 0;
+    size_t maxSeparatorDim = 0;
   };
 
   unordered_map<PerQueryKey, PerQuerySamples, PerQueryKeyHash> perQuery;
@@ -860,9 +985,12 @@ vector<PerQueryResult> aggregatePerQueryResults(
     value.totalMs.push_back(result.totalMs);
     value.reductionMs.push_back(result.reductionMs);
     value.extractionMs.push_back(result.extractionMs);
+    value.sampleStart = result.sampleStart;
     value.supportCliques = result.supportCliques;
     value.compressedCliques = result.compressedCliques;
     value.reducedStateDim = result.reducedStateDim;
+    value.maxFrontalDim = result.maxFrontalDim;
+    value.maxSeparatorDim = result.maxSeparatorDim;
   }
 
   vector<PerQueryResult> aggregated;
@@ -877,6 +1005,7 @@ vector<PerQueryResult> aggregatePerQueryResults(
     result.querySize = key.querySize;
     result.queryIndex = key.queryIndex;
     result.repeats = value.totalMs.size();
+    result.sampleStart = value.sampleStart;
     result.meanTotalMs = mean(value.totalMs);
     result.meanReductionMs = mean(value.reductionMs);
     result.meanExtractionMs = mean(value.extractionMs);
@@ -889,6 +1018,8 @@ vector<PerQueryResult> aggregatePerQueryResults(
     result.supportCliques = value.supportCliques;
     result.compressedCliques = value.compressedCliques;
     result.reducedStateDim = value.reducedStateDim;
+    result.maxFrontalDim = value.maxFrontalDim;
+    result.maxSeparatorDim = value.maxSeparatorDim;
     aggregated.push_back(result);
   }
   return aggregated;
@@ -899,21 +1030,24 @@ void writePerQueryCsv(const filesystem::path& path,
                       const vector<PerQueryResult>& results) {
   ofstream os(path);
   os << "dataset,ordering,query_family,mode,variant,query_size,query_index,"
-        "repeats,mean_total_ms,mean_reduction_ms,mean_extraction_ms,"
+        "repeats,sample_start,mean_total_ms,mean_reduction_ms,mean_extraction_ms,"
         "median_total_ms,median_reduction_ms,median_extraction_ms,"
         "stddev_total_ms,stddev_reduction_ms,stddev_extraction_ms,"
-        "support_cliques,compressed_cliques,reduced_state_dim\n";
+        "support_cliques,compressed_cliques,reduced_state_dim,max_frontal_dim,"
+        "max_separator_dim\n";
   os << fixed << setprecision(6);
   for (const auto& result : results) {
     os << result.dataset << ',' << result.ordering << ',' << result.family
        << ',' << result.mode << ',' << result.variant << ',' << result.querySize
        << ',' << result.queryIndex << ',' << result.repeats << ','
-       << result.meanTotalMs << ',' << result.meanReductionMs << ','
+       << result.sampleStart << ',' << result.meanTotalMs << ','
+       << result.meanReductionMs << ','
        << result.meanExtractionMs << ',' << result.medianTotalMs << ','
        << result.medianReductionMs << ',' << result.medianExtractionMs << ','
        << result.stddevTotalMs << ',' << result.stddevReductionMs << ','
        << result.stddevExtractionMs << ',' << result.supportCliques << ','
-       << result.compressedCliques << ',' << result.reducedStateDim << '\n';
+       << result.compressedCliques << ',' << result.reducedStateDim << ','
+       << result.maxFrontalDim << ',' << result.maxSeparatorDim << '\n';
   }
 }
 
@@ -933,6 +1067,9 @@ void writeSummaryCsv(const filesystem::path& path,
         static_cast<double>(result.compressedCliques));
     value.reducedStateDim.push_back(
         static_cast<double>(result.reducedStateDim));
+    value.maxFrontalDim.push_back(static_cast<double>(result.maxFrontalDim));
+    value.maxSeparatorDim.push_back(
+        static_cast<double>(result.maxSeparatorDim));
     value.repeats = result.repeats;
   }
 
@@ -940,7 +1077,7 @@ void writeSummaryCsv(const filesystem::path& path,
   os << "dataset,ordering,query_family,mode,variant,query_size,queries,repeats,"
         "median_total_ms,sum_query_mean_total_ms,median_reduction_ms,"
         "median_extraction_ms,support_cliques,compressed_cliques,"
-        "reduced_state_dim\n";
+        "reduced_state_dim,max_frontal_dim,max_separator_dim\n";
   os << fixed << setprecision(6);
   for (const auto& [key, value] : summary) {
     const double totalTime = accumulate(value.queryMeanTotalMs.begin(),
@@ -952,7 +1089,9 @@ void writeSummaryCsv(const filesystem::path& path,
        << median(value.queryMeanReductionMs) << ','
        << median(value.queryMeanExtractionMs) << ','
        << median(value.supportCliques) << ',' << median(value.compressedCliques)
-       << ',' << median(value.reducedStateDim) << '\n';
+       << ',' << median(value.reducedStateDim) << ','
+       << median(value.maxFrontalDim) << ','
+       << median(value.maxSeparatorDim) << '\n';
   }
 }
 
@@ -1010,17 +1149,15 @@ int main(int argc, char** argv) {
     cout << "Loading " << datasetName << endl;
     const auto [graphPtr, initialPtr] =
         load2D(findExampleDataFile(datasetName));
-    const KeyVector anchoredPoseKeys = poseKeys(*initialPtr);
+    cout << "Solving sequentially with iSAM2 for " << datasetName << endl;
+    Values result = solveSequentiallyWithISAM2(*graphPtr, *initialPtr);
+    const KeyVector anchoredPoseKeys = poseKeys(result);
     if (!anchoredPoseKeys.empty()) {
       graphPtr->addPrior(anchoredPoseKeys.front(),
-                         initialPtr->at<Pose2>(anchoredPoseKeys.front()),
+                         result.at<Pose2>(anchoredPoseKeys.front()),
                          noiseModel::Diagonal::Sigmas(
                              (Vector(3) << 1e-6, 1e-6, 1e-6).finished()));
     }
-
-    cout << "Optimizing " << datasetName << endl;
-    LevenbergMarquardtOptimizer optimizer(*graphPtr, *initialPtr);
-    Values result = optimizer.optimize();
     GaussianFactorGraph linearGraph = *graphPtr->linearize(result);
     const KeyVector poseKeyList = poseKeys(result);
     const vector<QueryCase> workload = buildWorkload(poseKeyList);

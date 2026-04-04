@@ -23,6 +23,7 @@
 #include <gtsam/linear/GaussianDensity.h>
 #include <gtsam/linear/HessianFactor.h>
 #include <gtsam/geometry/Rot2.h>
+#include <gtsam/nonlinear/Marginals.h>
 
 #include <CppUnitLite/TestHarness.h>
 
@@ -372,6 +373,37 @@ TEST(GaussianBayesTree, multiKeyJointMatchesLegacyMarginalization) {
                                                             EliminateQR));
   EXPECT(assert_equal(legacyJoint.augmentedHessian(),
                       actualJoint.augmentedHessian(), 1e-9));
+}
+
+/* ************************************************************************* */
+TEST(GaussianBayesTree, marginalInformationAndCovarianceAgreeWithMarginals) {
+  GaussianFactorGraph smoother = createSmoother(7);
+  const Ordering ordering{X(1), X(3), X(5), X(7), X(2), X(6), X(4)};
+  GaussianBayesTree bayesTree = *smoother.eliminateMultifrontal(ordering);
+  VectorValues solution = bayesTree.optimize();
+  Marginals marginals(smoother, solution, ordering, Marginals::CHOLESKY);
+
+  EXPECT(assert_equal(marginals.marginalInformation(X(3)),
+                      bayesTree.marginalInformation(X(3)), 1e-9));
+  EXPECT(assert_equal(marginals.marginalCovariance(X(3)),
+                      bayesTree.marginalCovariance(X(3)), 1e-9));
+}
+
+/* ************************************************************************* */
+TEST(GaussianBayesTree, jointMarginalsAgreeWithMarginals) {
+  GaussianFactorGraph smoother = createSmoother(7);
+  const Ordering ordering{X(1), X(3), X(5), X(7), X(2), X(6), X(4)};
+  GaussianBayesTree bayesTree = *smoother.eliminateMultifrontal(ordering);
+  VectorValues solution = bayesTree.optimize();
+  Marginals marginals(smoother, solution, ordering, Marginals::CHOLESKY);
+
+  const KeyVector query{X(7), X(1), X(4)};
+  EXPECT(assert_equal(marginals.jointMarginalInformation(query).fullMatrix(),
+                      bayesTree.jointMarginalInformation(query).fullMatrix(),
+                      1e-9));
+  EXPECT(assert_equal(marginals.jointMarginalCovariance(query).fullMatrix(),
+                      bayesTree.jointMarginalCovariance(query).fullMatrix(),
+                      1e-9));
 }
 
 /* ************************************************************************* */

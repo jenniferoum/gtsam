@@ -23,6 +23,7 @@
 #include <gtsam/base/debug.h>
 #include <gtsam/base/timing.h>
 #include <gtsam/inference/BayesTree-inst.h>
+#include <gtsam/linear/GaussianBayesTreeQueries.h>
 #include <gtsam/nonlinear/LinearContainerFactor.h>
 
 #include <algorithm>
@@ -852,10 +853,30 @@ Values ISAM2::calculateBestEstimate() const {
 }
 
 /* ************************************************************************* */
+Matrix ISAM2::marginalInformation(Key key) const {
+  return internal::marginalInformation(*this, key,
+                                       params_.getEliminationFunction());
+}
+
+/* ************************************************************************* */
 Matrix ISAM2::marginalCovariance(Key key) const {
-  return marginalFactor(key, params_.getEliminationFunction())
-      ->information()
-      .inverse();
+  return internal::jointMarginalCovariance(*this, KeyVector{key},
+                                           params_.getEliminationFunction())
+      .fullMatrix();
+}
+
+/* ************************************************************************* */
+JointMarginal ISAM2::jointMarginalCovariance(
+    const KeyVector& queryKeys) const {
+  return internal::jointMarginalCovariance(*this, queryKeys,
+                                           params_.getEliminationFunction());
+}
+
+/* ************************************************************************* */
+JointMarginal ISAM2::jointMarginalInformation(
+    const KeyVector& queryKeys) const {
+  return internal::jointMarginalInformation(*this, queryKeys,
+                                            params_.getEliminationFunction());
 }
 
 /* ************************************************************************* */

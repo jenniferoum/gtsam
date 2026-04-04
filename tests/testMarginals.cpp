@@ -370,5 +370,92 @@ TEST(Marginals, orderingEquivalence) {
 #endif
 
 /* ************************************************************************* */
+TEST(Marginals, jointCovarianceMatchesFullHessianInverse) {
+  auto dimsForKeys = [](const Values& values, const KeyVector& keys) {
+    std::vector<size_t> dims;
+    dims.reserve(keys.size());
+    for (Key key : keys) {
+      dims.push_back(values.at(key).dim());
+    }
+    return dims;
+  };
+
+  auto blockOffsets = [](const std::vector<size_t>& dims) {
+    std::vector<size_t> offsets(dims.size() + 1, 0);
+    for (size_t index = 0; index < dims.size(); ++index) {
+      offsets[index + 1] = offsets[index] + dims[index];
+    }
+    return offsets;
+  };
+
+  auto covarianceBlockFromFullHessian = [&](const GaussianFactorGraph& graph,
+                                            const Values& values,
+                                            const KeyVector& queryKeys) {
+    const KeyVector orderedQuery = uniqueSortedKeys(queryKeys);
+    const KeySet graphKeys = graph.keys();
+    KeyVector allKeys(graphKeys.begin(), graphKeys.end());
+    const Ordering ordering(allKeys);
+    const auto [information, eta] = graph.hessian(ordering);
+    (void)eta;
+    const Matrix covariance = information.inverse();
+
+    const std::vector<size_t> allDims = dimsForKeys(values, allKeys);
+    const std::vector<size_t> allOffsets = blockOffsets(allDims);
+    const std::vector<size_t> queryDims = dimsForKeys(values, orderedQuery);
+    const std::vector<size_t> queryOffsets = blockOffsets(queryDims);
+
+    FastMap<Key, size_t> indexByKey;
+    for (size_t index = 0; index < allKeys.size(); ++index) {
+      indexByKey[allKeys[index]] = index;
+    }
+
+    Matrix result = Matrix::Zero(queryOffsets.back(), queryOffsets.back());
+    for (size_t rowIndex = 0; rowIndex < orderedQuery.size(); ++rowIndex) {
+      const size_t sourceRow = indexByKey.at(orderedQuery[rowIndex]);
+      const size_t rowDim = queryDims[rowIndex];
+      for (size_t colIndex = 0; colIndex < orderedQuery.size(); ++colIndex) {
+        const size_t sourceCol = indexByKey.at(orderedQuery[colIndex]);
+        const size_t colDim = queryDims[colIndex];
+        result.block(queryOffsets[rowIndex], queryOffsets[colIndex], rowDim,
+                     colDim) =
+            covariance.block(allOffsets[sourceRow], allOffsets[sourceCol],
+                             rowDim, colDim);
+      }
+    }
+    return result;
+  };
+
+  NonlinearFactorGraph graph;
+  const auto priorNoise = noiseModel::Diagonal::Sigmas(Vector3(0.2, 0.2, 0.1));
+  const auto odometryNoise =
+      noiseModel::Diagonal::Sigmas(Vector3(0.1, 0.1, 0.05));
+
+  graph.addPrior(0, Pose2(), priorNoise);
+  graph.emplace_shared<BetweenFactor<Pose2>>(0, 1, Pose2(1, 0, 0),
+                                             odometryNoise);
+  graph.emplace_shared<BetweenFactor<Pose2>>(1, 2, Pose2(1, 0, 0),
+                                             odometryNoise);
+  graph.emplace_shared<BetweenFactor<Pose2>>(2, 3, Pose2(1, 0, 0),
+                                             odometryNoise);
+
+  Values values;
+  values.insert(0, Pose2());
+  values.insert(1, Pose2(1, 0, 0));
+  values.insert(2, Pose2(2, 0, 0));
+  values.insert(3, Pose2(3, 0, 0));
+
+  const GaussianFactorGraph linearGraph = *graph.linearize(values);
+  const KeyVector query{3, 1, 2};
+  const Matrix expected =
+      covarianceBlockFromFullHessian(linearGraph, values, query);
+
+  for (const auto factorization : {Marginals::CHOLESKY, Marginals::QR}) {
+    const Marginals marginals(linearGraph, values, factorization);
+    const Matrix actual = marginals.jointMarginalCovariance(query).fullMatrix();
+    EXPECT(assert_equal(expected, actual, 1e-8));
+  }
+}
+
+/* ************************************************************************* */
 int main() { TestResult tr; return TestRegistry::runAllTests(tr);}
 /* ************************************************************************* */

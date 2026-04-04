@@ -23,6 +23,7 @@
 #include <gtsam/linear/linearAlgorithms-inst.h>
 #include <gtsam/linear/GaussianBayesTree.h>
 #include <gtsam/linear/GaussianBayesNet.h>
+#include <gtsam/linear/GaussianBayesTreeQueries.h>
 #include <gtsam/linear/VectorValues.h>
 
 namespace gtsam {
@@ -117,16 +118,25 @@ namespace gtsam {
   }
 
   /* ************************************************************************* */
+  Matrix GaussianBayesTree::marginalInformation(Key key) const {
+    return marginalInformation(key, EliminatePreferCholesky);
+  }
+
+  /* ************************************************************************* */
   Matrix GaussianBayesTree::marginalCovariance(Key key) const {
-    const Matrix information = marginalFactor(key)->information();
-    if (!information.allFinite()) {
-      return Matrix::Zero(information.rows(), information.cols());
-    }
-    Eigen::LLT<Matrix> llt(information.selfadjointView<Eigen::Upper>());
-    Matrix covariance =
-        Matrix::Identity(information.rows(), information.cols());
-    llt.solveInPlace(covariance);
-    return covariance;
+    return marginalCovariance(key, EliminatePreferCholesky);
+  }
+
+  /* ************************************************************************* */
+  JointMarginal GaussianBayesTree::jointMarginalInformation(
+      const KeyVector& queryKeys) const {
+    return jointMarginalInformation(queryKeys, EliminatePreferCholesky);
+  }
+
+  /* ************************************************************************* */
+  JointMarginal GaussianBayesTree::jointMarginalCovariance(
+      const KeyVector& queryKeys) const {
+    return jointMarginalCovariance(queryKeys, EliminatePreferCholesky);
   }
 
 } // \namespace gtsam
