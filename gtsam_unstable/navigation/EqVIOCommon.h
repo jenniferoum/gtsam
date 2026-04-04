@@ -221,43 +221,22 @@ inline Vector measurementVector(const VisionMeasurement& measurement) {
   return v;
 }
 
-/// Minimal input-action wrapper with ABC-style `InputAction::Orbit` shape.
-struct InputAction {
-  struct Orbit {
-    explicit Orbit(const std::tuple<IMUInput, double, Matrix>& input)
-        : input_(input) {}
-
-    std::tuple<IMUInput, double, Matrix> operator()(const VioGroup&) const {
-      return input_;
-    }
-
-   private:
-    std::tuple<IMUInput, double, Matrix> input_;
-  };
-};
-
-/// Lift functor compatible with EquivariantFilter::predict automatic-A path.
+/// Discrete propagation lift functor for the explicit EqVIO predict path.
 struct Lift {
-  explicit Lift(const std::tuple<IMUInput, double, Matrix>& input)
-      : imu_(std::get<0>(input)),
-        dt_(std::get<1>(input)),
-        D_lift_(std::get<2>(input)) {}
+  Lift(const IMUInput& imu, double dt) : imu_(imu), dt_(dt) {}
 
   Vector operator()(
-      const State& xi,
-      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H = {}) const {
+      const State& xi, OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H = {})
+      const {
     const Vector y0 =
         (VioGroup::Logmap(liftVelocityDiscrete(xi, imu_, dt_)) / dt_).eval();
-    if (H) {
-      *H = D_lift_;
-    }
+    if (H) *H = Matrix();
     return y0;
   }
 
  private:
   IMUInput imu_;
   double dt_;
-  Matrix D_lift_;
 };
 
 /// Remove a contiguous row block from a matrix.

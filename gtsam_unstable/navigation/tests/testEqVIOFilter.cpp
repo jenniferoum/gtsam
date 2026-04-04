@@ -39,6 +39,9 @@ State MakeState1() {
   return State(sensor, {{Point3(0.3, -0.15, 4.5)}});
 }
 
+std::vector<Key> Keys1() { return {42}; }
+std::vector<Key> Keys2() { return {10, 20}; }
+
 Se23 MakeA(const Rot3& R, const Point3& t, const Vector3& w) {
   Se23::Matrix3K x;
   x.col(0) = t;
@@ -148,8 +151,8 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
 
 }  // namespace
 
-// Verifies landmark insertion/removal logic stays consistent with measurement
-// ids.
+// Verifies landmark insertion/removal logic respects the stale-track grace
+// period.
 TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
   EqVIOFilterParams params;
   params.initialPointDepth = 5.0;
@@ -182,9 +185,10 @@ TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
   VisionMeasurement meas2;
   meas2[1] = meas1.at(1);
   filter.update(meas2, camera);
+  EXPECT_LONGS_EQUAL(2, filter.state().n());
 
-  const State est = filter.state();
-  EXPECT_LONGS_EQUAL(1, est.n());
+  filter.update(meas2, camera);
+  EXPECT_LONGS_EQUAL(1, filter.state().n());
 }
 
 // Verifies IMU-based initialization and basic propagation produce finite
@@ -260,7 +264,7 @@ TEST(EqVIOFilter, VisionUpdate) {
 
   const State xi0 = MakeState1();
   const Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim()) * 1e-3;
-  EqVIOFilter filter(xi0, Sigma0, params);
+  EqVIOFilter filter(xi0, Sigma0, Keys1(), params);
 
   IMUInput imu;
   imu.stamp = 0.0;
@@ -270,7 +274,7 @@ TEST(EqVIOFilter, VisionUpdate) {
 
   auto camera =
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
-  const VisionMeasurement meas = measureSystemState(filter.state(), camera);
+  const VisionMeasurement meas = measureSystemState(filter.state(), Keys1(), camera);
   filter.update(meas, camera);
 
   EXPECT_LONGS_EQUAL(1, filter.state().n());
@@ -290,7 +294,7 @@ TEST(EqVIOFilter, Smoke) {
   State xi0(sensor, {{Point3(0.8, -0.2, 4.5)}, {Point3(-0.6, 0.3, 3.8)}});
   Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim()) * 1e-3;
 
-  EqVIOFilter filter(xi0, Sigma0, params);
+  EqVIOFilter filter(xi0, Sigma0, Keys2(), params);
   auto camera =
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
 
@@ -305,7 +309,7 @@ TEST(EqVIOFilter, Smoke) {
     PropagateSingle(filter, imu, dt);
 
     if (k % 5 == 0) {
-      VisionMeasurement y = measureSystemState(filter.state(), camera);
+      VisionMeasurement y = measureSystemState(filter.state(), Keys2(), camera);
       filter.update(y, camera);
     }
   }
@@ -315,6 +319,78 @@ TEST(EqVIOFilter, Smoke) {
   EXPECT_LONGS_EQUAL(xi0.dim(), filter.errorCovariance().rows());
   EXPECT_LONGS_EQUAL(xi0.dim(), filter.errorCovariance().cols());
   EXPECT(filter.errorCovariance().array().isFinite().all());
+}
+
+// Verifies seeded landmark states use the explicit keyed constructor.
+TEST(EqVIOFilter, SeededLandmarkKeys) {
+  EqVIOFilterParams params;
+  const State xi0 = MakeState1();
+  const Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim()) * 1e-3;
+
+  EqVIOFilter filter(xi0, Sigma0, Keys1(), params);
+  auto camera =
+      std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
+  const VisionMeasurement meas = measureSystemState(filter.state(), Keys1(), camera);
+  filter.update(meas, camera);
+
+  EXPECT_LONGS_EQUAL(1, filter.state().n());
+  EXPECT(filter.errorCovariance().array().isFinite().all());
+}
+
+// Verifies multiple landmark additions/removals are reconciled cleanly.
+TEST(EqVIOFilter, BatchLandmarkStructureChange) {
+  EqVIOFilterParams params;
+  params.initialPointDepth = 5.0;
+
+  EqVIOFilter filter(params);
+  auto camera =
+      std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
+
+  IMUInput imu0;
+  imu0.stamp = 0.0;
+  imu0.acc = Vector3(0.0, 0.0, GRAVITY_CONSTANT);
+  imu0.gyr = Vector3::Zero();
+  filter.initializeFromIMU(imu0);
+
+  VisionMeasurement meas1;
+  meas1[1] = camera->project2(Point3(0.2, -0.1, 3.5));
+  meas1[2] = camera->project2(Point3(-0.3, 0.15, 4.0));
+  filter.update(meas1, camera);
+  EXPECT_LONGS_EQUAL(2, filter.state().n());
+
+  VisionMeasurement meas2;
+  meas2[2] = meas1.at(2);
+  meas2[3] = camera->project2(Point3(0.4, 0.05, 4.2));
+  meas2[4] = camera->project2(Point3(-0.2, -0.2, 3.7));
+  filter.update(meas2, camera);
+  EXPECT_LONGS_EQUAL(4, filter.state().n());
+  EXPECT_LONGS_EQUAL(SensorState::CompDim + 12, filter.errorCovariance().rows());
+
+  filter.update(meas2, camera);
+  EXPECT_LONGS_EQUAL(3, filter.state().n());
+  EXPECT_LONGS_EQUAL(SensorState::CompDim + 9, filter.errorCovariance().rows());
+}
+
+// Verifies supplied R does not override the absolute-residual outlier gate.
+TEST(EqVIOFilter, AbsoluteOutlierGateWithSuppliedR) {
+  EqVIOFilterParams params;
+  params.outlierThresholdAbs = 1e-3;
+  params.featureRetention = 0.0;
+
+  const State xi0 = MakeState1();
+  const Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim()) * 1e-3;
+  EqVIOFilter filter(xi0, Sigma0, Keys1(), params);
+  auto camera =
+      std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
+
+  VisionMeasurement meas = measureSystemState(filter.state(), Keys1(), camera);
+  const Key key = Keys1().front();
+  meas[key] = meas.at(key) + Point2(0.1, 0.1);
+
+  const Matrix R = Matrix::Identity(2, 2) * 1e6;
+  filter.update(meas, camera, R);
+
+  EXPECT_LONGS_EQUAL(0, filter.state().n());
 }
 
 // Verifies EqF linearization matrices have expected shapes and finite entries.

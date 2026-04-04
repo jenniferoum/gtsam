@@ -22,6 +22,7 @@
 #include <gtsam_unstable/navigation/EqVIOSymmetry.h>
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 namespace gtsam {
@@ -45,8 +46,6 @@ struct EqVIOFilterParams {
   double measurementNoiseVariance = 1e-4;
   /// Absolute reprojection residual threshold for outlier rejection.
   double outlierThresholdAbs = 1e8;
-  /// Mahalanobis-style reprojection residual threshold for outlier rejection.
-  double outlierThresholdProb = 1e8;
   /// Fraction of features to keep after ranking potential outliers (in [0, 1]).
   double featureRetention = 0.3;
   double biasOmegaProcessVariance = 0.001;
@@ -67,8 +66,9 @@ struct EqVIOFilterParams {
 /**
  * @brief Standalone EqVIO filter built on top of `EquivariantFilter`.
  *
- * Prediction uses the base equivariant `predict(...)` path per IMU hold,
- * while dynamic landmark add/remove bookkeeping stays in this runtime filter.
+ * Prediction uses the base equivariant `predictWithJacobian(...)` path per IMU
+ * hold, while dynamic landmark add/remove bookkeeping stays in this runtime
+ * filter.
  */
 class GTSAM_UNSTABLE_EXPORT EqVIOFilter
     : public EquivariantFilter<State, Symmetry> {
@@ -76,19 +76,23 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   using Base = EquivariantFilter<State, Symmetry>;
 
  private:
+  static constexpr size_t kMaxMissedFrames = 1;
+
   EqVIOFilterParams params_;
   bool initialized_ = false;
   // Runtime key ordering aligned with `cameraLandmarks` and covariance blocks.
   std::vector<Key> landmarkKeys_;
+  std::vector<size_t> missedFrameCounts_;
+  std::unordered_map<Key, size_t> landmarkIndexByKey_;
 
  public:
-  EqVIOFilter();
   /// Construct with explicit parameter bundle and default identity initial
   /// state.
   explicit EqVIOFilter(const EqVIOFilterParams& params);
-  /// Construct with explicit initial reference state, covariance, and
-  /// parameters.
+  /// Construct with explicit initial reference state, covariance, landmark
+  /// keys, and parameters.
   EqVIOFilter(const State& xi_ref, const Matrix& Sigma,
+              const std::vector<Key>& landmarkKeys,
               const EqVIOFilterParams& params);
 
   /**
@@ -102,8 +106,9 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   /**
    * @brief Propagate filter state across a sequence of IMU hold intervals.
    *
-   * Each hold interval `(imuInputs[i], dts[i])` is propagated via the automatic
-   * base-class `predict(...)` path, so mean and covariance advance together.
+   * Each hold interval `(imuInputs[i], dts[i])` is propagated via the explicit
+   * base-class `predictWithJacobian(...)` path, so mean and covariance advance
+   * together.
    *
    * @param imuInputs IMU samples defining zero-order holds.
    * @param dts Hold durations (seconds), one per sample.
@@ -149,27 +154,26 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
                         const std::shared_ptr<const CameraModel>& camera,
                         const Matrix& outputGainMatrix);
 
-  // LANDMARK HELPERS
-
-  /// Add unseen landmarks from current measurement and expand group/covariance.
-  void addNewLandmarks(const VisionMeasurement& measurement,
-                       const std::shared_ptr<const CameraModel>& camera);
-  /// Remove landmark by contiguous index in `cameraLandmarks`.
-  void removeLandmarkByIndex(int idx);
-  /// Remove landmark by key id.
-  void removeLandmarkById(Key id);
-  /// Drop landmarks not present in the current measurement id set.
-  void removeOldLandmarks(const std::vector<Key>& measurementIds);
-  /// Detect and remove outliers according to absolute/probabilistic thresholds.
-  void removeOutliers(VisionMeasurement& measurement,
-                      const std::shared_ptr<const CameraModel>& camera);
-  /// Remove landmarks whose scale component leaves a numerically safe range.
-  void removeInvalidLandmarks();
-  /// Return 3x3 covariance block for a specific landmark id.
-  Matrix3 getLandmarkCovById(Key id) const;
-  /// Return induced 2x2 output covariance for a specific landmark id.
-  Matrix2 outputCovarianceById(
-      Key id, const std::shared_ptr<const CameraModel>& camera) const;
+  /// Validate/store externally supplied landmark keys for seeded states.
+  void setLandmarkKeys(const std::vector<Key>& landmarkKeys);
+  /// Refresh the key-to-index lookup cache after any structure change.
+  void rebuildLandmarkIndex();
+  /// Batch landmark add/remove bookkeeping around one vision update.
+  void reconcileLandmarks(VisionMeasurement& measurement,
+                          const std::shared_ptr<const CameraModel>& camera);
+  /// Compute absolute-residual outliers and erase them from `measurement`.
+  std::vector<Key> detectOutliers(
+      VisionMeasurement& measurement,
+      const std::shared_ptr<const CameraModel>& camera) const;
+  /// Return keys whose associated SOT3 scale is numerically invalid.
+  std::vector<Key> invalidLandmarkKeys() const;
+  /// Rebuild state, group, covariance, and lookup caches in one pass.
+  void applyLandmarkStructureChange(
+      const std::vector<size_t>& retainedIndices,
+      const std::vector<std::pair<Key, Landmark>>& newLandmarks);
+  /// Rebuild covariance after applying a batch landmark structure change.
+  Matrix rebuildCovariance(const std::vector<size_t>& retainedIndices,
+                           size_t newLandmarkCount) const;
 };
 
 }  // namespace eqvio

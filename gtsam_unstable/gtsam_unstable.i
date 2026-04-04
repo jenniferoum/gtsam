@@ -858,7 +858,6 @@ class EqVIOFilterParams {
   double initialPointVariance;
   double measurementNoiseVariance;
   double outlierThresholdAbs;
-  double outlierThresholdProb;
   double featureRetention;
   double biasOmegaProcessVariance;
   double biasAccelProcessVariance;
@@ -872,9 +871,9 @@ class EqVIOFilterParams {
 };
 
 class EqVIOFilter {
-  EqVIOFilter();
   EqVIOFilter(const gtsam::eqvio::EqVIOFilterParams& params);
   EqVIOFilter(const gtsam::eqvio::State& xi_ref, const gtsam::Matrix& Sigma,
+              const std::vector<gtsam::Key>& landmarkKeys,
               const gtsam::eqvio::EqVIOFilterParams& params);
   void initializeFromIMU(const gtsam::eqvio::IMUInput& imu);
   void predict(const std::vector<gtsam::eqvio::IMUInput>& imuInputs,

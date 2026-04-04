@@ -19,17 +19,12 @@
 
 #include <algorithm>
 #include <cassert>
-#include <map>
 #include <numeric>
-#include <set>
 #include <stdexcept>
-#include <tuple>
+#include <unordered_set>
 
 namespace gtsam {
 namespace eqvio {
-
-/// Default constructor delegates to explicit-params constructor.
-EqVIOFilter::EqVIOFilter() : EqVIOFilter(EqVIOFilterParams()) {}
 
 /**
  * @brief Construct filter with given parameter bundle and identity initial
@@ -46,21 +41,22 @@ EqVIOFilter::EqVIOFilter(const EqVIOFilterParams& params)
   xi0.sensor.velocity.setZero();
   xi0.sensor.cameraOffset = Pose3::Identity();
   resetReferenceAndGroup(xi0, defaultCovariance(0), makeVioGroupIdentity());
-  landmarkKeys_.clear();
+  setLandmarkKeys({});
 }
 
 /**
- * @brief Construct filter from explicit reference state and covariance.
+ * @brief Construct filter from explicit reference state, covariance, and keys.
  *
- * The group estimate is initialized to identity for `xi0.n()` landmarks.
+ * Landmark keys are part of the runtime bookkeeping, so seeded landmark states
+ * must provide a matching external key ordering.
  */
 EqVIOFilter::EqVIOFilter(const State& xi_ref, const Matrix& Sigma,
+                         const std::vector<Key>& landmarkKeys,
                          const EqVIOFilterParams& params)
     : Base(State(), defaultCovariance(0), makeVioGroupIdentity()),
       params_(params) {
   resetReferenceAndGroup(xi_ref, Sigma, makeVioGroupIdentity(xi_ref.n()));
-  landmarkKeys_.resize(xi_ref.n());
-  std::iota(landmarkKeys_.begin(), landmarkKeys_.end(), 0);
+  setLandmarkKeys(landmarkKeys);
   initialized_ = true;
 }
 
@@ -90,7 +86,8 @@ void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
 /**
  * @brief Propagate mean/covariance jointly over buffered IMU intervals.
  *
- * Uses the automatic base-class `predict(...)` path per positive-duration hold.
+ * Uses the explicit base-class `predictWithJacobian(...)` path per
+ * positive-duration hold.
  */
 void EqVIOFilter::predict(const std::vector<IMUInput>& imuInputs,
                           const std::vector<double>& dts) {
@@ -107,25 +104,14 @@ void EqVIOFilter::predict(const std::vector<IMUInput>& imuInputs,
     if (dt <= 0.0) continue;
 
     const IMUInput imu = imuInputs[i];
-    const Matrix A_target =
-        EqFStateMatrixA(groupEstimate(), referenceState(), imu);
-    Symmetry::Orbit actionAtRef(referenceState());
-    Matrix Dphi0;
-    const VioGroup identity_at_g =
-        traits<VioGroup>::Compose(groupEstimate().inverse(), groupEstimate());
-    actionAtRef(identity_at_g, &Dphi0);
-    const Matrix D_lift =
-        Dphi0.completeOrthogonalDecomposition().pseudoInverse() * A_target;
-
-    const std::tuple<IMUInput, double, Matrix> u{imu, dt, D_lift};
-    const Lift lift_u(u);
-    const InputAction::Orbit psi_u(u);
+    const Matrix A = EqFStateMatrixA(groupEstimate(), referenceState(), imu);
+    const Lift lift_u(imu, dt);
 
     const Matrix B = EqFInputMatrixB(groupEstimate(), referenceState());
     const Matrix Qc = B * params_.inputNoise * B.transpose() +
                       stateProcessNoise(referenceState().n());
 
-    Base::template predict<1>(lift_u, psi_u, Qc, dt);
+    Base::template predictWithJacobian<1>(lift_u, A, Qc, dt);
   }
 }
 
@@ -146,18 +132,28 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
     return;
   }
 
-  removeOldLandmarks(measurementIds(measurement));
-
   VisionMeasurement matchedMeasurement = measurement;
-  removeOutliers(matchedMeasurement, camera);
-  addNewLandmarks(matchedMeasurement, camera);
+  reconcileLandmarks(matchedMeasurement, camera);
 
   if (matchedMeasurement.empty()) {
     return;
   }
 
   innovationUpdate(matchedMeasurement, camera, R);
-  removeInvalidLandmarks();
+
+  const std::vector<Key> invalidKeys = invalidLandmarkKeys();
+  if (!invalidKeys.empty()) {
+    const std::unordered_set<Key> invalidKeySet(invalidKeys.begin(),
+                                                invalidKeys.end());
+    std::vector<size_t> retainedIndices;
+    retainedIndices.reserve(landmarkKeys_.size());
+    for (size_t i = 0; i < landmarkKeys_.size(); ++i) {
+      if (invalidKeySet.count(landmarkKeys_[i]) == 0) {
+        retainedIndices.push_back(i);
+      }
+    }
+    applyLandmarkStructureChange(retainedIndices, {});
+  }
 
   assert(!errorCovariance().hasNaN());
 }
@@ -199,9 +195,22 @@ void EqVIOFilter::innovationUpdate(
     const std::shared_ptr<const CameraModel>& camera,
     const Matrix& outputGainMatrix) {
   if (measurement.empty()) return;
+  if (!camera) {
+    throw std::invalid_argument("EqVIOFilter::innovationUpdate: camera is null");
+  }
 
-  const VisionMeasurement estimatedMeasurement =
-      measureSystemState(state(), landmarkKeys_, camera);
+  const std::vector<Key> observedKeys = measurementIds(measurement);
+  VisionMeasurement estimatedMeasurement;
+  const State& estimate = state();
+  for (Key key : observedKeys) {
+    const auto it = landmarkIndexByKey_.find(key);
+    if (it == landmarkIndexByKey_.end()) {
+      throw std::invalid_argument(
+          "EqVIOFilter::innovationUpdate: measurement key not in filter state");
+    }
+    estimatedMeasurement[key] =
+        camera->project2(estimate.cameraLandmarks[it->second].p);
+  }
   const Matrix Ct =
       EqFoutputMatrixC(referenceState(), landmarkKeys_, groupEstimate(),
                        measurement, camera, true);
@@ -220,233 +229,252 @@ void EqVIOFilter::innovationUpdate(
 }
 
 /**
- * @brief Insert unseen landmarks from current vision measurement.
- *
- * New landmarks are initialized from normalized bearing at `initialPointDepth`,
- * corresponding covariance is appended, and group/covariance dimensions are
- * expanded.
+ * @brief Validate/store landmark keys for the current state dimension.
  */
-void EqVIOFilter::addNewLandmarks(
-    const VisionMeasurement& measurement,
-    const std::shared_ptr<const CameraModel>& camera) {
-  if (measurement.empty()) return;
-  if (!camera)
-    throw std::invalid_argument("EqVIOFilter::addNewLandmarks: camera is null");
-
-  std::vector<Landmark> newLandmarks;
-  std::vector<Key> newKeys;
-  const std::vector<Key> existingIds = landmarkKeys_;
-  for (const auto& [id, coord] : measurement) {
-    if (std::find(existingIds.begin(), existingIds.end(), id) !=
-        existingIds.end()) {
-      continue;
-    }
-    const Vector3 bearing = undistortPoint(*camera, coord);
-    newLandmarks.push_back(Landmark{bearing});
-    newKeys.push_back(id);
+void EqVIOFilter::setLandmarkKeys(const std::vector<Key>& landmarkKeys) {
+  if (landmarkKeys.size() != referenceState().n()) {
+    throw std::invalid_argument(
+        "EqVIOFilter::setLandmarkKeys: key count must match landmark count");
   }
 
-  if (newLandmarks.empty()) return;
-
-  const double initialDepth = params_.initialPointDepth;
-  for (Landmark& lm : newLandmarks) lm.p *= initialDepth;
-
-  const Matrix newLandmarksCov =
-      Matrix::Identity(3 * static_cast<int>(newLandmarks.size()),
-                       3 * static_cast<int>(newLandmarks.size())) *
-      params_.initialPointVariance;
-
-  State xi_ref = referenceState();
-  xi_ref.cameraLandmarks.insert(xi_ref.cameraLandmarks.end(),
-                                newLandmarks.begin(), newLandmarks.end());
-  landmarkKeys_.insert(landmarkKeys_.end(), newKeys.begin(), newKeys.end());
-
-  const auto& [A, Beta, B, Q] = decompose(groupEstimate());
-  std::vector<SOT3> q;
-  q.reserve(Q.size() + newLandmarks.size());
-  for (size_t i = 0; i < Q.size(); ++i) {
-    q.push_back(Q[i]);
-  }
-  for (size_t i = 0; i < newLandmarks.size(); ++i) {
-    q.push_back(SOT3::Identity());
-  }
-
-  const VioGroup X = makeVioGroup(A, Beta, B, LandmarkGroup(q));
-
-  Matrix Sigma = errorCovariance();
-  const int oldSize = Sigma.rows();
-  const int newN = static_cast<int>(newLandmarks.size());
-  Sigma.conservativeResize(oldSize + 3 * newN, oldSize + 3 * newN);
-  Sigma.block(oldSize, 0, 3 * newN, oldSize).setZero();
-  Sigma.block(0, oldSize, oldSize, 3 * newN).setZero();
-  Sigma.block(oldSize, oldSize, 3 * newN, 3 * newN) = newLandmarksCov;
-
-  resetReferenceAndGroup(xi_ref, Sigma, X);
-}
-
-/// Remove any landmarks that are absent from the current measurement id list.
-void EqVIOFilter::removeOldLandmarks(const std::vector<Key>& measurementIds) {
-  const std::vector<Key> existingIds = landmarkKeys_;
-  std::vector<int> lostIndices(existingIds.size());
-  std::iota(lostIndices.begin(), lostIndices.end(), 0);
-  if (lostIndices.empty()) return;
-
-  const auto lostIndicesEnd = std::remove_if(
-      lostIndices.begin(), lostIndices.end(), [&](const int& lidx) {
-        const Key oldId = existingIds[static_cast<size_t>(lidx)];
-        return std::any_of(
-            measurementIds.begin(), measurementIds.end(),
-            [&oldId](const Key& measId) { return measId == oldId; });
-      });
-  lostIndices.erase(lostIndicesEnd, lostIndices.end());
-
-  if (lostIndices.empty()) return;
-
-  std::reverse(lostIndices.begin(), lostIndices.end());
-  for (const int idx : lostIndices) {
-    removeLandmarkByIndex(idx);
-  }
-}
-
-/// Remove landmark at index `idx` from state, group, and covariance.
-void EqVIOFilter::removeLandmarkByIndex(int idx) {
-  State xi_ref = referenceState();
-  xi_ref.cameraLandmarks.erase(xi_ref.cameraLandmarks.begin() + idx);
-  landmarkKeys_.erase(landmarkKeys_.begin() + idx);
-
-  const auto& [A, Beta, B, Q] = decompose(groupEstimate());
-
-  std::vector<SOT3> q;
-  q.reserve(Q.size() - 1);
-  for (size_t i = 0; i < Q.size(); ++i) {
-    if (static_cast<int>(i) == idx) continue;
-    q.push_back(Q[i]);
-  }
-
-  const VioGroup X = makeVioGroup(A, Beta, B, LandmarkGroup(q));
-
-  Matrix Sigma = errorCovariance();
-  removeRows(Sigma, SensorState::CompDim + 3 * idx, 3);
-  removeCols(Sigma, SensorState::CompDim + 3 * idx, 3);
-
-  resetReferenceAndGroup(xi_ref, Sigma, X);
-}
-
-/// Remove landmark with matching key id.
-void EqVIOFilter::removeLandmarkById(Key id) {
-  const auto it = std::find(landmarkKeys_.begin(), landmarkKeys_.end(), id);
-  assert(it != landmarkKeys_.end());
-  removeLandmarkByIndex(
-      static_cast<int>(std::distance(landmarkKeys_.begin(), it)));
-}
-
-/// Return 3x3 landmark-state covariance block for the specified id.
-Matrix3 EqVIOFilter::getLandmarkCovById(Key id) const {
-  const auto it = std::find(landmarkKeys_.begin(), landmarkKeys_.end(), id);
-  assert(it != landmarkKeys_.end());
-  const int i = static_cast<int>(std::distance(landmarkKeys_.begin(), it));
-  return errorCovariance().block<3, 3>(SensorState::CompDim + 3 * i,
-                                       SensorState::CompDim + 3 * i);
-}
-
-/// Project landmark covariance through output Jacobian into 2x2 image-space
-/// covariance.
-Matrix2 EqVIOFilter::outputCovarianceById(
-    Key id, const std::shared_ptr<const CameraModel>& camera) const {
-  const Matrix3 lmCov = getLandmarkCovById(id);
-  const auto it = std::find(landmarkKeys_.begin(), landmarkKeys_.end(), id);
-  assert(it != landmarkKeys_.end());
-
-  const size_t i =
-      static_cast<size_t>(std::distance(landmarkKeys_.begin(), it));
-  const LandmarkGroup& Q = std::get<3>(decompose(groupEstimate()));
-  const SOT3& Q_i = Q[i];
-  const Point3& q0 = referenceState().cameraLandmarks[i].p;
-
-  const Matrix23 C0i = EqFoutputMatrixCi(q0, Q_i, camera);
-  return C0i * lmCov * C0i.transpose();
-}
-
-/// Remove landmarks with non-finite or extreme SOT3 scale factors.
-void EqVIOFilter::removeInvalidLandmarks() {
-  const LandmarkGroup& Q = std::get<3>(decompose(groupEstimate()));
-  std::set<Key> invalidIds;
-  for (size_t i = 0; i < Q.size(); ++i) {
-    const double a = SOT3Scale(Q[i]);
-    if (!std::isfinite(a) || a <= 1e-8 || a > 1e8) {
-      invalidIds.insert(landmarkKeys_[i]);
+  std::unordered_set<Key> uniqueKeys;
+  uniqueKeys.reserve(landmarkKeys.size());
+  for (Key key : landmarkKeys) {
+    const auto [_, inserted] = uniqueKeys.insert(key);
+    if (!inserted) {
+      throw std::invalid_argument(
+          "EqVIOFilter::setLandmarkKeys: duplicate landmark key");
     }
   }
-  for (const Key id : invalidIds) {
-    removeLandmarkById(id);
+
+  landmarkKeys_ = landmarkKeys;
+  missedFrameCounts_.assign(landmarkKeys_.size(), 0);
+  rebuildLandmarkIndex();
+}
+
+/// Refresh the O(1) lookup table aligned with `landmarkKeys_`.
+void EqVIOFilter::rebuildLandmarkIndex() {
+  landmarkIndexByKey_.clear();
+  landmarkIndexByKey_.reserve(landmarkKeys_.size());
+  for (size_t i = 0; i < landmarkKeys_.size(); ++i) {
+    landmarkIndexByKey_[landmarkKeys_[i]] = i;
   }
 }
 
 /**
- * @brief Reject outliers using absolute residual and Mahalanobis-style tests.
+ * @brief Batch landmark bookkeeping around one visual update.
  *
- * At most `(1 - featureRetention)` fraction of currently measured features are
- * removed, prioritized by largest residual score.
+ * Existing tracks survive one missed frame, absolute-residual outliers are
+ * pruned from the current measurement/update, and new landmarks are inserted in
+ * one structure rebuild.
  */
-void EqVIOFilter::removeOutliers(
+void EqVIOFilter::reconcileLandmarks(
     VisionMeasurement& measurement,
     const std::shared_ptr<const CameraModel>& camera) {
+  if (!camera && !measurement.empty()) {
+    throw std::invalid_argument("EqVIOFilter::reconcileLandmarks: camera is null");
+  }
+
+  std::unordered_set<Key> observedKeys;
+  observedKeys.reserve(measurement.size());
+  for (const auto& [key, _] : measurement) {
+    observedKeys.insert(key);
+  }
+
+  for (size_t i = 0; i < landmarkKeys_.size(); ++i) {
+    if (observedKeys.count(landmarkKeys_[i]) != 0) {
+      missedFrameCounts_[i] = 0;
+    } else {
+      ++missedFrameCounts_[i];
+    }
+  }
+
+  std::vector<Key> removalKeys = detectOutliers(measurement, camera);
+
+  const std::vector<Key> invalidKeys = invalidLandmarkKeys();
+  removalKeys.insert(removalKeys.end(), invalidKeys.begin(), invalidKeys.end());
+  for (size_t i = 0; i < landmarkKeys_.size(); ++i) {
+    if (missedFrameCounts_[i] > kMaxMissedFrames) {
+      removalKeys.push_back(landmarkKeys_[i]);
+    }
+  }
+
+  std::unordered_set<Key> removalKeySet(removalKeys.begin(), removalKeys.end());
+  std::vector<size_t> retainedIndices;
+  retainedIndices.reserve(landmarkKeys_.size());
+  for (size_t i = 0; i < landmarkKeys_.size(); ++i) {
+    if (removalKeySet.count(landmarkKeys_[i]) == 0) {
+      retainedIndices.push_back(i);
+    }
+  }
+
+  std::vector<std::pair<Key, Landmark>> newLandmarks;
+  newLandmarks.reserve(measurement.size());
+  for (const auto& [key, coordinate] : measurement) {
+    if (landmarkIndexByKey_.count(key) != 0) continue;
+
+    Landmark landmark{undistortPoint(*camera, coordinate) *
+                      params_.initialPointDepth};
+    newLandmarks.emplace_back(key, landmark);
+  }
+
+  if (retainedIndices.size() == landmarkKeys_.size() && newLandmarks.empty()) {
+    return;
+  }
+
+  applyLandmarkStructureChange(retainedIndices, newLandmarks);
+}
+
+/**
+ * @brief Reject outliers using only absolute reprojection residual.
+ *
+ * This keeps the example/runtime path cheap and avoids using a partial
+ * innovation covariance proxy for gating.
+ */
+std::vector<Key> EqVIOFilter::detectOutliers(
+    VisionMeasurement& measurement,
+    const std::shared_ptr<const CameraModel>& camera) const {
   const size_t maxOutliers = static_cast<size_t>(
       (1.0 - params_.featureRetention) * measurement.size());
-  if (!camera) return;
+  if (!camera || measurement.empty() || maxOutliers == 0 ||
+      landmarkKeys_.empty()) {
+    return {};
+  }
 
   const VisionMeasurement yHat =
       measureSystemState(state(), landmarkKeys_, camera);
 
-  std::vector<Key> proposedOutliers;
-  std::map<Key, double> absoluteOutliers;
-  for (const auto& [lmId, yHatI] : yHat) {
-    if (measurement.count(lmId) == 0) continue;
-    const double errAbs = (measurement.at(lmId) - yHatI).norm();
-    if (errAbs > params_.outlierThresholdAbs) {
-      absoluteOutliers[lmId] = errAbs;
-      proposedOutliers.push_back(lmId);
-    }
-  }
-
-  std::map<Key, double> probabilisticOutliers;
-  for (const auto& [lmId, yI] : measurement) {
-    if (absoluteOutliers.count(lmId)) continue;
+  std::vector<std::pair<Key, double>> residuals;
+  residuals.reserve(measurement.size());
+  for (const auto& [lmId, y] : measurement) {
     const auto itHat = yHat.find(lmId);
     if (itHat == yHat.end()) continue;
-    const Point2 yTildeI = yI - itHat->second;
-
-    const Matrix2 outputCov = outputCovarianceById(lmId, camera);
-    const double errProb = yTildeI.transpose() * outputCov.inverse() * yTildeI;
-    if (errProb > params_.outlierThresholdProb) {
-      probabilisticOutliers[lmId] = errProb;
-      proposedOutliers.push_back(lmId);
+    const double errAbs = (y - itHat->second).norm();
+    if (errAbs > params_.outlierThresholdAbs) {
+      residuals.emplace_back(lmId, errAbs);
     }
   }
 
-  std::sort(proposedOutliers.begin(), proposedOutliers.end(),
-            [&absoluteOutliers, &probabilisticOutliers](Key lmId1, Key lmId2) {
-              if (absoluteOutliers.count(lmId1)) {
-                if (absoluteOutliers.count(lmId2)) {
-                  return absoluteOutliers.at(lmId1) <
-                         absoluteOutliers.at(lmId2);
-                }
-                return false;
-              }
-              if (absoluteOutliers.count(lmId2)) return true;
-              return probabilisticOutliers.at(lmId1) <
-                     probabilisticOutliers.at(lmId2);
-            });
-  std::reverse(proposedOutliers.begin(), proposedOutliers.end());
-  if (proposedOutliers.size() > maxOutliers) {
-    proposedOutliers.erase(proposedOutliers.begin() + maxOutliers,
-                           proposedOutliers.end());
+  std::sort(residuals.begin(), residuals.end(),
+            [](const auto& lhs, const auto& rhs) { return lhs.second > rhs.second; });
+  if (residuals.size() > maxOutliers) {
+    residuals.resize(maxOutliers);
   }
 
-  for (const Key lmId : proposedOutliers) {
-    removeLandmarkById(lmId);
+  std::vector<Key> outlierKeys;
+  outlierKeys.reserve(residuals.size());
+  for (const auto& [lmId, _] : residuals) {
     measurement.erase(lmId);
+    outlierKeys.push_back(lmId);
   }
+  return outlierKeys;
+}
+
+/// Return keys whose landmark-group scale has become numerically invalid.
+std::vector<Key> EqVIOFilter::invalidLandmarkKeys() const {
+  const LandmarkGroup& Q = std::get<3>(decompose(groupEstimate()));
+  std::vector<Key> invalidKeys;
+  invalidKeys.reserve(Q.size());
+  for (size_t i = 0; i < Q.size(); ++i) {
+    const double scale = SOT3Scale(Q[i]);
+    if (!std::isfinite(scale) || scale <= 1e-8 || scale > 1e8) {
+      invalidKeys.push_back(landmarkKeys_[i]);
+    }
+  }
+  return invalidKeys;
+}
+
+/**
+ * @brief Rebuild the dynamic landmark structure in one pass.
+ *
+ * The physical estimate is preserved for retained landmarks, while newly
+ * observed landmarks enter with identity group transform and diagonal initial
+ * covariance.
+ */
+void EqVIOFilter::applyLandmarkStructureChange(
+    const std::vector<size_t>& retainedIndices,
+    const std::vector<std::pair<Key, Landmark>>& newLandmarks) {
+  const State& currentReference = referenceState();
+  const auto& [A, Beta, B, Q] = decompose(groupEstimate());
+
+  State nextReference;
+  nextReference.sensor = currentReference.sensor;
+  nextReference.cameraLandmarks.reserve(retainedIndices.size() +
+                                        newLandmarks.size());
+
+  std::vector<Key> nextKeys;
+  std::vector<size_t> nextMissedFrameCounts;
+  std::vector<SOT3> nextQ;
+  nextKeys.reserve(retainedIndices.size() + newLandmarks.size());
+  nextMissedFrameCounts.reserve(retainedIndices.size() + newLandmarks.size());
+  nextQ.reserve(retainedIndices.size() + newLandmarks.size());
+
+  for (size_t index : retainedIndices) {
+    nextReference.cameraLandmarks.push_back(
+        currentReference.cameraLandmarks[index]);
+    nextKeys.push_back(landmarkKeys_[index]);
+    nextMissedFrameCounts.push_back(missedFrameCounts_[index]);
+    nextQ.push_back(Q[index]);
+  }
+
+  for (const auto& [key, landmark] : newLandmarks) {
+    nextReference.cameraLandmarks.push_back(landmark);
+    nextKeys.push_back(key);
+    nextMissedFrameCounts.push_back(0);
+    nextQ.push_back(SOT3::Identity());
+  }
+
+  const Matrix nextCovariance =
+      rebuildCovariance(retainedIndices, newLandmarks.size());
+  const VioGroup nextGroup =
+      makeVioGroup(A, Beta, B, LandmarkGroup(nextQ));
+
+  resetReferenceAndGroup(nextReference, nextCovariance, nextGroup);
+  landmarkKeys_ = std::move(nextKeys);
+  missedFrameCounts_ = std::move(nextMissedFrameCounts);
+  rebuildLandmarkIndex();
+}
+
+/// Rebuild covariance after a batch landmark add/remove operation.
+Matrix EqVIOFilter::rebuildCovariance(
+    const std::vector<size_t>& retainedIndices, size_t newLandmarkCount) const {
+  const Matrix& currentCovariance = errorCovariance();
+  const int retainedLandmarkCount = static_cast<int>(retainedIndices.size());
+  const int newLandmarkBlockCount = static_cast<int>(newLandmarkCount);
+  const int newDimension =
+      SensorState::CompDim + 3 * (retainedLandmarkCount + newLandmarkBlockCount);
+
+  Matrix rebuilt = Matrix::Zero(newDimension, newDimension);
+  rebuilt.block(0, 0, SensorState::CompDim, SensorState::CompDim) =
+      currentCovariance.block(0, 0, SensorState::CompDim, SensorState::CompDim);
+
+  for (size_t newI = 0; newI < retainedIndices.size(); ++newI) {
+    const int srcI =
+        SensorState::CompDim + 3 * static_cast<int>(retainedIndices[newI]);
+    const int dstI = SensorState::CompDim + 3 * static_cast<int>(newI);
+
+    rebuilt.block(0, dstI, SensorState::CompDim, 3) =
+        currentCovariance.block(0, srcI, SensorState::CompDim, 3);
+    rebuilt.block(dstI, 0, 3, SensorState::CompDim) =
+        currentCovariance.block(srcI, 0, 3, SensorState::CompDim);
+
+    for (size_t newJ = 0; newJ < retainedIndices.size(); ++newJ) {
+      const int srcJ =
+          SensorState::CompDim + 3 * static_cast<int>(retainedIndices[newJ]);
+      const int dstJ = SensorState::CompDim + 3 * static_cast<int>(newJ);
+      rebuilt.block(dstI, dstJ, 3, 3) = currentCovariance.block(srcI, srcJ, 3, 3);
+    }
+  }
+
+  if (newLandmarkBlockCount > 0) {
+    const int newOffset = SensorState::CompDim + 3 * retainedLandmarkCount;
+    rebuilt.block(newOffset, newOffset, 3 * newLandmarkBlockCount,
+                  3 * newLandmarkBlockCount) =
+        Matrix::Identity(3 * newLandmarkBlockCount, 3 * newLandmarkBlockCount) *
+        params_.initialPointVariance;
+  }
+
+  return rebuilt;
 }
 
 }  // namespace eqvio
