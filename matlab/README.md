@@ -140,4 +140,93 @@ the relevant directory is usually `<install-prefix>/lib`:
 export LD_LIBRARY_PATH=<install-prefix>/lib:$LD_LIBRARY_PATH
 ```
 
+## MATLAB CustomFactor User Guide
 
+The MATLAB toolbox supports callback-backed `CustomFactor` objects with the
+same basic usage pattern as Python:
+
+```matlab
+import gtsam.*
+
+key = 42;
+model = noiseModel.Unit.Create(1);
+
+factor = CustomFactor(model, key, @myErrorFunction);
+
+graph = NonlinearFactorGraph;
+graph.add(factor);
+```
+
+The callback signature is:
+
+```matlab
+function varargout = myErrorFunction(this, values)
+  residual = values.atVector(42) - [3];
+  if nargout > 1
+    varargout{1} = residual;
+    varargout{2} = {1};
+  else
+    varargout{1} = residual;
+  end
+end
+```
+
+Rules for MATLAB `CustomFactor` callbacks:
+
+- `this` is the MATLAB `gtsam.CustomFactor` object.
+- `values` is a wrapped `gtsam.Values` object.
+- The first output must be the unwhitened residual vector.
+- If Jacobians are requested, the second output must be a cell array with one numeric matrix per factor key, in factor key order.
+- The residual dimension must match the noise model dimension.
+- Keys may be passed either as a numeric array or as a `gtsam.KeyVector`.
+
+Practical notes:
+
+- `unwhitenedError(...)` exercises the residual-only path.
+- Optimization usually exercises both the residual and Jacobian paths.
+- Deleting the MATLAB factor removes its callback from the MATLAB-side registry, so repeated tests in one session do not accumulate stale entries.
+- Once a MATLAB `CustomFactor` has been constructed, the mex module is intentionally kept loaded for the rest of the MATLAB session to avoid unload-time crashes while callback-backed native factors are still reachable from C++.
+
+## MATLAB CustomFactor Under the Hood
+
+The MATLAB `CustomFactor` support is implemented as a MATLAB-specific layer on
+top of the existing C++ `gtsam::CustomFactor`.
+
+Files involved:
+
+- [`matlab/custom.i`](custom.i): declares the MATLAB-only native helper so it is included in the generated toolbox.
+- [`matlab/MatlabCustomFactor.h`](MatlabCustomFactor.h): native adapter class derived from `gtsam::CustomFactor`.
+- [`matlab/+gtsam/CustomFactor.m`](+gtsam/CustomFactor.m): user-facing MATLAB facade.
+- [`matlab/+gtsam/customFactorRegistry.m`](+gtsam/customFactorRegistry.m): persistent MATLAB registry that owns callbacks and MATLAB factor handles.
+
+Call path:
+
+1. `gtsam.CustomFactor(noiseModel, keys, errorFunc)` registers `errorFunc` in `gtsam.customFactorRegistry` and gets back a numeric callback ID.
+2. The MATLAB facade constructs the native `gtsam.MatlabCustomFactor`, passing only the noise model, keys, and callback ID into C++.
+3. After construction, the MATLAB facade binds the final MATLAB `gtsam.CustomFactor` object into the registry under the same callback ID.
+4. When GTSAM evaluates the factor in C++, `MatlabCustomFactor` calls back into MATLAB with:
+   `gtsam.customFactorRegistry('invoke', callbackId, values)`.
+5. The registry looks up the stored MATLAB factor object and function handle, then invokes:
+   `errorFunc(this, values)` or `[error, H] = errorFunc(this, values)`.
+6. The native wrapper validates the residual size and Jacobian count, converts the outputs back into GTSAM types, and returns them to the optimizer.
+
+Why there is a registry instead of storing the MATLAB function handle directly
+in C++:
+
+- the native factor can be copied and retained by optimizer-owned C++ objects
+- MATLAB object lifetimes do not match C++ shared pointer lifetimes
+- storing only a numeric callback ID in C++ avoids keeping raw MATLAB objects in core GTSAM state
+- the registry lets the callback receive the original MATLAB `gtsam.CustomFactor` object as `this`
+
+Debugging checklist for `CustomFactor`:
+
+- Constructor fails:
+  verify the toolbox contains both `gtsam.CustomFactor` and `gtsam.MatlabCustomFactor`.
+- Callback is never called:
+  check that the factor was added to a graph and that the graph path you are exercising actually evaluates it.
+- Callback gets wrong argument types:
+  inspect `matlab/+gtsam/CustomFactor.m` and `matlab/+gtsam/customFactorRegistry.m` first.
+- MATLAB reports wrong residual or Jacobian dimensions:
+  the callback contract is being violated; inspect the callback outputs before suspecting the optimizer.
+- MATLAB crashes or errors while unloading the wrapper:
+  remember that creating a MATLAB `CustomFactor` intentionally locks the mex module for the rest of the session.

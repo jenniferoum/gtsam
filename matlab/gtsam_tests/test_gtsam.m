@@ -15,6 +15,9 @@ testJacobianFactor
 display 'Starting: testValues'
 testValues
 
+display 'Starting: testCustomFactor'
+testCustomFactor
+
 %% SLAM
 display 'Starting: testPriorFactor'
 testPriorFactor
