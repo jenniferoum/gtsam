@@ -173,7 +173,7 @@ virtual class SmartFactorBase : gtsam::NonlinearFactor {
            const gtsam::KeyVector& cameraKeys);
   size_t dim() const;
   const CAMERA::MeasurementVector& measured() const;
-  std::vector<CAMERA> cameras(const gtsam::Values& values) const;
+  gtsam::CameraSet<CAMERA> cameras(const gtsam::Values& values) const;
 
   void print(const std::string& s = "", const gtsam::KeyFormatter& keyFormatter =
     gtsam::DefaultKeyFormatter) const;

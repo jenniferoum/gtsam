@@ -75,6 +75,7 @@ set(interface_files
     ${PROJECT_SOURCE_DIR}/gtsam/inference/inference.i
     ${PROJECT_SOURCE_DIR}/gtsam/discrete/discrete.i
     ${GTSAM_SOURCE_DIR}/gtsam/geometry/geometry.i
+    ${GTSAM_SOURCE_DIR}/gtsam/geometry/cameras.i
     ${GTSAM_SOURCE_DIR}/gtsam/linear/linear.i
     ${GTSAM_SOURCE_DIR}/gtsam/nonlinear/nonlinear.i
     ${GTSAM_SOURCE_DIR}/gtsam/nonlinear/values.i

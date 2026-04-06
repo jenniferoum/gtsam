@@ -51,7 +51,10 @@ testProperties
 display 'Starting: testUtilities'
 testUtilities
 
-if(exist('testSerialization.m','file'))
+if(exist('testSerialization.m','file') && ...
+   ismethod('gtsam.Pose2', 'string_serialize') && ...
+   ismethod('gtsam.Values', 'string_serialize') && ...
+   ismethod('gtsam.NonlinearFactorGraph', 'string_serialize'))
     display 'Starting: testSerialization'
     testSerialization
 end
