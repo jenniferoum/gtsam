@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <limits>
 #include <numeric>
 #include <stdexcept>
 
@@ -201,21 +202,30 @@ void EqVIOFilter::innovationUpdate(
         "EqVIOFilter::innovationUpdate: camera is null");
   }
 
-  const KeyVector observedKeys = measurementIds(measurement);
+  VisionMeasurement filteredMeasurement;
   VisionMeasurement estimatedMeasurement;
   const State& estimate = state();
-  for (Key key : observedKeys) {
+  for (const auto& [key, y] : measurement) {
     const auto it = landmarkIndexByKey_.find(key);
     if (it == landmarkIndexByKey_.end()) {
       throw std::invalid_argument(
           "EqVIOFilter::innovationUpdate: measurement key not in filter state");
     }
-    estimatedMeasurement[key] =
-        camera->project2(estimate.cameraLandmarks[it->second]);
+    try {
+      estimatedMeasurement[key] = camera->project2(estimate.cameraLandmarks[it->second]);
+      filteredMeasurement[key] = y;
+    } catch (const CheiralityException&) {
+      // Skip this observation; it will be removed by landmark bookkeeping.
+    }
   }
+
+  if (filteredMeasurement.empty()) {
+    return;
+  }
+
   const Matrix Ct =
       EqFoutputMatrixC(referenceState(), landmarkKeys_, groupEstimate(),
-                       measurement, camera, true);
+                       filteredMeasurement, camera, true);
   const Matrix Rused = (outputGainMatrix.rows() == Ct.rows() &&
                         outputGainMatrix.cols() == Ct.rows())
                            ? outputGainMatrix
@@ -223,7 +233,7 @@ void EqVIOFilter::innovationUpdate(
                                  params_.measurementNoiseVariance;
 
   const Vector zhat = measurementVector(estimatedMeasurement);
-  const Vector z = measurementVector(measurement);
+  const Vector z = measurementVector(filteredMeasurement);
   Base::updateWithVector(zhat, Ct, z, Rused,
                          [this](const Vector& delta_xi) -> Vector {
                            return liftInnovation(delta_xi, referenceState());
@@ -340,15 +350,22 @@ KeyVector EqVIOFilter::detectOutliers(
     return {};
   }
 
-  const VisionMeasurement yHat =
-      measureSystemState(state(), landmarkKeys_, camera);
-
   std::vector<std::pair<Key, double>> residuals;
   residuals.reserve(measurement.size());
   for (const auto& [lmId, y] : measurement) {
-    const auto itHat = yHat.find(lmId);
-    if (itHat == yHat.end()) continue;
-    const double errAbs = (y - itHat->second).norm();
+    const auto itIndex = landmarkIndexByKey_.find(lmId);
+    if (itIndex == landmarkIndexByKey_.end()) {
+      continue;
+    }
+
+    double errAbs = std::numeric_limits<double>::infinity();
+    try {
+      const Point2 yHat = camera->project2(state().cameraLandmarks[itIndex->second]);
+      errAbs = (y - yHat).norm();
+    } catch (const CheiralityException&) {
+      // Keep inf residual to prioritize removal.
+    }
+
     if (errAbs > params_.outlierThresholdAbs) {
       residuals.emplace_back(lmId, errAbs);
     }
