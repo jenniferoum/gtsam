@@ -848,6 +848,7 @@ class EqVIOFilterParams {
   double initialPointVariance;
   double measurementNoiseVariance;
   double outlierThresholdAbs;
+  double outlierThresholdProb;
   double featureRetention;
   double biasOmegaProcessVariance;
   double biasAccelProcessVariance;

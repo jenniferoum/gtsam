@@ -94,6 +94,27 @@ State initialReferenceState(const replay::MetadataMap& metadata) {
                {});
 }
 
+/// Construct initial covariance from metadata overrides with sensible defaults.
+Matrix initialCovarianceFromMetadata(const replay::MetadataMap& metadata,
+                                     const State& xi0) {
+  Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim());
+  const auto setInitialVarianceBlock = [&metadata, &Sigma0](
+                                           int idx, const char* key,
+                                           double fallback) {
+    Sigma0.block<3, 3>(idx, idx) *=
+        replay::metadataFiniteDouble(metadata, key, fallback);
+  };
+
+  setInitialVarianceBlock(0, "eqf.initial_var_bias_omega", 0.1);
+  setInitialVarianceBlock(3, "eqf.initial_var_bias_accel", 0.1);
+  setInitialVarianceBlock(6, "eqf.initial_var_attitude", 1e-4);
+  setInitialVarianceBlock(9, "eqf.initial_var_position", 1e-4);
+  setInitialVarianceBlock(12, "eqf.initial_var_velocity", 1e-2);
+  setInitialVarianceBlock(15, "eqf.initial_var_cam_attitude", 1e-5);
+  setInitialVarianceBlock(18, "eqf.initial_var_cam_position", 1e-4);
+  return Sigma0;
+}
+
 /// Print compact replay statistics and terminal estimate summary.
 void printSummary(const EqVIOFilterParams& params, double currentTime,
                   size_t imuCount, size_t visionFrameCount,
@@ -130,6 +151,7 @@ int main() {
     const replay::MetadataMap metadata = replay::readReplayMetadata(csvPath);
     const EqVIOFilterParams params = paramsFromMetadata(metadata);
     const State xi0 = initialReferenceState(metadata);
+    const Matrix Sigma0 = initialCovarianceFromMetadata(metadata, xi0);
 
     std::optional<EqVIOFilter> filter;
     auto camera = std::make_shared<CameraModel>(
@@ -147,7 +169,7 @@ int main() {
     while (reader.next(event)) {
       if (event.type == replay::ReplayEvent::Type::Imu) {
         if (!filter) {
-          filter.emplace(params);
+          filter.emplace(xi0, Sigma0, KeyVector{}, params);
         }
         if (!gravityInitialized) {
           filter->initializeFromIMU(event.imu);

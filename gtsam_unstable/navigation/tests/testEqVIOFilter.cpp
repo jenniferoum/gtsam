@@ -390,6 +390,32 @@ TEST(EqVIOFilter, AbsoluteOutlierGateWithSuppliedR) {
   EXPECT_LONGS_EQUAL(0, filter.state().n());
 }
 
+// Verifies Mahalanobis gating uses the innovation covariance, including
+// supplied measurement noise.
+TEST(EqVIOFilter, ProbabilisticOutlierGateUsesSuppliedR) {
+  EqVIOFilterParams params;
+  params.outlierThresholdAbs = 1.0;
+  params.outlierThresholdProb = 1.0;
+  params.featureRetention = 0.0;
+
+  const State xi0 = MakeState1();
+  const Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim()) * 1e-9;
+  auto camera =
+      std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
+
+  VisionMeasurement meas = measureSystemState(xi0, Keys1(), camera);
+  const Key key = Keys1().front();
+  meas[key] = meas.at(key) + Point2(1e-2, -1e-2);
+
+  EqVIOFilter tightGateFilter(xi0, Sigma0, Keys1(), params);
+  tightGateFilter.update(meas, camera, Matrix::Identity(2, 2) * 1e-9);
+  EXPECT_LONGS_EQUAL(0, tightGateFilter.state().n());
+
+  EqVIOFilter looseGateFilter(xi0, Sigma0, Keys1(), params);
+  looseGateFilter.update(meas, camera, Matrix::Identity(2, 2) * 1e3);
+  EXPECT_LONGS_EQUAL(1, looseGateFilter.state().n());
+}
+
 // Verifies EqF linearization matrices have expected shapes and finite entries.
 TEST(VIOEqFMatrices, ShapesAndFinite) {
   const auto camera =

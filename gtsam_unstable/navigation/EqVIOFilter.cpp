@@ -17,6 +17,8 @@
 
 #include <gtsam_unstable/navigation/EqVIOFilter.h>
 
+#include <Eigen/Cholesky>
+
 #include <algorithm>
 #include <cassert>
 #include <numeric>
@@ -137,7 +139,7 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
   }
 
   VisionMeasurement matchedMeasurement = measurement;
-  reconcileLandmarks(matchedMeasurement, camera);
+  reconcileLandmarks(matchedMeasurement, camera, R);
 
   if (matchedMeasurement.empty()) {
     return;
@@ -216,11 +218,8 @@ void EqVIOFilter::innovationUpdate(
   const Matrix Ct =
       EqFoutputMatrixC(referenceState(), landmarkKeys_, groupEstimate(),
                        measurement, camera, true);
-  const Matrix Rused = (outputGainMatrix.rows() == Ct.rows() &&
-                        outputGainMatrix.cols() == Ct.rows())
-                           ? outputGainMatrix
-                           : Matrix::Identity(Ct.rows(), Ct.rows()) *
-                                 params_.measurementNoiseVariance;
+  const Matrix Rused =
+      measurementCovariance(measurement.size(), outputGainMatrix);
 
   const Vector zhat = measurementVector(estimatedMeasurement);
   const Vector z = measurementVector(measurement);
@@ -228,6 +227,15 @@ void EqVIOFilter::innovationUpdate(
                          [this](const Vector& delta_xi) -> Vector {
                            return liftInnovation(delta_xi, referenceState());
                          });
+}
+
+/// Resolve measurement covariance shape against the current measurement count.
+Matrix EqVIOFilter::measurementCovariance(
+    size_t measurementCount, const Matrix& outputGainMatrix) const {
+  const int d = 2 * dense(measurementCount);
+  return (outputGainMatrix.rows() == d && outputGainMatrix.cols() == d)
+             ? outputGainMatrix
+             : Matrix::Identity(d, d) * params_.measurementNoiseVariance;
 }
 
 /**
@@ -269,7 +277,8 @@ void EqVIOFilter::rebuildLandmarkIndex() {
  */
 void EqVIOFilter::reconcileLandmarks(
     VisionMeasurement& measurement,
-    const std::shared_ptr<const CameraModel>& camera) {
+    const std::shared_ptr<const CameraModel>& camera,
+    const Matrix& outputGainMatrix) {
   if (!camera && !measurement.empty()) {
     throw std::invalid_argument(
         "EqVIOFilter::reconcileLandmarks: camera is null");
@@ -288,7 +297,7 @@ void EqVIOFilter::reconcileLandmarks(
     }
   }
 
-  KeyVector removalKeys = detectOutliers(measurement, camera);
+  KeyVector removalKeys = detectOutliers(measurement, camera, outputGainMatrix);
 
   const KeyVector invalidKeys = invalidLandmarkKeys();
   removalKeys.insert(removalKeys.end(), invalidKeys.begin(), invalidKeys.end());
@@ -325,14 +334,16 @@ void EqVIOFilter::reconcileLandmarks(
 }
 
 /**
- * @brief Reject outliers using only absolute reprojection residual.
+ * @brief Reject outliers using absolute residual and Mahalanobis gating.
  *
- * This keeps the example/runtime path cheap and avoids using a partial
- * innovation covariance proxy for gating.
+ * The probabilistic gate uses a per-feature innovation covariance assembled
+ * from the landmark covariance block and the corresponding measurement-noise
+ * block.
  */
 KeyVector EqVIOFilter::detectOutliers(
     VisionMeasurement& measurement,
-    const std::shared_ptr<const CameraModel>& camera) const {
+    const std::shared_ptr<const CameraModel>& camera,
+    const Matrix& outputGainMatrix) const {
   const size_t maxOutliers = static_cast<size_t>(
       (1.0 - params_.featureRetention) * measurement.size());
   if (!camera || measurement.empty() || maxOutliers == 0 ||
@@ -342,30 +353,82 @@ KeyVector EqVIOFilter::detectOutliers(
 
   const VisionMeasurement yHat =
       measureSystemState(state(), landmarkKeys_, camera);
+  const Matrix Rused =
+      measurementCovariance(measurement.size(), outputGainMatrix);
+  const LandmarkGroup& Q = std::get<3>(decompose(groupEstimate()));
+  const Matrix& Sigma = errorCovariance();
 
-  std::vector<std::pair<Key, double>> residuals;
-  residuals.reserve(measurement.size());
+  struct OutlierCandidate {
+    Key key = 0;
+    bool absolute = false;
+    double score = 0.0;
+  };
+
+  std::vector<OutlierCandidate> candidates;
+  candidates.reserve(measurement.size());
+  size_t rowIndex = 0;
   for (const auto& [lmId, y] : measurement) {
     const auto itHat = yHat.find(lmId);
-    if (itHat == yHat.end()) continue;
-    const double errAbs = (y - itHat->second).norm();
-    if (errAbs > params_.outlierThresholdAbs) {
-      residuals.emplace_back(lmId, errAbs);
+    if (itHat == yHat.end()) {
+      ++rowIndex;
+      continue;
     }
+
+    const Vector2 residual = y - itHat->second;
+    const double errAbs = residual.norm();
+    if (errAbs > params_.outlierThresholdAbs) {
+      candidates.push_back({lmId, true, errAbs});
+      ++rowIndex;
+      continue;
+    }
+
+    const int row = 2 * dense(rowIndex);
+    const auto itIndex = landmarkIndexByKey_.find(lmId);
+    if (itIndex == landmarkIndexByKey_.end()) {
+      ++rowIndex;
+      continue;
+    }
+
+    const size_t landmarkIndex = itIndex->second;
+    const Matrix3 landmarkCov =
+        Sigma.block<3, 3>(landmarkOffset(landmarkIndex),
+                          landmarkOffset(landmarkIndex));
+    const Matrix23 Ci = EqFoutputMatrixCi(referenceState()
+                                              .cameraLandmarks[landmarkIndex],
+                                          Q[landmarkIndex], camera);
+    const Matrix2 featureInnovationCov =
+        Ci * landmarkCov * Ci.transpose() + Rused.block<2, 2>(row, row);
+    const Matrix2 Si =
+        0.5 * (featureInnovationCov + featureInnovationCov.transpose());
+    if (Si.array().isFinite().all()) {
+      const Eigen::LDLT<Matrix2> ldlt(Si);
+      if (ldlt.info() == Eigen::Success) {
+        const Vector2 whitenedResidual = ldlt.solve(residual);
+        const double errProb = residual.dot(whitenedResidual);
+        if (std::isfinite(errProb) && errProb > params_.outlierThresholdProb) {
+          candidates.push_back({lmId, false, errProb});
+        }
+      }
+    }
+    ++rowIndex;
   }
 
-  std::sort(
-      residuals.begin(), residuals.end(),
-      [](const auto& lhs, const auto& rhs) { return lhs.second > rhs.second; });
-  if (residuals.size() > maxOutliers) {
-    residuals.resize(maxOutliers);
+  std::sort(candidates.begin(), candidates.end(),
+            [](const OutlierCandidate& lhs, const OutlierCandidate& rhs) {
+              if (lhs.absolute != rhs.absolute) {
+                return lhs.absolute > rhs.absolute;
+              }
+              return lhs.score > rhs.score;
+            });
+  if (candidates.size() > maxOutliers) {
+    candidates.resize(maxOutliers);
   }
 
   KeyVector outlierKeys;
-  outlierKeys.reserve(residuals.size());
-  for (const auto& [lmId, _] : residuals) {
-    measurement.erase(lmId);
-    outlierKeys.push_back(lmId);
+  outlierKeys.reserve(candidates.size());
+  for (const OutlierCandidate& candidate : candidates) {
+    measurement.erase(candidate.key);
+    outlierKeys.push_back(candidate.key);
   }
   return outlierKeys;
 }

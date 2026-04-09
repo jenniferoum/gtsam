@@ -45,6 +45,8 @@ struct EqVIOFilterParams {
   double measurementNoiseVariance = 1e-4;
   /// Absolute reprojection residual threshold for outlier rejection.
   double outlierThresholdAbs = 1e8;
+  /// Mahalanobis-style reprojection residual threshold for outlier rejection.
+  double outlierThresholdProb = 1e8;
   /// Fraction of features to keep after ranking potential outliers (in [0, 1]).
   double featureRetention = 0.3;
   double biasOmegaProcessVariance = 0.001;
@@ -153,6 +155,10 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
                         const std::shared_ptr<const CameraModel>& camera,
                         const Matrix& outputGainMatrix);
 
+  /// Resolve measurement covariance from supplied `R` or default scalar noise.
+  Matrix measurementCovariance(size_t measurementCount,
+                               const Matrix& outputGainMatrix) const;
+
   /// Validate/store externally supplied landmark keys for seeded states.
   void setLandmarkKeys(const KeyVector& landmarkKeys);
 
@@ -161,12 +167,14 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
 
   /// Batch landmark add/remove bookkeeping around one vision update.
   void reconcileLandmarks(VisionMeasurement& measurement,
-                          const std::shared_ptr<const CameraModel>& camera);
+                          const std::shared_ptr<const CameraModel>& camera,
+                          const Matrix& outputGainMatrix);
 
-  /// Compute absolute-residual outliers and erase them from `measurement`.
+  /// Compute absolute/Mahalanobis outliers and erase them from `measurement`.
   KeyVector detectOutliers(
       VisionMeasurement& measurement,
-      const std::shared_ptr<const CameraModel>& camera) const;
+      const std::shared_ptr<const CameraModel>& camera,
+      const Matrix& outputGainMatrix) const;
 
   /// Return keys whose associated SOT3 scale is numerically invalid.
   KeyVector invalidLandmarkKeys() const;
