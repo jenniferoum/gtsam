@@ -760,9 +760,9 @@ virtual class SmartStereoProjectionFactor : gtsam::NonlinearFactor {
   bool isFarPoint() const;
 
   gtsam::GaussianFactor linearizeDamped(const gtsam::CameraSet<gtsam::StereoCamera>& cameras,
-      const double lambda) const;
+      const double _lambda) const;
   gtsam::GaussianFactor linearizeDamped(const gtsam::Values& values,
-      const double lambda) const;
+      const double _lambda) const;
 };
 
 #include <gtsam_unstable/slam/SmartStereoProjectionPoseFactor.h>

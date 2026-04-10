@@ -30,6 +30,7 @@ namespace gtsam {
 #include <gtsam/geometry/SL4.h>
 #include <gtsam/geometry/StereoPoint2.h>
 #include <gtsam/geometry/Unit3.h>
+#include <gtsam/geometry/SphericalCamera.h>
 #include <gtsam/navigation/ImuBias.h>
 #include <gtsam/navigation/NavState.h>
 
@@ -58,6 +59,7 @@ class Values {
   bool exists(gtsam::Key j) const;
   gtsam::KeyVector keys() const;
 
+  std::map<gtsam::Key,size_t> dims() const;
   gtsam::VectorValues zeroVectors() const;
 
   gtsam::Values retract(const gtsam::VectorValues& delta) const;
@@ -113,6 +115,7 @@ class Values {
   void insert(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3DS2>& camera);
   void insert(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3Fisheye>& camera);
   void insert(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3Unified>& camera);
+  void insert(gtsam::Key j, const gtsam::SphericalCamera& camera);
   void insert(gtsam::Key j, const gtsam::imuBias::ConstantBias& constant_bias);
   void insert(gtsam::Key j, const gtsam::NavState& nav_state);
   void insert(gtsam::Key j, double c);
@@ -157,6 +160,7 @@ class Values {
   void update(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3DS2>& camera);
   void update(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3Fisheye>& camera);
   void update(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3Unified>& camera);
+  void update(gtsam::Key j, const gtsam::SphericalCamera& camera);
   void update(gtsam::Key j, const gtsam::imuBias::ConstantBias& constant_bias);
   void update(gtsam::Key j, const gtsam::NavState& nav_state);
   void update(gtsam::Key j, double c);
@@ -201,6 +205,7 @@ class Values {
   void insert_or_assign(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3DS2>& camera);
   void insert_or_assign(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3Fisheye>& camera);
   void insert_or_assign(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3Unified>& camera);
+  void insert_or_assign(gtsam::Key j, const gtsam::SphericalCamera& camera);
   void insert_or_assign(gtsam::Key j, const gtsam::imuBias::ConstantBias& constant_bias);
   void insert_or_assign(gtsam::Key j, const gtsam::NavState& nav_state);
   void insert_or_assign(gtsam::Key j, double c);
@@ -243,6 +248,7 @@ class Values {
                  gtsam::PinholePose<gtsam::Cal3DS2>,
                  gtsam::PinholePose<gtsam::Cal3Fisheye>,
                  gtsam::PinholePose<gtsam::Cal3Unified>,
+                 gtsam::SphericalCamera,
                  gtsam::imuBias::ConstantBias,
                  gtsam::NavState,
                  double}>

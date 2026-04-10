@@ -1006,6 +1006,40 @@ TEST(Pose2, AdjointMap) {
 }
 
 /* ************************************************************************* */
+TEST(Pose2, AdjointTranspose) {
+  const Pose2 pose(Rot2::fromAngle(0.5), Point2(1.0, 2.0));
+  const Vector3 xi(0.2, -0.4, 0.7);
+
+  EXPECT(assert_equal(Vector(pose.AdjointMap().transpose() * xi),
+                      Vector(pose.AdjointTranspose(xi))));
+
+  Matrix33 actualH1, actualH2;
+  std::function<Vector3(const Pose2&, const Vector3&)> proxy =
+      [](const Pose2& g, const Vector3& x) {
+        return Vector3(g.AdjointTranspose(x));
+      };
+  pose.AdjointTranspose(xi, actualH1, actualH2);
+  EXPECT(assert_equal(numericalDerivative21(proxy, pose, xi), actualH1, 1e-8));
+  EXPECT(assert_equal(numericalDerivative22(proxy, pose, xi), actualH2));
+}
+
+/* ************************************************************************* */
+TEST(Pose2, adjointTranspose) {
+  const Vector3 xi(0.2, -0.4, 0.7);
+  const Vector3 y(-0.3, 0.5, 0.9);
+
+  Matrix33 Hxi, Hy;
+  const Vector3 actual = Pose2::adjointTranspose(xi, y, Hxi, Hy);
+  std::function<Vector3(const Vector3&, const Vector3&)> f =
+      [](const Vector3& x, const Vector3& v) {
+        return Pose2::adjointTranspose(x, v);
+      };
+  EXPECT(assert_equal(f(xi, y), actual));
+  EXPECT(assert_equal(numericalDerivative21(f, xi, y, 1e-5), Hxi, 1e-5));
+  EXPECT(assert_equal(numericalDerivative22(f, xi, y, 1e-5), Hy, 1e-5));
+}
+
+/* ************************************************************************* */
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);

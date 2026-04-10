@@ -21,18 +21,94 @@
 #include <chrono>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 
 namespace {
+constexpr const char* kDefaultBenchmarkDataset = "dubrovnik-16-22106-pre";
+constexpr const char* kProfileDataset = "dubrovnik-135-90642-pre";
+
+std::string usage() {
+  return "Usage: timeSFMBAL [--colamd] [--profile] "
+         "[--benchmark-action-json FILE] [BALfile]";
+}
+
+struct TimingRow {
+  std::string dataset;
+  double legacy = 0.0;
+  double newer = 0.0;
+};
+
 struct RunOptions {
   bool profile = false;
+  bool benchmarkActionJson = false;
+  std::string benchmarkActionJsonPath;
   std::vector<std::string> filenames;
 };
+
+std::string escapeJson(std::string value) {
+  std::string escaped;
+  escaped.reserve(value.size());
+  for (const char c : value) {
+    switch (c) {
+      case '\\':
+        escaped += "\\\\";
+        break;
+      case '"':
+        escaped += "\\\"";
+        break;
+      case '\n':
+        escaped += "\\n";
+        break;
+      case '\r':
+        escaped += "\\r";
+        break;
+      case '\t':
+        escaped += "\\t";
+        break;
+      default:
+        escaped += c;
+        break;
+    }
+  }
+  return escaped;
+}
+
+void writeBenchmarkActionJson(const std::vector<TimingRow>& rows,
+                              const std::string& outputPath) {
+  std::ofstream out(outputPath);
+  if (!out) {
+    throw runtime_error("Unable to open benchmark JSON output file: " +
+                        outputPath);
+  }
+
+  out << "[\n";
+  bool first = true;
+  const auto appendEntry = [&](const std::string& name, const double value) {
+    if (!first) out << ",\n";
+    first = false;
+    out << "  {\n";
+    out << "    \"name\": \"" << escapeJson(name) << "\",\n";
+    out << "    \"unit\": \"s\",\n";
+    out << "    \"value\": " << std::fixed << std::setprecision(9) << value
+        << "\n";
+    out << "  }";
+  };
+
+  for (const auto& row : rows) {
+    appendEntry("timeSFMBAL/" + row.dataset + "/MultifrontalCholesky",
+                row.legacy);
+    appendEntry("timeSFMBAL/" + row.dataset + "/MultifrontalSolver", row.newer);
+  }
+  out << "\n]\n";
+}
 
 RunOptions parseBalFiles(int argc, char* argv[]) {
   std::string filename;
   bool profile = false;
+  bool benchmarkActionJson = false;
+  std::string benchmarkActionJsonPath;
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "--colamd") == 0) {
       gUseSchur = false;
@@ -42,28 +118,45 @@ RunOptions parseBalFiles(int argc, char* argv[]) {
       profile = true;
       continue;
     }
+    if (strcmp(argv[i], "--benchmark-action-json") == 0) {
+      if (++i >= argc || argv[i][0] == '-') {
+        throw runtime_error(usage());
+      }
+      benchmarkActionJson = true;
+      benchmarkActionJsonPath = argv[i];
+      continue;
+    }
     if (argv[i][0] == '-') {
-      throw runtime_error("Usage: timeSFMBAL [--colamd] [--profile] [BALfile]");
+      throw runtime_error(usage());
     }
     if (!filename.empty()) {
-      throw runtime_error("Usage: timeSFMBAL [--colamd] [--profile] [BALfile]");
+      throw runtime_error(usage());
     }
     filename = argv[i];
   }
 
   if (profile && !filename.empty()) {
-    throw runtime_error("Usage: timeSFMBAL [--colamd] [--profile] [BALfile]");
+    throw runtime_error(usage());
+  }
+  if (profile && benchmarkActionJson) {
+    throw runtime_error(usage());
   }
 
   if (!filename.empty()) {
-    return {profile, {filename}};
+    return {profile, benchmarkActionJson, benchmarkActionJsonPath, {filename}};
   }
 
   if (profile) {
-    return {profile, {findExampleDataFile("dubrovnik-135-90642-pre")}};
+    return {profile, benchmarkActionJson, benchmarkActionJsonPath,
+            {findExampleDataFile(kProfileDataset)}};
   }
 
-  return {profile,
+  if (benchmarkActionJson) {
+    return {profile, benchmarkActionJson, benchmarkActionJsonPath,
+            {findExampleDataFile(kDefaultBenchmarkDataset)}};
+  }
+
+  return {profile, benchmarkActionJson, benchmarkActionJsonPath,
           {
               findExampleDataFile("dubrovnik-16-22106-pre"),
               findExampleDataFile("dubrovnik-88-64298-pre"),
@@ -100,11 +193,6 @@ double runSolver(const NonlinearFactorGraph& graph, const Values& initial,
 
 int main(int argc, char* argv[]) {
   const auto options = parseBalFiles(argc, argv);
-  struct TimingRow {
-    std::string dataset;
-    double legacy = 0.0;
-    double newer = 0.0;
-  };
   std::vector<TimingRow> rows;
 
   for (const auto& filename : options.filenames) {
@@ -145,6 +233,15 @@ int main(int argc, char* argv[]) {
       std::cout << "| " << row.dataset << " | " << row.legacy << " | "
                 << row.newer << " | " << speedup << "x |\n";
     }
+  }
+
+  if (options.benchmarkActionJson) {
+    if (rows.empty()) {
+      throw runtime_error("No benchmark rows found to write.");
+    }
+    writeBenchmarkActionJson(rows, options.benchmarkActionJsonPath);
+    std::cout << "\nWrote benchmark-action JSON to "
+              << options.benchmarkActionJsonPath << "\n";
   }
   return 0;
 }

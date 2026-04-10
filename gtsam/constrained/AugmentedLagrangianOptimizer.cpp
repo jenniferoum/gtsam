@@ -159,7 +159,8 @@ NonlinearFactorGraph AugmentedLagrangianOptimizer::augmentedLagrangianFunction(
   const double& muEq = state.muEq;
   for (size_t i = 0; i < eqConstraints.size(); i++) {
     const auto& constraint = eqConstraints.at(i);
-    Vector bias = state.lambdaEq[i] / muEq * constraint->sigmas();
+    Vector bias = state.lambdaEq[i] / muEq;
+    bias = bias.cwiseProduct(constraint->sigmas());
     auto penalty_l2 = constraint->penaltyFactor(muEq);
     graph.emplace_shared<BiasedFactor>(penalty_l2, bias);
   }
