@@ -482,7 +482,6 @@ class HybridSmoother {
       const gtsam::HybridNonlinearFactorGraph& graph,
       const gtsam::Values& initial,
       std::optional<size_t> maxNrLeaves = std::nullopt,
-      std::optional<size_t> marginalThreshold = std::nullopt,
       const std::optional<gtsam::Ordering> given_ordering = std::nullopt);
 
   void relinearize(
