@@ -30,6 +30,15 @@ namespace gtsam {
 
 namespace detail {
 
+// Type trait to detect ExtendedPose3 instantiations
+template <typename T>
+struct is_extended_pose3 : std::false_type {};
+
+template <int K, class Derived>
+struct is_extended_pose3<gtsam::ExtendedPose3<K, Derived>> : std::true_type {};
+
+template <typename T>
+constexpr bool is_extended_pose3_v = is_extended_pose3<T>::value;
 template <class VALUE>
 inline std::string attitudeFactorName() {
   if constexpr (std::is_same_v<VALUE, Rot3>) {
@@ -42,8 +51,11 @@ inline std::string attitudeFactorName() {
     return "Gal3AttitudeFactor";
   } else if constexpr (std::is_same_v<VALUE, Se23>) {
     return "Se23AttitudeFactor";
-  } else if constexpr (std::is_same_v<VALUE, ExtendedPose3d>) {
-    return "ExtendedPose3dAttitudeFactor";
+  } else if constexpr (is_extended_pose3_v<VALUE>) {
+    // Extract K from VALUE = ExtendedPose3<K, Derived>
+    constexpr int K = std::remove_reference_t<VALUE>::K;
+    std::string k_str = (K == Eigen::Dynamic) ? "d" : std::to_string(K);
+    return "ExtendedPose3AttitudeFactor<" + k_str + ">";
   } else {
     return "AttitudeFactor";
   }
@@ -193,6 +205,10 @@ using Rot3AttitudeFactor = AttitudeFactor<Rot3>;
 using Pose3AttitudeFactor = AttitudeFactor<Pose3>;
 using NavStateAttitudeFactor = AttitudeFactor<NavState>;
 using Gal3AttitudeFactor = AttitudeFactor<Gal3>;
+
+template <int K>
+using ExtendedPose3AttitudeFactor = AttitudeFactor<ExtendedPose3<K>>;
+
 using Se23AttitudeFactor = AttitudeFactor<Se23>;
 using ExtendedPose3dAttitudeFactor = AttitudeFactor<ExtendedPose3d>;
 
