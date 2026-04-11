@@ -719,6 +719,7 @@ class Pose3 {
 };
 
 #include <gtsam/geometry/ExtendedPose3.h>
+// An alias Se23 for ExtendedPose3 with k=2 is defined in python/gtsam/__init__.py
 template <K = {2, 3, 4, 6}>
 class ExtendedPose3 {
   // Standard Constructors

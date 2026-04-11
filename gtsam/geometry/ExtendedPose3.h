@@ -393,6 +393,7 @@ class ExtendedPose3
 };
 
 /// Convenience typedef for dynamic-k ExtendedPose3.
+using Se23 = ExtendedPose3<2>;
 using ExtendedPose3d = ExtendedPose3<Eigen::Dynamic>;
 
 template <int K, class Derived>
