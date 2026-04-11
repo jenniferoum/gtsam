@@ -202,4 +202,106 @@ template <typename A1, typename A2, typename T>
 struct traits<RangeFactorWithTransform<A1, A2, T> >
     : public Testable<RangeFactorWithTransform<A1, A2, T> > {};
 
+/**
+ * Ternary factor for a range measurement with a fixed sensor transform and
+ * an additive bias term.
+ * @ingroup sam
+ */
+template <typename A1, typename A2 = A1,
+          typename T = typename Range<A1, A2>::result_type>
+class RangeFactorWithTransformBias : public NoiseModelFactorN<A1, A2, T> {
+ private:
+  typedef RangeFactorWithTransformBias<A1, A2, T> This;
+  typedef NoiseModelFactorN<A1, A2, T> Base;
+
+  T measured_;        ///< The measured range.
+  A1 body_T_sensor_;  ///< The pose of the sensor in the body frame.
+
+ public:
+  /// Default constructor.
+  RangeFactorWithTransformBias() = default;
+
+  /// Construct from keys, a range measurement, a noise model, and transform.
+  RangeFactorWithTransformBias(Key key1, Key key2, Key key3, T measured,
+                               const SharedNoiseModel& noiseModel,
+                               const A1& body_T_sensor)
+      : Base(noiseModel, key1, key2, key3),
+        measured_(measured),
+        body_T_sensor_(body_T_sensor) {}
+
+  /// Destroy this factor.
+  ~RangeFactorWithTransformBias() override = default;
+
+  /// @return a deep copy of this factor
+  gtsam::NonlinearFactor::shared_ptr clone() const override {
+    return std::static_pointer_cast<gtsam::NonlinearFactor>(
+        gtsam::NonlinearFactor::shared_ptr(new This(*this)));
+  }
+
+  /// @return the measurement
+  const T& measured() const { return measured_; }
+
+  /// Evaluate the unwhitened range error and optional Jacobians.
+  Vector evaluateError(const A1& a1, const A2& a2, const T& bias,
+                       OptionalMatrixType H1 = OptionalNone,
+                       OptionalMatrixType H2 = OptionalNone,
+                       OptionalMatrixType H3 = OptionalNone) const override {
+    Matrix HposeCompose, HsensorRange, H2Range, Hlocal;
+    const A1 nav_T_sensor =
+        a1.compose(body_T_sensor_, H1 ? &HposeCompose : nullptr);
+    const T predictedRange =
+        Range<A1, A2>()(nav_T_sensor, a2, H1 ? &HsensorRange : nullptr,
+                        H2 ? &H2Range : nullptr);
+    const T predictedMeasurement = predictedRange + bias;
+    const Vector error = -traits<T>::Local(
+        predictedMeasurement, measured_, (H1 || H2 || H3) ? &Hlocal : nullptr);
+    if (H1) *H1 = -Hlocal * HsensorRange * HposeCompose;
+    if (H2) *H2 = -Hlocal * H2Range;
+    if (H3) *H3 = -Hlocal;
+    return error;
+  }
+
+  /// Matrix-reference overload for evaluateError.
+  Vector evaluateError(const A1& a1, const A2& a2, const T& bias, Matrix& H1,
+                       Matrix& H2, Matrix& H3) const {
+    return evaluateError(a1, a2, bias, &H1, &H2, &H3);
+  }
+
+  /// Print contents.
+  void print(
+      const std::string& s = "",
+      const KeyFormatter& keyFormatter = DefaultKeyFormatter) const override {
+    std::cout << s << "RangeFactorWithTransformBias" << std::endl;
+    body_T_sensor_.print("  sensor pose in body frame: ");
+    Base::print(s, keyFormatter);
+    traits<T>::Print(measured_, "  measured: ");
+  }
+
+  /// Check equality up to a tolerance.
+  bool equals(const NonlinearFactor& f, double tol) const override {
+    const This* p = dynamic_cast<const This*>(&f);
+    return p != nullptr && Base::equals(f, tol) &&
+           traits<T>::Equals(measured_, p->measured_, tol) &&
+           traits<A1>::Equals(body_T_sensor_, p->body_T_sensor_, tol);
+  }
+
+ private:
+#if GTSAM_ENABLE_BOOST_SERIALIZATION
+  friend class boost::serialization::access;
+  /// Serialize this factor.
+  template <typename ARCHIVE>
+  void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
+    ar& boost::serialization::make_nvp(
+        "NoiseModelFactor3", boost::serialization::base_object<Base>(*this));
+    ar& BOOST_SERIALIZATION_NVP(measured_);
+    ar& BOOST_SERIALIZATION_NVP(body_T_sensor_);
+  }
+#endif
+};  // \ RangeFactorWithTransformBias
+
+/// traits
+template <typename A1, typename A2, typename T>
+struct traits<RangeFactorWithTransformBias<A1, A2, T> >
+    : public Testable<RangeFactorWithTransformBias<A1, A2, T> > {};
+
 }  // namespace gtsam

@@ -34,6 +34,8 @@ typedef RangeFactor<Pose2, Point2> RangeFactor2D;
 typedef RangeFactor<Pose3, Point3> RangeFactor3D;
 typedef RangeFactorWithTransform<Pose2, Point2> RangeFactorWithTransform2D;
 typedef RangeFactorWithTransform<Pose3, Point3> RangeFactorWithTransform3D;
+typedef RangeFactorWithTransformBias<Pose2, Point2>
+    RangeFactorWithTransformBias2D;
 
 // Keys are deliberately *not* in sorted order to test that case.
 namespace {
@@ -42,6 +44,7 @@ static SharedNoiseModel model(noiseModel::Unit::Create(1));
 
 constexpr Key poseKey(2);
 constexpr Key pointKey(1);
+constexpr Key biasKey(3);
 constexpr double measurement(10.0);
 
 Vector factorError2D(const Pose2& pose, const Point2& point,
@@ -62,6 +65,12 @@ Vector factorErrorWithTransform2D(const Pose2& pose, const Point2& point,
 Vector factorErrorWithTransform3D(const Pose3& pose, const Point3& point,
                                   const RangeFactorWithTransform3D& factor) {
   return factor.evaluateError(pose, point);
+}
+
+Vector factorErrorWithTransformBias2D(
+    const Pose2& pose, const Point2& point, const double& bias,
+    const RangeFactorWithTransformBias2D& factor) {
+  return factor.evaluateError(pose, point, bias);
 }
 }  // namespace
 
@@ -315,6 +324,51 @@ TEST( RangeFactor, Jacobian3DWithTransform ) {
   // Verify the Jacobians are correct
   CHECK(assert_equal(H1Expected, H1Actual, 1e-9));
   CHECK(assert_equal(H2Expected, H2Actual, 1e-9));
+}
+
+/* ************************************************************************* */
+TEST(RangeFactor, ErrorAndJacobian2DWithTransformBias) {
+  Pose2 body_P_sensor(0.25, -0.10, -M_PI_2);
+  RangeFactorWithTransformBias2D factor(poseKey, pointKey, biasKey, measurement,
+                                        model, body_P_sensor);
+
+  KeyVector expectedKeys{poseKey, pointKey, biasKey};
+  CHECK(factor.keys() == expectedKeys);
+
+  Rot2 R(0.57);
+  Point2 t = Point2(1.0, 2.0) - R.rotate(body_P_sensor.translation());
+  Pose2 pose(R, t);
+  Point2 point(-4.0, 11.0);
+  const double bias = 0.5;
+
+  Values values;
+  values.insert(poseKey, pose);
+  values.insert(pointKey, point);
+  values.insert(biasKey, bias);
+
+  Vector actualError = factor.unwhitenedError(values);
+  Vector expectedError = (Vector(1) << 0.795630141).finished();
+  CHECK(assert_equal(expectedError, actualError, 1e-9));
+
+  Matrix H1Actual, H2Actual, H3Actual;
+  factor.evaluateError(pose, point, bias, H1Actual, H2Actual, H3Actual);
+
+  const std::function<Vector(const Pose2&, const Point2&, const double&)> h =
+      [&factor](const Pose2& poseValue, const Point2& pointValue,
+                const double& biasValue) {
+        return factorErrorWithTransformBias2D(poseValue, pointValue, biasValue,
+                                              factor);
+      };
+  Matrix H1Expected = numericalDerivative31<Vector, Pose2, Point2, double>(
+      h, pose, point, bias);
+  Matrix H2Expected = numericalDerivative32<Vector, Pose2, Point2, double>(
+      h, pose, point, bias);
+  Matrix H3Expected = numericalDerivative33<Vector, Pose2, Point2, double>(
+      h, pose, point, bias);
+
+  CHECK(assert_equal(H1Expected, H1Actual, 1e-9));
+  CHECK(assert_equal(H2Expected, H2Actual, 1e-9));
+  CHECK(assert_equal(H3Expected, H3Actual, 1e-9));
 }
 
 /* ************************************************************************* */
