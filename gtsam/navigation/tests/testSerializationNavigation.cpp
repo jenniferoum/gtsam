@@ -134,6 +134,50 @@ TEST(Pose3AttitudeFactor, Serialization) {
 }
 
 /* ************************************************************************* */
+TEST(NavStateAttitudeFactor, Serialization) {
+  Unit3 nDown(0, 0, -1);
+  SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
+  NavStateAttitudeFactor factor(0, nDown, model);
+
+  EXPECT(serializationTestHelpers::equalsObj(factor));
+  EXPECT(serializationTestHelpers::equalsXML(factor));
+  EXPECT(serializationTestHelpers::equalsBinary(factor));
+}
+
+/* ************************************************************************* */
+TEST(Gal3AttitudeFactor, Serialization) {
+  Unit3 nDown(0, 0, -1);
+  SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
+  Gal3AttitudeFactor factor(0, nDown, model);
+
+  EXPECT(serializationTestHelpers::equalsObj(factor));
+  EXPECT(serializationTestHelpers::equalsXML(factor));
+  EXPECT(serializationTestHelpers::equalsBinary(factor));
+}
+
+/* ************************************************************************* */
+TEST(Se23AttitudeFactor, Serialization) {
+  Unit3 nDown(0, 0, -1);
+  SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
+  Se23AttitudeFactor factor(0, nDown, model);
+
+  EXPECT(serializationTestHelpers::equalsObj(factor));
+  EXPECT(serializationTestHelpers::equalsXML(factor));
+  EXPECT(serializationTestHelpers::equalsBinary(factor));
+}
+
+/* ************************************************************************* */
+TEST(ExtendedPose3dAttitudeFactor, Serialization) {
+  Unit3 nDown(0, 0, -1);
+  SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
+  ExtendedPose3dAttitudeFactor factor(0, nDown, model);
+
+  EXPECT(serializationTestHelpers::equalsObj(factor));
+  EXPECT(serializationTestHelpers::equalsXML(factor));
+  EXPECT(serializationTestHelpers::equalsBinary(factor));
+}
+
+/* ************************************************************************* */
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);
