@@ -399,6 +399,78 @@ virtual class Pose3AttitudeFactor : gtsam::NoiseModelFactor {
   void serialize() const;
 };
 
+virtual class NavStateAttitudeFactor : gtsam::NoiseModelFactor {
+  NavStateAttitudeFactor(gtsam::Key key, const gtsam::Unit3& nRef,
+                         const gtsam::noiseModel::Diagonal* model,
+                         const gtsam::Unit3& bMeasured);
+  NavStateAttitudeFactor(gtsam::Key key, const gtsam::Unit3& nRef,
+                         const gtsam::noiseModel::Diagonal* model);
+  NavStateAttitudeFactor();
+  void print(string s = "", const gtsam::KeyFormatter& keyFormatter =
+                                gtsam::DefaultKeyFormatter) const;
+  bool equals(const gtsam::NonlinearFactor& expected, double tol) const;
+  gtsam::Unit3 nRef() const;
+  gtsam::Unit3 bMeasured() const;
+  gtsam::Vector evaluateError(const gtsam::NavState& state);
+
+  // enable serialization functionality
+  void serialize() const;
+};
+
+virtual class Gal3AttitudeFactor : gtsam::NoiseModelFactor {
+  Gal3AttitudeFactor(gtsam::Key key, const gtsam::Unit3& nRef,
+                     const gtsam::noiseModel::Diagonal* model,
+                     const gtsam::Unit3& bMeasured);
+  Gal3AttitudeFactor(gtsam::Key key, const gtsam::Unit3& nRef,
+                     const gtsam::noiseModel::Diagonal* model);
+  Gal3AttitudeFactor();
+  void print(string s = "", const gtsam::KeyFormatter& keyFormatter =
+                                gtsam::DefaultKeyFormatter) const;
+  bool equals(const gtsam::NonlinearFactor& expected, double tol) const;
+  gtsam::Unit3 nRef() const;
+  gtsam::Unit3 bMeasured() const;
+  gtsam::Vector evaluateError(const gtsam::Gal3& state);
+
+  // enable serialization functionality
+  void serialize() const;
+};
+
+virtual class Se23AttitudeFactor : gtsam::NoiseModelFactor {
+  Se23AttitudeFactor(gtsam::Key key, const gtsam::Unit3& nRef,
+                     const gtsam::noiseModel::Diagonal* model,
+                     const gtsam::Unit3& bMeasured);
+  Se23AttitudeFactor(gtsam::Key key, const gtsam::Unit3& nRef,
+                     const gtsam::noiseModel::Diagonal* model);
+  Se23AttitudeFactor();
+  void print(string s = "", const gtsam::KeyFormatter& keyFormatter =
+                                gtsam::DefaultKeyFormatter) const;
+  bool equals(const gtsam::NonlinearFactor& expected, double tol) const;
+  gtsam::Unit3 nRef() const;
+  gtsam::Unit3 bMeasured() const;
+  gtsam::Vector evaluateError(const gtsam::Se23& state);
+
+  // enable serialization functionality
+  void serialize() const;
+};
+
+virtual class ExtendedPose3dAttitudeFactor : gtsam::NoiseModelFactor {
+  ExtendedPose3dAttitudeFactor(gtsam::Key key, const gtsam::Unit3& nRef,
+                               const gtsam::noiseModel::Diagonal* model,
+                               const gtsam::Unit3& bMeasured);
+  ExtendedPose3dAttitudeFactor(gtsam::Key key, const gtsam::Unit3& nRef,
+                               const gtsam::noiseModel::Diagonal* model);
+  ExtendedPose3dAttitudeFactor();
+  void print(string s = "", const gtsam::KeyFormatter& keyFormatter =
+                                gtsam::DefaultKeyFormatter) const;
+  bool equals(const gtsam::NonlinearFactor& expected, double tol) const;
+  gtsam::Unit3 nRef() const;
+  gtsam::Unit3 bMeasured() const;
+  gtsam::Vector evaluateError(const gtsam::ExtendedPose3d& state);
+
+  // enable serialization functionality
+  void serialize() const;
+};
+
 #include <gtsam/navigation/GPSFactor.h>
 virtual class GPSFactor : gtsam::NonlinearFactor{
   GPSFactor(gtsam::Key key, const gtsam::Point3& gpsIn,
