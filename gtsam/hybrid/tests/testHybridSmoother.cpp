@@ -76,7 +76,7 @@ TEST(HybridSmoother, Error) {
 
   HybridValues delta = smoother.optimize();
 
-  double expected_error = 1.238331;
+  double expected_error = 1.238331316;
 
   double hybrid_error = smoother.error(delta);
   // regression
