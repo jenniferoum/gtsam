@@ -413,16 +413,23 @@ Gal3::Jacobian Gal3::ExpmapDerivative(const TangentVector& xi) {
 }
 
 //------------------------------------------------------------------------------
+Gal3::Jacobian Gal3::LogmapDerivative(const TangentVector& xi) {
+  // Analytical implementation via the chain rule identity
+  //   Logmap(Expmap(xi)) = xi
+  //   => dLogmap/dg |_{g=Expmap(xi)} * dExpmap/dxi = I
+  //   => LogmapDerivative(xi) = ExpmapDerivative(xi)^{-1}
+  //
+  // ExpmapDerivative is already analytical (computed inside Gal3::Expmap as
+  // Hxi).  Inverting it avoids the Rot3::Logmap singularity at ||theta|| = pi
+  // that the old numerical-perturbation approach inherited.
+  if (xi.norm() < kSmallAngleThreshold) return Jacobian::Identity();
+  return ExpmapDerivative(xi).inverse();
+}
+
+//------------------------------------------------------------------------------
 Gal3::Jacobian Gal3::LogmapDerivative(const Gal3& g) {
-    // Related to the inverse of left Jacobian in Equations 31-36, Pages 10-11
-    // NOTE: Using numerical approximation instead of implementing the analytical
-    // expression for the inverse Jacobian. Future work to replace this
-    // with analytical derivative.
-    TangentVector xi = Gal3::Logmap(g);
-    if (xi.norm() < kSmallAngleThreshold) return Jacobian::Identity();
-    std::function<TangentVector(const Gal3&)> fn =
-        [](const Gal3& g_in) { return Gal3::Logmap(g_in); };
-    return numericalDerivative11<TangentVector, Gal3>(fn, g, 1e-5);
+  TangentVector xi = Gal3::Logmap(g);
+  return LogmapDerivative(xi);
 }
 
 //------------------------------------------------------------------------------
