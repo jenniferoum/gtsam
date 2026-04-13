@@ -191,8 +191,10 @@ int main() {
       const replay::BufferedImuPropagation step =
           replay::makeBufferedImuPropagation(imuBuffer, currentTime,
                                              event.tAbs);
+      for (size_t i = 0; i < step.imuInputs.size(); ++i) {
+        filter->predict(step.imuInputs[i], step.dts[i]);
+      }
       if (!step.imuInputs.empty()) {
-        filter->predict(step.imuInputs, step.dts);
         currentTime += step.propagatedTime;
       }
       if (step.trimCount > 0) {
@@ -202,11 +204,7 @@ int main() {
                                 step.trimCount));
       }
 
-      const Matrix R =
-          Matrix::Identity(static_cast<int>(2 * event.vision.size()),
-                           static_cast<int>(2 * event.vision.size())) *
-          params.measurementNoiseVariance;
-      filter->update(event.vision, camera, R);
+      filter->update(event.vision, camera);
     }
 
     const State finalEstimate = filter ? filter->state() : xi0;

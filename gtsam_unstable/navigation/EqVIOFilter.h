@@ -101,18 +101,15 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   void initializeFromIMU(const IMUInput& imu);
 
   /**
-   * @brief Propagate filter state across a sequence of IMU hold intervals.
+   * @brief Propagate filter state across one IMU hold interval.
    *
-   * Each hold interval `(imuInputs[i], dts[i])` is propagated via the explicit
-   * base-class `predictWithJacobian(...)` path, so mean and covariance advance
-   * together.
+   * The hold `(imu, dt)` is propagated via the explicit base-class
+   * `predictWithJacobian(...)` path, so mean and covariance advance together.
    *
-   * @param imuInputs IMU samples defining zero-order holds.
-   * @param dts Hold durations (seconds), one per sample.
-   * @throws std::invalid_argument if input sizes differ.
+   * @param imu IMU sample defining the zero-order hold.
+   * @param dt Hold duration in seconds.
    */
-  void predict(const std::vector<IMUInput>& imuInputs,
-               const std::vector<double>& dts);
+  void predict(const IMUInput& imu, double dt);
 
   /**
    * @brief Apply one visual correction step with dynamic landmark management.
@@ -120,14 +117,24 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
    * The method removes stale landmarks, rejects outliers, inserts new
    * landmarks, performs update, and prunes numerically invalid landmarks.
    *
+   * Uses `measurementNoiseVariance * I` with the correct runtime dimension.
+   */
+  void update(const VisionMeasurement& measurement,
+              const std::shared_ptr<const CameraModel>& camera);
+
+  /**
+   * @brief Apply one visual correction step with explicit measurement
+   * covariance.
+   *
    * @param measurement Observed image points keyed by landmark id.
    * @param camera Camera model used for projection/linearization.
-   * @param R Optional measurement covariance; if empty/wrong-sized, defaults to
-   *          `measurementNoiseVariance * I`.
+   * @param R Measurement covariance matching the input measurement dimension.
+   * @throws std::invalid_argument if `R` is not exactly `2M x 2M`, where
+   *         `M = measurement.size()`.
    */
   void update(const VisionMeasurement& measurement,
               const std::shared_ptr<const CameraModel>& camera,
-              const Matrix& R = Matrix());
+              const Matrix& R);
 
   /// True after IMU-based initialization.
   bool isInitialized() const { return initialized_; }
@@ -151,7 +158,7 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   /// Run innovation update on currently matched measurements.
   void innovationUpdate(const VisionMeasurement& measurement,
                         const std::shared_ptr<const CameraModel>& camera,
-                        const Matrix& outputGainMatrix);
+                        const Matrix& measurementCovariance);
 
   /// Validate/store externally supplied landmark keys for seeded states.
   void setLandmarkKeys(const KeyVector& landmarkKeys);

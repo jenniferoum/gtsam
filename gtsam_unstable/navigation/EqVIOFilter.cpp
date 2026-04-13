@@ -88,35 +88,58 @@ void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
 }
 
 /**
- * @brief Propagate mean/covariance jointly over buffered IMU intervals.
- *
- * Uses the explicit base-class `predictWithJacobian(...)` path per
- * positive-duration hold.
+ * @brief Propagate mean/covariance jointly over one IMU hold interval.
  */
-void EqVIOFilter::predict(const std::vector<IMUInput>& imuInputs,
-                          const std::vector<double>& dts) {
-  if (!initialized_ || imuInputs.empty()) {
+void EqVIOFilter::predict(const IMUInput& imu, double dt) {
+  if (!initialized_ || dt <= 0.0) {
     return;
   }
-  if (imuInputs.size() != dts.size()) {
-    throw std::invalid_argument(
-        "EqVIOFilter::propagate: imuInputs and dts size mismatch");
+
+  const Matrix A = EqFStateMatrixA(groupEstimate(), referenceState(), imu);
+  const Lift lift_u(imu, dt);
+
+  const Matrix B = EqFInputMatrixB(groupEstimate(), referenceState());
+  const Matrix Qc = B * params_.inputNoise * B.transpose() +
+                    stateProcessNoise(referenceState().n());
+
+  Base::template predictWithJacobian<1>(lift_u, A, Qc, dt);
+}
+
+/**
+ * @brief Visual update entry point using default isotropic measurement noise.
+ */
+void EqVIOFilter::update(const VisionMeasurement& measurement,
+                         const std::shared_ptr<const CameraModel>& camera) {
+  if (!initialized_) {
+    return;
   }
 
-  for (size_t i = 0; i < imuInputs.size(); ++i) {
-    const double dt = dts[i];
-    if (dt <= 0.0) continue;
+  VisionMeasurement matchedMeasurement = measurement;
+  reconcileLandmarks(matchedMeasurement, camera);
 
-    const IMUInput imu = imuInputs[i];
-    const Matrix A = EqFStateMatrixA(groupEstimate(), referenceState(), imu);
-    const Lift lift_u(imu, dt);
-
-    const Matrix B = EqFInputMatrixB(groupEstimate(), referenceState());
-    const Matrix Qc = B * params_.inputNoise * B.transpose() +
-                      stateProcessNoise(referenceState().n());
-
-    Base::template predictWithJacobian<1>(lift_u, A, Qc, dt);
+  if (matchedMeasurement.empty()) {
+    return;
   }
+
+  const int dim = 2 * dense(matchedMeasurement.size());
+  const Matrix matchedCovariance =
+      Matrix::Identity(dim, dim) * params_.measurementNoiseVariance;
+  innovationUpdate(matchedMeasurement, camera, matchedCovariance);
+
+  const KeyVector invalidKeys = invalidLandmarkKeys();
+  if (!invalidKeys.empty()) {
+    const KeySet invalidKeySet(invalidKeys.begin(), invalidKeys.end());
+    std::vector<size_t> retainedIndices;
+    retainedIndices.reserve(landmarkKeys_.size());
+    for (size_t i = 0; i < landmarkKeys_.size(); ++i) {
+      if (invalidKeySet.count(landmarkKeys_[i]) == 0) {
+        retainedIndices.push_back(i);
+      }
+    }
+    applyLandmarkStructureChange(retainedIndices, {});
+  }
+
+  assert(!errorCovariance().hasNaN());
 }
 
 /**
@@ -136,8 +159,21 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
     return;
   }
 
+  const int fullDim = 2 * dense(measurement.size());
+  if (R.rows() != fullDim || R.cols() != fullDim) {
+    throw std::invalid_argument("EqVIOFilter::update: measurement covariance "
+                                "must be 2M x 2M");
+  }
+
   VisionMeasurement matchedMeasurement = measurement;
   reconcileLandmarks(matchedMeasurement, camera);
+
+  assert(matchedMeasurement.size() == measurement.size());
+  if (matchedMeasurement.size() != measurement.size()) {
+    throw std::invalid_argument(
+        "EqVIOFilter::update: explicit measurement covariance does not "
+        "support outlier filtering or measurement set changes");
+  }
 
   if (matchedMeasurement.empty()) {
     return;
@@ -188,13 +224,13 @@ Matrix EqVIOFilter::stateProcessNoise(size_t nLandmarks) const {
 /**
  * @brief Apply innovation update for matched measurements.
  *
- * If `outputGainMatrix` is not a valid measurement covariance shape, the method
- * falls back to isotropic `measurementNoiseVariance`.
+ * The supplied covariance must exactly match the current measurement
+ * dimension.
  */
 void EqVIOFilter::innovationUpdate(
     const VisionMeasurement& measurement,
     const std::shared_ptr<const CameraModel>& camera,
-    const Matrix& outputGainMatrix) {
+    const Matrix& measurementCovariance) {
   if (measurement.empty()) return;
   if (!camera) {
     throw std::invalid_argument(
@@ -216,15 +252,10 @@ void EqVIOFilter::innovationUpdate(
   const Matrix Ct =
       EqFoutputMatrixC(referenceState(), landmarkKeys_, groupEstimate(),
                        measurement, camera, true);
-  const Matrix Rused = (outputGainMatrix.rows() == Ct.rows() &&
-                        outputGainMatrix.cols() == Ct.rows())
-                           ? outputGainMatrix
-                           : Matrix::Identity(Ct.rows(), Ct.rows()) *
-                                 params_.measurementNoiseVariance;
 
   const Vector zhat = measurementVector(estimatedMeasurement);
   const Vector z = measurementVector(measurement);
-  Base::updateWithVector(zhat, Ct, z, Rused,
+  Base::updateWithVector(zhat, Ct, z, measurementCovariance,
                          [this](const Vector& delta_xi) -> Vector {
                            return liftInnovation(delta_xi, referenceState());
                          });

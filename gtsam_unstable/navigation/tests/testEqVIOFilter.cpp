@@ -107,7 +107,7 @@ IMUInput ImuFixture() {
 bool IsFinite(const Matrix& M) { return M.array().isFinite().all(); }
 
 void PropagateSingle(EqVIOFilter& filter, const IMUInput& imu, double dt) {
-  filter.predict(std::vector<IMUInput>{imu}, std::vector<double>{dt});
+  filter.predict(imu, dt);
 }
 
 State integrateSystemFunction(const State& state, const IMUInput& velocity,
@@ -368,8 +368,9 @@ TEST(EqVIOFilter, BatchLandmarkStructureChange) {
   EXPECT_LONGS_EQUAL(30, filter.errorCovariance().rows());
 }
 
-// Verifies supplied R does not override the absolute-residual outlier gate.
-TEST(EqVIOFilter, AbsoluteOutlierGateWithSuppliedR) {
+// Verifies explicit measurement covariance requires the measurement set to
+// remain unchanged through reconciliation.
+TEST(EqVIOFilter, ExplicitCovarianceRejectsFilteredMeasurement) {
   EqVIOFilterParams params;
   params.outlierThresholdAbs = 1e-3;
   params.featureRetention = 0.0;
@@ -385,9 +386,25 @@ TEST(EqVIOFilter, AbsoluteOutlierGateWithSuppliedR) {
   meas[key] = meas.at(key) + Point2(0.1, 0.1);
 
   const Matrix R = Matrix::Identity(2, 2) * 1e6;
-  filter.update(meas, camera, R);
+  CHECK_EXCEPTION(filter.update(meas, camera, R), std::invalid_argument);
+}
 
-  EXPECT_LONGS_EQUAL(0, filter.state().n());
+// Verifies explicit measurement covariance must match the input measurement.
+TEST(EqVIOFilter, RejectsWrongSizedMeasurementCovariance) {
+  EqVIOFilterParams params;
+
+  const State xi0 = MakeState1();
+  const Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim()) * 1e-3;
+  EqVIOFilter filter(xi0, Sigma0, Keys1(), params);
+  auto camera =
+      std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
+
+  const VisionMeasurement meas =
+      measureSystemState(filter.state(), Keys1(), camera);
+
+  CHECK_EXCEPTION(filter.update(meas, camera, Matrix()), std::invalid_argument);
+  CHECK_EXCEPTION(filter.update(meas, camera, Matrix::Identity(4, 4)),
+                  std::invalid_argument);
 }
 
 // Verifies EqF linearization matrices have expected shapes and finite entries.

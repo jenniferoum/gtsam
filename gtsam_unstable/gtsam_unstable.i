@@ -866,8 +866,9 @@ class EqVIOFilter {
               const gtsam::KeyVector& landmarkKeys,
               const gtsam::eqvio::EqVIOFilterParams& params);
   void initializeFromIMU(const gtsam::eqvio::IMUInput& imu);
-  void predict(const std::vector<gtsam::eqvio::IMUInput>& imuInputs,
-               const std::vector<double>& dts);
+  void predict(const gtsam::eqvio::IMUInput& imu, double dt);
+  void update(const std::map<gtsam::Key, gtsam::Point2>& measurement,
+              const std::shared_ptr<gtsam::eqvio::CameraModel>& camera);
   void update(const std::map<gtsam::Key, gtsam::Point2>& measurement,
               const std::shared_ptr<gtsam::eqvio::CameraModel>& camera,
               const gtsam::Matrix& R);
