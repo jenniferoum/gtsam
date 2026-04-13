@@ -9,6 +9,7 @@ For reviewing PRs:
 * Classes are Uppercase, methods and functions lowerMixedCase.
 * Public fields in structs keep plain names (no trailing underscore).
 * Apart from those naming conventions, we adopt Google C++ style.
+* Prefer concise, elegant examples: use the fewest helpers possible, favor direct construction and small local functors/lambdas over extra adapter functions.
 * Notebooks in `*/doc/*.ipynb` and `*/examples/*.ipynb` should follow the standard preamble:
   1) title/introduction markdown cell,
   2) copyright markdown cell tagged `remove-cell`,
