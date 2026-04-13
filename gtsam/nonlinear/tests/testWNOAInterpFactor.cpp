@@ -38,10 +38,7 @@ using namespace gtsam;
 using symbol_shorthand::P;
 using symbol_shorthand::V;
 
-static Vector Q_p1 = Vector1::Ones();
-static Vector Q_p2 = Vector2::Ones();
 static Vector Q_p3 = Vector3::Ones();
-static Vector Q_se2 = Vector3::Ones();
 static Vector Q_se3 = Vector6::Ones();
 static double timestep = 0.1;
 
@@ -61,16 +58,13 @@ static Pose3 p0_se3 = Pose3::Expmap(Vector6(0.5, 0.0, 0.0, 0.0, 0.0, 0.0));
 static Vector6 v0_se3(1, 0.0, 0.5, 0.1, 0.0, 0.0);
 // Define Second Pose with same velocity (to get an error)
 static Pose3 p1_se3 = p0_se3.expmap(timestep * v0_se3);
-static Vector6 v1_se3 = v0_se3;
 // Define Third Pose with same vel
 static Pose3 p2_se3 = p0_se3.expmap(2 * timestep * v0_se3);
 static Vector6 v2_se3 = v0_se3;
 // Define Third Pose with same vel
 static Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
-static Vector6 v3_se3 = v0_se3;
 // Define Third Pose with same vel
 static Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
-static Vector6 v4_se3 = v0_se3;
 
 // Define interpolation parameters
 // Define estimated and interpolated states for testing
@@ -132,7 +126,6 @@ TEST(WNOAInterp, Constructor) {
   const auto factor = WNOAInterpFactor<Point3>(prior, estimatedStates,
                                                interpolatedStates, Q_p3);
   // get factor keys
-  KeyVector inner_keys = prior->keys();
   KeyVector outer_keys = factor.keys();
   // Make sure keys defined properly
   CHECK(outer_keys.size() == 4);
@@ -171,7 +164,6 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   values.insert(V(2), Vector3::Zero().eval());
   // compute residuals
   auto residual1 = factor->unwhitenedError(values);
-  auto residual2 = prior->evaluateError(p0_p3);  // same as start pose
   auto res_actual = Vector3::Zero().eval();
   CHECK(assert_equal(residual1, res_actual, 1e-12));
   // CHECK(assert_equal(residual2, res_actual, 1e-12));
@@ -187,7 +179,6 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   values.update(V(2), Vector3::Zero().eval());
   // Evaluate
   residual1 = factor->unwhitenedError(values);
-  residual2 = prior->evaluateError(p1_p3);
   CHECK(assert_equal(residual1, res_actual, 1e-12));
   // CHECK(assert_equal(residual2, res_actual, 1e-12));
 
@@ -202,7 +193,6 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   values.update(V(2), v0_p3);
   // Evaluate
   residual1 = factor->unwhitenedError(values);
-  residual2 = prior->evaluateError(p1_p3);
   CHECK(assert_equal(residual1, res_actual, 1e-12));
   // CHECK(assert_equal(residual2, res_actual, 1e-12));
 }
@@ -257,9 +247,9 @@ TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
   values.insert(V(2), v2_se3);
 
   // Check pose residuals
-  
+
   auto res_btwn = between_factor->evaluateError(p0_se3, p1_se3);  // original
-  auto res_interp = factor.unwhitenedError(values);  // new
+  auto res_interp = factor.unwhitenedError(values);               // new
   CHECK(assert_equal(res_btwn, res_interp, 1e-12));
 }
 
@@ -296,10 +286,9 @@ TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
 
   // Check that residual is the same when we interpolate
   auto res_btwn = between_factor->evaluateError(p1_se3, p3_se3);  // original
-  auto res_btwn_interp = factor.unwhitenedError(values);  // new
-  // Check that residuals match between 
+  auto res_btwn_interp = factor.unwhitenedError(values);          // new
+  // Check that residuals match between
   CHECK(assert_equal(res_btwn, res_btwn_interp, 1e-12));
-
 }
 
 /* *************************************************************************
@@ -323,7 +312,7 @@ TEST(WNOAInterp, JacobianPoint3UnaryPose) {
   // Create container for Jacobians
   vector<Matrix> H(factor.keys().size());
   // Get residual and Jacobian
-  auto residual = factor.unwhitenedError(values, &H);
+  factor.unwhitenedError(values, &H);
 
   unordered_map<Key, Matrix> Jacs;
   KeyVector factor_keys = factor.keys();
@@ -384,7 +373,7 @@ TEST(WNOAInterp, JacobianSE3UnaryPose) {
   // Create container for Jacobians
   vector<Matrix> H(factor.keys().size());
   // Get residual and Jacobian
-  auto residual = factor.unwhitenedError(values, &H);
+  factor.unwhitenedError(values, &H);
 
   unordered_map<Key, Matrix> Jacs;
   KeyVector factor_keys = factor.keys();
@@ -470,7 +459,7 @@ TEST(WNOAInterp, Interpolator) {
 
   // Get analytic Jacobians
   vector<Matrix> H(8);
-  auto [pose_est, vel_est] = interpolator.interpolatePoseAndVelocity(
+  interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Pose3>(p0_se3, v0_se3, 0.0),
       TimestampedPoseVelocity<Pose3>(p2_se3, v2_se3, 2 * timestep), timestep,
       &H);
