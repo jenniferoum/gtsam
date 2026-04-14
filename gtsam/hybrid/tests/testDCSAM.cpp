@@ -152,6 +152,13 @@ TEST(DCSAM, SimpleSlamBatch) {
   dcsam.update(graph, initialGuess);
   HybridValues dcvals = dcsam.calculateEstimate();
 
+  VectorValues values;
+  for (size_t i = 0; i <= 7; i++) {
+    values.insert(X(i), Vector2::Zero());
+  }
+  // regression check
+  EXPECT_DOUBLES_EQUAL(2.399981134, dcsam.error(values), 1e-8);
+
   // Values from the DCSAM repo
   Values expectedContinuous;
   expectedContinuous.insert<Pose2>(
