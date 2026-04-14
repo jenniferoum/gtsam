@@ -657,6 +657,21 @@ TEST(Gal3, Jacobian_Logmap) {
 }
 
 /* ************************************************************************* */
+TEST(Gal3, LogmapDerivativeInverseConsistency) {
+  Vector10 xi =
+      (Vector10() << 0.3, -0.2, 0.1, 0.5, -0.4, 0.2, -0.3, 0.2, -0.1, 0.05)
+          .finished();
+
+  Gal3::Jacobian Jexp, Jlog;
+
+  Gal3::Expmap(xi, Jexp);
+  Jlog = Gal3::LogmapDerivative(xi);
+
+  Matrix I = Jlog * Jexp;
+  EXPECT(assert_equal(Matrix::Identity(10, 10), I, 1e-6));
+}
+
+/* ************************************************************************* */
 TEST(Gal3, Jacobian_Expmap) {
     // Test data
     Vector10 xi = (Vector10() <<

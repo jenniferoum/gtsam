@@ -419,11 +419,36 @@ Gal3::Jacobian Gal3::LogmapDerivative(const TangentVector& xi) {
   //   => dLogmap/dg |_{g=Expmap(xi)} * dExpmap/dxi = I
   //   => LogmapDerivative(xi) = ExpmapDerivative(xi)^{-1}
   //
-  // ExpmapDerivative is already analytical (computed inside Gal3::Expmap as
-  // Hxi).  Inverting it avoids the Rot3::Logmap singularity at ||theta|| = pi
-  // that the old numerical-perturbation approach inherited.
+  // Use the known SO(3) top-left block analytically and treat the remaining
+  // 7x7 block of ExpmapDerivative as opaque. Since the Jacobian is block lower
+  // triangular,
+  //
+  //   J = [Jr  0]
+  //       [L   B]
+  //
+  // with Jr the SO(3) right Jacobian, we can invert it as
+  //
+  //   J^{-1} = [Jr^{-1}                  0]
+  //            [-B^{-1} L Jr^{-1}   B^{-1}]
+  //
+  // This avoids a dense 10x10 inverse while preserving the exact SO(3) block.
   if (xi.norm() < kSmallAngleThreshold) return Jacobian::Identity();
-  return ExpmapDerivative(xi).inverse();
+
+  const Vector3 w = xi_w(xi);
+  const so3::DexpFunctor local(w);
+  const Matrix3 Jr_inv = local.InvJacobian().right();
+
+  const Jacobian J = ExpmapDerivative(xi);  
+  const auto L = J.block<7, 3>(3, 0);
+  const Matrix7 B = J.block<7, 7>(3, 3);
+
+  Eigen::PartialPivLU<Matrix7> lu(B);
+
+  Jacobian H = Jacobian::Zero();
+  H.block<3, 3>(0, 0) = Jr_inv;
+  H.block<7, 7>(3, 3) = lu.solve(Matrix7::Identity());
+  H.block<7, 3>(3, 0) = -lu.solve(L * Jr_inv);
+  return H;
 }
 
 //------------------------------------------------------------------------------
