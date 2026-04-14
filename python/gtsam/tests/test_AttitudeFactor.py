@@ -46,7 +46,7 @@ class TestAttitudeFactor(GtsamTestCase):
             np.array([-5.0, 8.0, -11.0]),
             np.array([0.2, -0.4, 0.6]),
         )
-        self.check_factor(gtsam.NavStateAttitudeFactor, state)
+        self.check_factor(gtsam.AttitudeFactorNavState, state)
 
     def test_gal3_attitude_factor(self):
         state = gtsam.Gal3(
@@ -55,7 +55,7 @@ class TestAttitudeFactor(GtsamTestCase):
             np.array([0.2, -0.4, 0.6]),
             1.25,
         )
-        self.check_factor(gtsam.Gal3AttitudeFactor, state)
+        self.check_factor(gtsam.AttitudeFactorGal3, state)
 
     def test_se23_attitude_factor(self):
         x = np.array(
@@ -66,7 +66,7 @@ class TestAttitudeFactor(GtsamTestCase):
             ]
         )
         state = gtsam.Se23(gtsam.Rot3(), x)
-        self.check_factor(gtsam.Se23AttitudeFactor, state)
+        self.check_factor(gtsam.AttitudeFactorSe23, state)
 
     def test_extended_pose3d_attitude_factor(self):
         x = np.array(
@@ -77,7 +77,7 @@ class TestAttitudeFactor(GtsamTestCase):
             ]
         )
         state = gtsam.ExtendedPose3d(gtsam.Rot3(), x)
-        self.check_factor(gtsam.ExtendedPose3dAttitudeFactor, state)
+        self.check_factor(gtsam.AttitudeFactorExtendedPose3d, state)
 
 
 if __name__ == "__main__":

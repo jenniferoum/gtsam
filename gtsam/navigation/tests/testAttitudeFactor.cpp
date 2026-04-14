@@ -95,116 +95,116 @@ ExtendedPose3d makeExtendedPose3d(const Matrix& x) {
 }  // namespace
 
 /* ************************************************************************* */
-TEST(Rot3AttitudeFactor, ConstructorAndJacobian) {
+TEST(AttitudeFactorRot3, ConstructorAndJacobian) {
   Unit3 nDown(0, 0, -1);
   SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
-  EXPECT(defaultMeasuredAxisMatches<Rot3AttitudeFactor>(nDown, model));
+  EXPECT(defaultMeasuredAxisMatches<AttitudeFactor<Rot3>>(nDown, model));
 
-  Rot3AttitudeFactor factor(1, nDown, model);
+  AttitudeFactor<Rot3> factor(1, nDown, model);
   EXPECT(zeroResidualAndJacobianMatch(factor, Rot3()));
 }
 
 /* ************************************************************************* */
-TEST(Rot3AttitudeFactor, CopyAndMove) {
+TEST(AttitudeFactorRot3, CopyAndMove) {
   Unit3 nDown(0, 0, -1);
   SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
-  EXPECT(copyAndMoveWorks(Rot3AttitudeFactor(0, nDown, model)));
+  EXPECT(copyAndMoveWorks(AttitudeFactor<Rot3>(0, nDown, model)));
 }
 
 /* ************************************************************************* */
-TEST(Pose3AttitudeFactor, ConstructorAndJacobian) {
+TEST(AttitudeFactorPose3, ConstructorAndJacobian) {
   Unit3 nDown(0, 0, -1);
   SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
-  EXPECT(defaultMeasuredAxisMatches<Pose3AttitudeFactor>(nDown, model));
+  EXPECT(defaultMeasuredAxisMatches<AttitudeFactor<Pose3>>(nDown, model));
 
-  Pose3AttitudeFactor factor(1, nDown, model);
+  AttitudeFactor<Pose3> factor(1, nDown, model);
   EXPECT(zeroResidualAndJacobianMatch(factor,
                                       Pose3(Rot3(), Point3(-5.0, 8.0, -11.0))));
 }
 
 /* ************************************************************************* */
-TEST(Pose3AttitudeFactor, CopyAndMove) {
+TEST(AttitudeFactorPose3, CopyAndMove) {
   Unit3 nDown(0, 0, -1);
   SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
-  EXPECT(copyAndMoveWorks(Pose3AttitudeFactor(0, nDown, model)));
+  EXPECT(copyAndMoveWorks(AttitudeFactor<Pose3>(0, nDown, model)));
 }
 
 /* ************************************************************************* */
-TEST(NavStateAttitudeFactor, ConstructorAndJacobian) {
+TEST(AttitudeFactorNavState, ConstructorAndJacobian) {
   Unit3 nDown(0, 0, -1);
   SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
-  EXPECT(defaultMeasuredAxisMatches<NavStateAttitudeFactor>(nDown, model));
+  EXPECT(defaultMeasuredAxisMatches<AttitudeFactor<NavState>>(nDown, model));
 
-  NavStateAttitudeFactor factor(1, nDown, model);
+  AttitudeFactor<NavState> factor(1, nDown, model);
   EXPECT(zeroResidualAndJacobianMatch(
       factor,
       NavState(Rot3(), Point3(-5.0, 8.0, -11.0), Vector3(0.2, -0.4, 0.6))));
 }
 
 /* ************************************************************************* */
-TEST(NavStateAttitudeFactor, CopyAndMove) {
+TEST(AttitudeFactorNavState, CopyAndMove) {
   Unit3 nDown(0, 0, -1);
   SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
-  EXPECT(copyAndMoveWorks(NavStateAttitudeFactor(0, nDown, model)));
+  EXPECT(copyAndMoveWorks(AttitudeFactor<NavState>(0, nDown, model)));
 }
 
 /* ************************************************************************* */
-TEST(Gal3AttitudeFactor, ConstructorAndJacobian) {
+TEST(AttitudeFactorGal3, ConstructorAndJacobian) {
   Unit3 nDown(0, 0, -1);
   SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
-  EXPECT(defaultMeasuredAxisMatches<Gal3AttitudeFactor>(nDown, model));
+  EXPECT(defaultMeasuredAxisMatches<AttitudeFactor<Gal3>>(nDown, model));
 
-  Gal3AttitudeFactor factor(1, nDown, model);
+  AttitudeFactor<Gal3> factor(1, nDown, model);
   EXPECT(zeroResidualAndJacobianMatch(
       factor,
       Gal3(Rot3(), Point3(-5.0, 8.0, -11.0), Vector3(0.2, -0.4, 0.6), 1.25)));
 }
 
 /* ************************************************************************* */
-TEST(Gal3AttitudeFactor, CopyAndMove) {
+TEST(AttitudeFactorGal3, CopyAndMove) {
   Unit3 nDown(0, 0, -1);
   SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
-  EXPECT(copyAndMoveWorks(Gal3AttitudeFactor(0, nDown, model)));
+  EXPECT(copyAndMoveWorks(AttitudeFactor<Gal3>(0, nDown, model)));
 }
 
 /* ************************************************************************* */
-TEST(Se23AttitudeFactor, ConstructorAndJacobian) {
+TEST(AttitudeFactorSe23, ConstructorAndJacobian) {
   Unit3 nDown(0, 0, -1);
   SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
-  EXPECT(defaultMeasuredAxisMatches<Se23AttitudeFactor>(nDown, model));
+  EXPECT(defaultMeasuredAxisMatches<AttitudeFactor<Se23>>(nDown, model));
 
   Matrix32 x;
   x << -5.0, 0.2, 8.0, -0.4, -11.0, 0.6;
-  Se23AttitudeFactor factor(1, nDown, model);
+  AttitudeFactor<Se23> factor(1, nDown, model);
   EXPECT(zeroResidualAndJacobianMatch(factor, makeSe23(x)));
 }
 
 /* ************************************************************************* */
-TEST(Se23AttitudeFactor, CopyAndMove) {
+TEST(AttitudeFactorSe23, CopyAndMove) {
   Unit3 nDown(0, 0, -1);
   SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
-  EXPECT(copyAndMoveWorks(Se23AttitudeFactor(0, nDown, model)));
+  EXPECT(copyAndMoveWorks(AttitudeFactor<Se23>(0, nDown, model)));
 }
 
 /* ************************************************************************* */
-TEST(ExtendedPose3dAttitudeFactor, ConstructorAndJacobian) {
+TEST(AttitudeFactorExtendedPose3d, ConstructorAndJacobian) {
   Unit3 nDown(0, 0, -1);
   SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
   EXPECT(
-      defaultMeasuredAxisMatches<ExtendedPose3dAttitudeFactor>(nDown, model));
+      defaultMeasuredAxisMatches<AttitudeFactor<ExtendedPose3d>>(nDown, model));
 
   Matrix x(3, 3);
   x << -5.0, 0.2, 1.3, 8.0, -0.4, 2.1, -11.0, 0.6, -0.7;
-  ExtendedPose3dAttitudeFactor factor(1, nDown, model);
+  AttitudeFactor<ExtendedPose3d> factor(1, nDown, model);
   EXPECT(
       zeroResidualAndJacobianMatchDynamic<12>(factor, makeExtendedPose3d(x)));
 }
 
 /* ************************************************************************* */
-TEST(ExtendedPose3dAttitudeFactor, CopyAndMove) {
+TEST(AttitudeFactorExtendedPose3d, CopyAndMove) {
   Unit3 nDown(0, 0, -1);
   SharedNoiseModel model = noiseModel::Isotropic::Sigma(2, 0.25);
-  EXPECT(copyAndMoveWorks(ExtendedPose3dAttitudeFactor(0, nDown, model)));
+  EXPECT(copyAndMoveWorks(AttitudeFactor<ExtendedPose3d>(0, nDown, model)));
 }
 
 // *************************************************************************

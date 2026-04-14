@@ -42,20 +42,21 @@ constexpr bool is_extended_pose3_v = is_extended_pose3<T>::value;
 template <class VALUE>
 inline std::string attitudeFactorName() {
   if constexpr (std::is_same_v<VALUE, Rot3>) {
-    return "Rot3AttitudeFactor";
+    return "AttitudeFactorRot3";
   } else if constexpr (std::is_same_v<VALUE, Pose3>) {
-    return "Pose3AttitudeFactor";
+    return "AttitudeFactorPose3";
   } else if constexpr (std::is_same_v<VALUE, NavState>) {
-    return "NavStateAttitudeFactor";
+    return "AttitudeFactorNavState";
   } else if constexpr (std::is_same_v<VALUE, Gal3>) {
-    return "Gal3AttitudeFactor";
+    return "AttitudeFactorGal3";
   } else if constexpr (std::is_same_v<VALUE, Se23>) {
-    return "Se23AttitudeFactor";
+    return "AttitudeFactorSe23";
   } else if constexpr (is_extended_pose3_v<VALUE>) {
-    // Extract K from VALUE = ExtendedPose3<K, Derived>
     constexpr int K = std::remove_reference_t<VALUE>::K;
-    std::string k_str = (K == Eigen::Dynamic) ? "d" : std::to_string(K);
-    return "ExtendedPose3AttitudeFactor<" + k_str + ">";
+    const std::string valueName = (K == Eigen::Dynamic)
+                                      ? "ExtendedPose3d"
+                                      : "ExtendedPose3" + std::to_string(K);
+    return "AttitudeFactor" + valueName;
   } else {
     return "AttitudeFactor";
   }
@@ -200,17 +201,6 @@ class GTSAM_EXPORT AttitudeFactor : public NoiseModelFactorN<VALUE> {
  public:
   GTSAM_MAKE_ALIGNED_OPERATOR_NEW
 };
-
-using Rot3AttitudeFactor = AttitudeFactor<Rot3>;
-using Pose3AttitudeFactor = AttitudeFactor<Pose3>;
-using NavStateAttitudeFactor = AttitudeFactor<NavState>;
-using Gal3AttitudeFactor = AttitudeFactor<Gal3>;
-
-template <int K>
-using ExtendedPose3AttitudeFactor = AttitudeFactor<ExtendedPose3<K>>;
-
-using Se23AttitudeFactor = AttitudeFactor<Se23>;
-using ExtendedPose3dAttitudeFactor = AttitudeFactor<ExtendedPose3d>;
 
 template <class VALUE>
 struct traits<AttitudeFactor<VALUE>> : public Testable<AttitudeFactor<VALUE>> {
