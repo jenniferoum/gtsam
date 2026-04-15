@@ -133,9 +133,9 @@ class ExtendedPose3
    * @param R Rotation in SO(3).
    * @param xs K vector blocks in R^3.
    */
-  template <int K_ = K, typename = IsFixed<K_>, typename... Vecs,
+  template <int FixedK = K, typename = IsFixed<FixedK>, typename... Vecs,
             typename = std::enable_if_t<
-                sizeof...(Vecs) == K_ &&
+                sizeof...(Vecs) == FixedK &&
                 (std::is_constructible_v<Point3, Vecs> && ...)>>
   ExtendedPose3(const Rot3& R, const Vecs&... xs);
 

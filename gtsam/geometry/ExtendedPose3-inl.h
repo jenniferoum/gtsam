@@ -45,11 +45,11 @@ ExtendedPose3<K, Derived>::ExtendedPose3(const Rot3& R, const Matrix3K& x)
     : R_(R), t_(x) {}
 
 template <int K, class Derived>
-template <int K_, typename, typename... Vecs, typename>
+template <int FixedK, typename, typename... Vecs, typename>
 ExtendedPose3<K, Derived>::ExtendedPose3(const Rot3& R, const Vecs&... xs)
     : R_(R), t_(Matrix3K::Zero()) {
   const Point3 columns[] = {Point3(xs)...};
-  for (Eigen::Index i = 0; i < static_cast<Eigen::Index>(K_); ++i) {
+  for (Eigen::Index i = 0; i < static_cast<Eigen::Index>(FixedK); ++i) {
     t_.col(i) = columns[i];
   }
 }
