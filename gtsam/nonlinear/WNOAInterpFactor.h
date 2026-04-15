@@ -92,6 +92,12 @@ namespace gtsam {
 template <class PoseType>
 class WNOAInterpFactor : public NoiseModelFactor {
  private:
+#ifndef GTSAM_ROT3_EXPMAP
+  static_assert(
+      !std::is_same_v<PoseType, Pose3> || std::is_same_v<PoseType, Rot3>,
+      "Interpolation factors are not supported for Pose3/Rot3 when using the "
+      "Cayley chart. Please switch to EXPMAP coordinates mode.");
+#endif
   using Base = NoiseModelFactor;
   using This = WNOAInterpFactor<PoseType>;
   using VelocityType = typename gtsam::traits<PoseType>::TangentVector;
@@ -879,8 +885,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
  * states).
  * @param interp_states Ordered set of `StateData` entries to be
  * interpolated/removed.
- * @param q_psd_diag Diagonal PSD vector for the WNOA motion prior (dimension must
- * match PoseType).
+ * @param q_psd_diag Diagonal PSD vector for the WNOA motion prior (dimension
+ * must match PoseType).
  * @param fixed_noise If true, do not augment measurement noise models for
  * interpolation.
  * @return NonlinearFactorGraph New graph with interpolated states removed and

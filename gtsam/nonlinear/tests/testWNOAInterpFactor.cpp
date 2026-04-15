@@ -199,7 +199,7 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
 
 /* *************************************************************************
  */
-
+#ifdef GTSAM_ROT3_EXPMAP
 TEST(WNOAInterp, EvalErrorSE3UnaryPose) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
@@ -223,10 +223,12 @@ TEST(WNOAInterp, EvalErrorSE3UnaryPose) {
   residual = prior_pose->evaluateError(p1_se3);  // original
   CHECK(assert_equal(residual, res_zero, 1e-12));
 }
+#endif
 
 /* *************************************************************************
  */
 
+#ifdef GTSAM_ROT3_EXPMAP
 TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
@@ -252,10 +254,8 @@ TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
   auto res_interp = factor.unwhitenedError(values);               // new
   CHECK(assert_equal(res_btwn, res_interp, 1e-12));
 }
-
 /* *************************************************************************
  */
-
 TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
   // Same as between above, but using two interpolated states with different
   // boundaries
@@ -290,7 +290,7 @@ TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
   // Check that residuals match between
   CHECK(assert_equal(res_btwn, res_btwn_interp, 1e-12));
 }
-
+#endif
 /* *************************************************************************
  */
 TEST(WNOAInterp, JacobianPoint3UnaryPose) {
@@ -354,6 +354,7 @@ TEST(WNOAInterp, JacobianPoint3UnaryPose) {
 
 /* *************************************************************************
  */
+#ifdef GTSAM_ROT3_EXPMAP
 TEST(WNOAInterp, JacobianSE3UnaryPose) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
@@ -412,7 +413,6 @@ TEST(WNOAInterp, JacobianSE3UnaryPose) {
   EXPECT(assert_equal(Jacs[P(2)], J_p2_num, tol));
   EXPECT(assert_equal(Jacs[V(2)], J_v2_num, tol));
 }
-
 /* *************************************************************************
  */
 TEST(WNOAInterp, PrecomputeLambdaPsiUnarySe3) {
@@ -449,6 +449,7 @@ TEST(WNOAInterp, PrecomputeLambdaPsiUnarySe3) {
     index++;
   }
 }
+#endif
 
 /* *************************************************************************
  */
@@ -497,7 +498,7 @@ TEST(WNOAInterp, Interpolator) {
 
 /* *************************************************************************
  */
-
+#ifdef GTSAM_ROT3_EXPMAP
 TEST(WNOAInterp, NoiseModelSE3Unary) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
@@ -523,7 +524,6 @@ TEST(WNOAInterp, NoiseModelSE3Unary) {
   EXPECT(assert_equal(cov_fixed, cov_prior));
   EXPECT(assert_inequal(cov, cov_prior));
 }
-
 /* *************************************************************************
  */
 
@@ -564,6 +564,7 @@ TEST(WNOAInterp, NoiseModelSE3Btwn) {
   EXPECT(assert_equal(cov_fixed, cov_inner));
   EXPECT(assert_inequal(cov, cov_inner));
 }
+#endif
 
 /* *************************************************************************
  */
@@ -613,6 +614,7 @@ TEST(WNOAInterp, NoiseModelP3Btwn) {
 
 /* *************************************************************************
  */
+#ifdef GTSAM_ROT3_EXPMAP
 
 TEST(WNOAInterp, LinearizeSE3Btwn) {
   // Same as between above, but using two interpolated states with different
@@ -818,6 +820,7 @@ TEST(WNOAInterp, SE3InterpGraph) {
   optimizer2.optimize();
   DOUBLES_EQUAL(0.0, optimizer2.error(), 1e-4);
 }
+#endif
 
 int main() {
   TestResult tr;
