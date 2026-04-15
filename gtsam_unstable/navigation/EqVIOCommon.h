@@ -32,14 +32,11 @@
 #include <gtsam/navigation/ImuBias.h>
 #include <gtsam_unstable/dllexport.h>
 
-#include <cassert>
 #include <cmath>
 #include <map>
 #include <memory>
 #include <stdexcept>
-#include <string>
 #include <tuple>
-#include <type_traits>
 #include <vector>
 
 namespace gtsam {
@@ -85,53 +82,19 @@ inline SOT3 MakeSOT3(const SO3& R, double scale) {
 
 /// IMU input bundle used by EqVIO propagation.
 struct GTSAM_UNSTABLE_EXPORT IMUInput {
-  using Vector12 = Eigen::Matrix<double, 12, 1>;
-
   double stamp = -1.0;
   Vector3 gyr = Z_3x1;
   Vector3 acc = Z_3x1;
   Vector3 gyrBiasVel = Z_3x1;
   Vector3 accBiasVel = Z_3x1;
 
-  /// Return a zero-initialized input with invalid timestamp.
-  static IMUInput Zero() { return IMUInput(); }
-
   IMUInput() = default;
-
-  /// Construct from stacked [gyr, acc, gyrBiasVel, accBiasVel].
-  explicit IMUInput(const Vector12& vec) {
-    gyr = vec.segment<3>(0);
-    acc = vec.segment<3>(3);
-    gyrBiasVel = vec.segment<3>(6);
-    accBiasVel = vec.segment<3>(9);
-  }
-
-  /// Component-wise addition.
-  IMUInput operator+(const IMUInput& other) const {
-    IMUInput out;
-    out.stamp = stamp >= 0.0 ? stamp : other.stamp;
-    out.gyr = gyr + other.gyr;
-    out.acc = acc + other.acc;
-    out.gyrBiasVel = gyrBiasVel + other.gyrBiasVel;
-    out.accBiasVel = accBiasVel + other.accBiasVel;
-    return out;
-  }
 
   /// Subtract a ConstantBias from [gyr, acc].
   IMUInput operator-(const Bias& bias) const {
     IMUInput out(*this);
     out.gyr -= bias.gyroscope();
     out.acc -= bias.accelerometer();
-    return out;
-  }
-
-  /// Scale all components.
-  IMUInput operator*(double c) const {
-    IMUInput out(*this);
-    out.gyr *= c;
-    out.acc *= c;
-    out.gyrBiasVel *= c;
-    out.accBiasVel *= c;
     return out;
   }
 };
@@ -231,26 +194,6 @@ struct Lift {
   IMUInput imu_;
   double dt_;
 };
-
-/// Remove a contiguous row block from a matrix.
-inline void removeRows(Matrix& mat, int startRow, int numRows) {
-  const int rows = mat.rows();
-  const int cols = mat.cols();
-  assert(startRow >= 0 && numRows >= 0 && startRow + numRows <= rows);
-  mat.block(startRow, 0, rows - numRows - startRow, cols) =
-      mat.block(startRow + numRows, 0, rows - numRows - startRow, cols);
-  mat.conservativeResize(rows - numRows, Eigen::NoChange);
-}
-
-/// Remove a contiguous column block from a matrix.
-inline void removeCols(Matrix& mat, int startCol, int numCols) {
-  const int rows = mat.rows();
-  const int cols = mat.cols();
-  assert(startCol >= 0 && numCols >= 0 && startCol + numCols <= cols);
-  mat.block(0, startCol, rows, cols - numCols - startCol) =
-      mat.block(0, startCol + numCols, rows, cols - numCols - startCol);
-  mat.conservativeResize(Eigen::NoChange, cols - numCols);
-}
 
 /// Readable accessors for the composed ProductLieGroup VioGroup.
 inline const Se23& A_sensorKinematics(const VioGroup& X) {

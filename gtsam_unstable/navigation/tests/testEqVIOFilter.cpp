@@ -454,7 +454,7 @@ TEST(VIOEqFMatrices, ShapesAndFinite) {
 
     const Matrix A = EqFStateMatrixA(X, xi0, imu);
     const Matrix B = EqFInputMatrixB(X, xi0);
-    const Matrix C = EqFoutputMatrixC(xi0, ids, X, y, camera, true);
+    const Matrix C = EqFoutputMatrixC(xi0, ids, X, y, camera);
 
     EXPECT_LONGS_EQUAL(xi0.dim(), A.rows());
     EXPECT_LONGS_EQUAL(xi0.dim(), A.cols());

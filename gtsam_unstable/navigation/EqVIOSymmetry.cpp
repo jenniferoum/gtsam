@@ -313,22 +313,10 @@ Matrix23 EqFoutputMatrixCiStar(const Point3& q0, const SOT3& QHat,
   return _EqFoutputMatrixCiStarBase(q0, QHat, camera, y) * ind2euc;
 }
 
-/// Compute per-feature output Jacobian from predicted measurement.
-Matrix23 EqFoutputMatrixCi(const Point3& q0, const SOT3& QHat,
-                           const std::shared_ptr<const CameraModel>& camera) {
-  if (!camera) {
-    throw std::invalid_argument("EqFoutputMatrixCi: null camera");
-  }
-  const Vector3 qHat = SOT3ApplyInverse(QHat, q0);
-  const Point2 yHat = camera->project2(qHat);
-  return EqFoutputMatrixCiStar(q0, QHat, camera, yHat);
-}
-
 /// Assemble full stacked output matrix for currently observed landmarks.
 Matrix EqFoutputMatrixC(const State& xi0, const KeyVector& landmarkIds,
                         const VioGroup& X, const VisionMeasurement& y,
-                        const std::shared_ptr<const CameraModel>& camera,
-                        bool useEquivariance) {
+                        const std::shared_ptr<const CameraModel>& camera) {
   if (!camera) {
     throw std::invalid_argument("EqFoutputMatrixC: null camera");
   }
@@ -356,9 +344,7 @@ Matrix EqFoutputMatrixC(const State& xi0, const KeyVector& landmarkIds,
     const Point3& qi0 = xi0.cameraLandmarks[i];
     const SOT3& Qk = Q[i];
 
-    const Matrix23 Ci =
-        useEquivariance ? EqFoutputMatrixCiStar(qi0, Qk, camera, y.at(idNum))
-                        : EqFoutputMatrixCi(qi0, Qk, camera);
+    const Matrix23 Ci = EqFoutputMatrixCiStar(qi0, Qk, camera, y.at(idNum));
     if (!Ci.array().isFinite().all()) {
       const Point3 qHat = SOT3ApplyInverse(Qk, qi0);
       const Point2 yObs = y.at(idNum);

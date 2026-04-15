@@ -79,16 +79,11 @@ GTSAM_UNSTABLE_EXPORT Matrix EqFInputMatrixB(const VioGroup& X,
 GTSAM_UNSTABLE_EXPORT Matrix23 EqFoutputMatrixCiStar(
     const Point3& q0, const SOT3& QHat,
     const std::shared_ptr<const CameraModel>& camera, const Point2& y);
-/// Per-landmark output Jacobian using predicted measurement from current state.
-GTSAM_UNSTABLE_EXPORT Matrix23
-EqFoutputMatrixCi(const Point3& q0, const SOT3& QHat,
-                  const std::shared_ptr<const CameraModel>& camera);
 /// Stacked output matrix for all currently observed landmarks.
 GTSAM_UNSTABLE_EXPORT Matrix
 EqFoutputMatrixC(const State& xi0, const KeyVector& landmarkIds,
                  const VioGroup& X, const VisionMeasurement& y,
-                 const std::shared_ptr<const CameraModel>& camera,
-                 bool useEquivariance = true);
+                 const std::shared_ptr<const CameraModel>& camera);
 
 /**
  * @brief Lift EqVIO correction from state-chart coordinates to group tangent

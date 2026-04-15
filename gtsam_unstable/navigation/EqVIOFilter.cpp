@@ -119,8 +119,7 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
                          const std::shared_ptr<const CameraModel>& camera,
                          const Matrix& R) {
   const int fullDim = 2 * dense(measurement.size());
-  if (R.rows() == 0 || R.cols() == 0 || R.rows() != fullDim ||
-      R.cols() != fullDim) {
+  if (fullDim == 0 || R.rows() != fullDim || R.cols() != fullDim) {
     throw std::invalid_argument("EqVIOFilter::update: measurement covariance "
                                 "must be 2M x 2M");
   }
@@ -213,7 +212,7 @@ void EqVIOFilter::innovationUpdate(
   }
   const Matrix Ct =
       EqFoutputMatrixC(referenceState(), landmarkKeys_, groupEstimate(),
-                       measurement, camera, true);
+                       measurement, camera);
 
   const Vector zhat = measurementVector(estimatedMeasurement);
   const Vector z = measurementVector(measurement);
