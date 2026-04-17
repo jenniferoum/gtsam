@@ -26,7 +26,7 @@ CarrierPhaseFactor::CarrierPhaseFactor(
 void CarrierPhaseFactor::print(const std::string& s,
                                const KeyFormatter& keyFormatter) const {
   Base::print(s, keyFormatter);
-  gtsam::print(carrierPhase_, "carrier phase (m): ");
+  gtsam::print(measurement_, "carrier phase (m): ");
   gtsam::print(Vector(satPos_), "sat position (ECEF meters): ");
   gtsam::print(satClkBias_, "sat clock bias (s): ");
 }
@@ -36,7 +36,7 @@ bool CarrierPhaseFactor::equals(const NonlinearFactor& expected,
                                 double tol) const {
   const This* e = dynamic_cast<const This*>(&expected);
   return e != nullptr && Base::equals(*e, tol) &&
-         traits<double>::Equals(carrierPhase_, e->carrierPhase_, tol) &&
+         traits<double>::Equals(measurement_, e->measurement_, tol) &&
          traits<Point3>::Equals(satPos_, e->satPos_, tol) &&
          traits<double>::Equals(satClkBias_, e->satClkBias_, tol);
 }
@@ -52,7 +52,7 @@ Vector CarrierPhaseFactor::evaluateError(
   const double range = position_difference.norm();
   const double rho =
       range + C_LIGHT * (receiverClockBias - satClkBias_) + ambiguity;
-  const double error = rho - carrierPhase_;
+  const double error = rho - measurement_;
 
   if (HreceiverPos) {
     if (range < std::numeric_limits<double>::epsilon()) {
@@ -100,7 +100,7 @@ CarrierPhaseFactorArm::CarrierPhaseFactorArm(
 void CarrierPhaseFactorArm::print(const std::string& s,
                                   const KeyFormatter& keyFormatter) const {
   Base::print(s, keyFormatter);
-  gtsam::print(carrierPhase_, "carrier phase (m): ");
+  gtsam::print(measurement_, "carrier phase (m): ");
   gtsam::print(Vector(satPos_), "sat position (ECEF meters): ");
   gtsam::print(satClkBias_, "sat clock bias (s): ");
   gtsam::print(Vector(bL_), "lever arm (body frame meters): ");
@@ -114,7 +114,7 @@ bool CarrierPhaseFactorArm::equals(const NonlinearFactor& expected,
                                    double tol) const {
   const This* e = dynamic_cast<const This*>(&expected);
   if (e == nullptr || !Base::equals(*e, tol)) return false;
-  if (!traits<double>::Equals(carrierPhase_, e->carrierPhase_, tol))
+  if (!traits<double>::Equals(measurement_, e->measurement_, tol))
     return false;
   if (!traits<Point3>::Equals(satPos_, e->satPos_, tol)) return false;
   if (!traits<double>::Equals(satClkBias_, e->satClkBias_, tol)) return false;
@@ -146,7 +146,7 @@ Vector CarrierPhaseFactorArm::evaluateError(
   const double range = position_difference.norm();
   const double rho =
       range + C_LIGHT * (receiverClockBias - satClkBias_) + ambiguity;
-  const double error = rho - carrierPhase_;
+  const double error = rho - measurement_;
 
   // Compute associated derivatives:
   if (H_pose) {

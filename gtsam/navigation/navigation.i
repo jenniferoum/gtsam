@@ -679,7 +679,6 @@ virtual class DifferentialPseudorangeFactorArm : gtsam::NonlinearFactor {
   void serialize() const;
 };
 
-#include <gtsam/navigation/PseudorangeFactor.h>
 virtual class DoubleDifferencePseudorangeFactor : gtsam::NonlinearFactor {
   DoubleDifferencePseudorangeFactor(gtsam::Key positionKey,
                       double prRovRef, double prBaseRef,

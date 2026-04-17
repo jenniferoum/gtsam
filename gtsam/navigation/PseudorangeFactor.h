@@ -20,13 +20,12 @@ namespace gtsam {
 
 /**
  * Base class storing common members for GNSS-related pseudorange factors.
+ *
+ * Aliased to the shared GnssMeasurementBase so that pseudorange and carrier
+ * phase factors share a single representation.  In this alias the
+ * `measurement_` field stores the pseudorange measurement in meters.
  */
-struct PseudorangeBase {
-  double
-      pseudorange_;    ///< Receiver-reported pseudorange measurement in meters.
-  Point3 satPos_;      ///< Satellite position in WGS84 ECEF meters.
-  double satClkBias_;  ///< Satellite clock bias in seconds.
-};
+using PseudorangeBase = GnssMeasurementBase;
 
 /**
  * Simplified GNSS pseudorange model for basic positioning problems.
@@ -114,7 +113,7 @@ class GTSAM_EXPORT PseudorangeFactor : public NoiseModelFactorN<Point3, double>,
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
     ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(PseudorangeFactor::Base);
-    ar& BOOST_SERIALIZATION_NVP(pseudorange_);
+    ar& BOOST_SERIALIZATION_NVP(measurement_);
     ar& BOOST_SERIALIZATION_NVP(satPos_);
     ar& BOOST_SERIALIZATION_NVP(satClkBias_);
   }
@@ -190,7 +189,7 @@ class GTSAM_EXPORT DifferentialPseudorangeFactor
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
     ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(
         DifferentialPseudorangeFactor::Base);
-    ar& BOOST_SERIALIZATION_NVP(pseudorange_);
+    ar& BOOST_SERIALIZATION_NVP(measurement_);
     ar& BOOST_SERIALIZATION_NVP(satPos_);
     ar& BOOST_SERIALIZATION_NVP(satClkBias_);
   }
@@ -316,7 +315,7 @@ class GTSAM_EXPORT PseudorangeFactorArm
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
     ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(PseudorangeFactorArm::Base);
-    ar& BOOST_SERIALIZATION_NVP(pseudorange_);
+    ar& BOOST_SERIALIZATION_NVP(measurement_);
     ar& BOOST_SERIALIZATION_NVP(satPos_);
     ar& BOOST_SERIALIZATION_NVP(satClkBias_);
     ar& BOOST_SERIALIZATION_NVP(bL_);
@@ -401,7 +400,7 @@ class GTSAM_EXPORT DifferentialPseudorangeFactorArm
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
     ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(
         DifferentialPseudorangeFactorArm::Base);
-    ar& BOOST_SERIALIZATION_NVP(pseudorange_);
+    ar& BOOST_SERIALIZATION_NVP(measurement_);
     ar& BOOST_SERIALIZATION_NVP(satPos_);
     ar& BOOST_SERIALIZATION_NVP(satClkBias_);
     ar& BOOST_SERIALIZATION_NVP(bL_);
@@ -418,11 +417,11 @@ struct traits<DifferentialPseudorangeFactorArm>
 /**
  * Double-difference pseudorange factor.
  *
- * Takes four raw (undifferenced) pseudorange observations -- rover and base for
- * both reference and target satellites -- along with satellite positions at
- * rover and base observation times, and base station position.  The factor forms
- * the double-difference internally and computes geometric distances with Sagnac
- * correction.
+ * Convenience factor that takes four raw (undifferenced) pseudorange
+ * observations -- rover and base for both reference and target satellites --
+ * along with satellite positions at rover and base observation times, and the
+ * base station position.  The factor forms the double-difference internally
+ * and computes geometric distances with Sagnac correction.
  *
  * Satellite positions differ between rover and base times because satellites
  * move ~3 km/s. Using the same positions for both causes ~100m DD errors
@@ -431,6 +430,15 @@ struct traits<DifferentialPseudorangeFactorArm>
  * error = [(geodist(satRefRov,pos) - geodist(satRefBase,basePos))
  *        - (geodist(satTargetRov,pos) - geodist(satTargetBase,basePos))]
  *       - [(prRovRef - prBaseRef) - (prRovTarget - prBaseTarget)]
+ *
+ * Use this factor (instead of connecting four PseudorangeFactors through
+ * shared receiver/satellite clock-bias variables) when:
+ *   - the base station position is known (not being estimated) so that the
+ *     two base-side ranges are constants;
+ *   - receiver and satellite clock biases can be cancelled analytically via
+ *     the DD; this removes three state variables from the graph.
+ * For scenarios where receiver/satellite clock biases are also being
+ * estimated, prefer composing several PseudorangeFactors instead.
  *
  * @ingroup navigation
  */
@@ -449,6 +457,8 @@ class GTSAM_EXPORT DoubleDifferencePseudorangeFactor : public NoiseModelFactorN<
   Point3 basePos_;          ///< Base station ECEF position [m]
 
  public:
+  // Expose the convenience evaluateError overloads from NoiseModelFactorN
+  // (e.g. the no-Jacobian and Matrix& variants used in tests).
   using Base::evaluateError;
   typedef std::shared_ptr<DoubleDifferencePseudorangeFactor> shared_ptr;
   typedef DoubleDifferencePseudorangeFactor This;
@@ -542,6 +552,8 @@ class GTSAM_EXPORT DoubleDifferencePseudorangeFactorArm : public NoiseModelFacto
   std::optional<Pose3> ecef_T_nav_;
 
  public:
+  // Expose the convenience evaluateError overloads from NoiseModelFactorN
+  // (e.g. the no-Jacobian and Matrix& variants used in tests).
   using Base::evaluateError;
   typedef std::shared_ptr<DoubleDifferencePseudorangeFactorArm> shared_ptr;
   typedef DoubleDifferencePseudorangeFactorArm This;

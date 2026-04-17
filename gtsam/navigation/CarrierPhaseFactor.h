@@ -19,15 +19,14 @@ namespace gtsam {
 /**
  * Base class storing common members for carrier phase factors.
  *
+ * Aliased to the shared GnssMeasurementBase.  In this alias the `measurement_`
+ * field stores the carrier phase measurement in meters (= lambda * phi_cycles).
+ *
  * Clock biases are in seconds (same convention as PseudorangeFactorArm).
  * Ambiguity is in meters (= lambda * N). To recover the integer
  * ambiguity N, divide by the wavelength: N = ambiguity_meters / lambda
  */
-struct CarrierPhaseBase {
-  double carrierPhase_;  ///< Carrier phase measurement in meters.
-  Point3 satPos_;        ///< Satellite position in WGS84 ECEF meters.
-  double satClkBias_;    ///< Satellite clock bias in seconds.
-};
+using CarrierPhaseBase = GnssMeasurementBase;
 
 /**
  * Undifferenced GNSS carrier phase factor for point positioning.
@@ -102,7 +101,7 @@ class GTSAM_EXPORT CarrierPhaseFactor
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
     ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(CarrierPhaseFactor::Base);
-    ar& BOOST_SERIALIZATION_NVP(carrierPhase_);
+    ar& BOOST_SERIALIZATION_NVP(measurement_);
     ar& BOOST_SERIALIZATION_NVP(satPos_);
     ar& BOOST_SERIALIZATION_NVP(satClkBias_);
   }
@@ -205,7 +204,7 @@ class GTSAM_EXPORT CarrierPhaseFactorArm
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
     ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(CarrierPhaseFactorArm::Base);
-    ar& BOOST_SERIALIZATION_NVP(carrierPhase_);
+    ar& BOOST_SERIALIZATION_NVP(measurement_);
     ar& BOOST_SERIALIZATION_NVP(satPos_);
     ar& BOOST_SERIALIZATION_NVP(satClkBias_);
     ar& BOOST_SERIALIZATION_NVP(bL_);
@@ -222,15 +221,30 @@ struct traits<CarrierPhaseFactorArm>
 /**
  * Double-difference carrier phase factor.
  *
- * Takes four raw (undifferenced) carrier phase observations -- rover and base
- * for both reference and target satellites -- along with satellite positions at
- * both rover and base observation times, base station position, and wavelength.
- * The factor forms the double-difference internally.
+ * This factor is a convenience wrapper that takes four raw (undifferenced)
+ * carrier phase observations -- rover and base for both reference and target
+ * satellites -- along with satellite positions at both rover and base
+ * observation times, the base station position, and the wavelength.  The
+ * factor forms the double-difference internally.
  *
  * error = [(geodist(satRefRov,pos) - geodist(satRefBase,basePos))
  *        - (geodist(satTargetRov,pos) - geodist(satTargetBase,basePos))]
  *       + lam * (ambRef - ambTarget)
  *       - [(cpRovRef - cpBaseRef) - (cpRovTarget - cpBaseTarget)]
+ *
+ * Use this factor (instead of connecting four CarrierPhaseFactors through
+ * shared receiver/satellite clock-bias variables) when:
+ *   - the base station position is known (not being estimated) so that the
+ *     two base-side ranges are constants;
+ *   - receiver and satellite clock biases can be cancelled analytically via
+ *     the DD; this removes three state variables from the graph.
+ * The result is a small graph (only rover position + two ambiguities) that
+ * is well-suited for fixed-baseline RTK post-processing and for use with an
+ * external integer ambiguity resolver (e.g. LAMBDA) that expects DD
+ * residuals.
+ *
+ * For scenarios where receiver/satellite clock biases are also being
+ * estimated, prefer composing several CarrierPhaseFactors instead.
  *
  * @ingroup navigation
  */
@@ -251,6 +265,8 @@ class GTSAM_EXPORT DoubleDifferenceCarrierPhaseFactor
   double lam_;
 
  public:
+  // Expose the convenience evaluateError overloads from NoiseModelFactorN
+  // (e.g. the no-Jacobian and Matrix& variants used in tests).
   using Base::evaluateError;
   typedef std::shared_ptr<DoubleDifferenceCarrierPhaseFactor> shared_ptr;
   typedef DoubleDifferenceCarrierPhaseFactor This;
@@ -338,6 +354,8 @@ class GTSAM_EXPORT DoubleDifferenceCarrierPhaseFactorArm
   std::optional<Pose3> ecef_T_nav_;
 
  public:
+  // Expose the convenience evaluateError overloads from NoiseModelFactorN
+  // (e.g. the no-Jacobian and Matrix& variants used in tests).
   using Base::evaluateError;
   typedef std::shared_ptr<DoubleDifferenceCarrierPhaseFactorArm> shared_ptr;
   typedef DoubleDifferenceCarrierPhaseFactorArm This;

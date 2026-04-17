@@ -28,7 +28,7 @@ PseudorangeFactor::PseudorangeFactor(const Key receiverPositionKey,
 void PseudorangeFactor::print(const std::string& s,
                               const KeyFormatter& keyFormatter) const {
   Base::print(s, keyFormatter);
-  gtsam::print(pseudorange_, "pseudorange (m): ");
+  gtsam::print(measurement_, "pseudorange (m): ");
   gtsam::print(Vector(satPos_), "sat position (ECEF meters): ");
   gtsam::print(satClkBias_, "sat clock bias (s): ");
 }
@@ -38,7 +38,7 @@ bool PseudorangeFactor::equals(const NonlinearFactor& expected,
                                double tol) const {
   const This* e = dynamic_cast<const This*>(&expected);
   return e != nullptr && Base::equals(*e, tol) &&
-         traits<double>::Equals(pseudorange_, e->pseudorange_, tol) &&
+         traits<double>::Equals(measurement_, e->measurement_, tol) &&
          traits<Point3>::Equals(satPos_, e->satPos_, tol) &&
          traits<double>::Equals(satClkBias_, e->satClkBias_, tol);
 }
@@ -52,7 +52,7 @@ Vector PseudorangeFactor::evaluateError(
   const Vector3 position_difference = receiverPosition - satPos_;
   const double range = position_difference.norm();
   const double rho = range + C_LIGHT * (receiverClockBias - satClkBias_);
-  const double error = rho - pseudorange_;
+  const double error = rho - measurement_;
 
   // Compute associated derivatives:
   if (HreceiverPos) {
@@ -97,7 +97,7 @@ PseudorangeFactorArm::PseudorangeFactorArm(
 void PseudorangeFactorArm::print(const std::string& s,
                                   const KeyFormatter& keyFormatter) const {
   Base::print(s, keyFormatter);
-  gtsam::print(pseudorange_, "pseudorange (m): ");
+  gtsam::print(measurement_, "pseudorange (m): ");
   gtsam::print(Vector(satPos_), "sat position (ECEF meters): ");
   gtsam::print(satClkBias_, "sat clock bias (s): ");
   gtsam::print(Vector(bL_), "lever arm (body frame meters): ");
@@ -111,7 +111,7 @@ bool PseudorangeFactorArm::equals(const NonlinearFactor& expected,
                                    double tol) const {
   const This* e = dynamic_cast<const This*>(&expected);
   if (e == nullptr || !Base::equals(*e, tol)) return false;
-  if (!traits<double>::Equals(pseudorange_, e->pseudorange_, tol)) return false;
+  if (!traits<double>::Equals(measurement_, e->measurement_, tol)) return false;
   if (!traits<Point3>::Equals(satPos_, e->satPos_, tol)) return false;
   if (!traits<double>::Equals(satClkBias_, e->satClkBias_, tol)) return false;
   if (!traits<Point3>::Equals(bL_, e->bL_, tol)) return false;
@@ -140,7 +140,7 @@ Vector PseudorangeFactorArm::evaluateError(
   const Vector3 position_difference = antennaPos - satPos_;
   const double range = position_difference.norm();
   const double rho = range + C_LIGHT * (receiverClockBias - satClkBias_);
-  const double error = rho - pseudorange_;
+  const double error = rho - measurement_;
 
   // Compute associated derivatives:
   if (H_pose) {
@@ -181,7 +181,7 @@ DifferentialPseudorangeFactor::DifferentialPseudorangeFactor(
 void DifferentialPseudorangeFactor::print(
     const std::string& s, const KeyFormatter& keyFormatter) const {
   Base::print(s, keyFormatter);
-  gtsam::print(pseudorange_, "pseudorange (m): ");
+  gtsam::print(measurement_, "pseudorange (m): ");
   gtsam::print(Vector(satPos_), "sat position (ECEF meters): ");
   gtsam::print(satClkBias_, "sat clock bias (s): ");
 }
@@ -191,7 +191,7 @@ bool DifferentialPseudorangeFactor::equals(const NonlinearFactor& expected,
                                            double tol) const {
   const This* e = dynamic_cast<const This*>(&expected);
   return e != nullptr && Base::equals(*e, tol) &&
-         traits<double>::Equals(pseudorange_, e->pseudorange_, tol) &&
+         traits<double>::Equals(measurement_, e->measurement_, tol) &&
          traits<Point3>::Equals(satPos_, e->satPos_, tol) &&
          traits<double>::Equals(satClkBias_, e->satClkBias_, tol);
 }
@@ -205,7 +205,7 @@ Vector DifferentialPseudorangeFactor::evaluateError(
   const Vector3 position_difference = receiverPosition - satPos_;
   const double range = position_difference.norm();
   const double rho = range + C_LIGHT * (receiverClock_bias - satClkBias_);
-  const double error = rho - pseudorange_ - differentialCorrection;
+  const double error = rho - measurement_ - differentialCorrection;
 
   if (HreceiverPos) {
     if (range < std::numeric_limits<double>::epsilon()) {
@@ -254,7 +254,7 @@ DifferentialPseudorangeFactorArm::DifferentialPseudorangeFactorArm(
 void DifferentialPseudorangeFactorArm::print(
     const std::string& s, const KeyFormatter& keyFormatter) const {
   Base::print(s, keyFormatter);
-  gtsam::print(pseudorange_, "pseudorange (m): ");
+  gtsam::print(measurement_, "pseudorange (m): ");
   gtsam::print(Vector(satPos_), "sat position (ECEF meters): ");
   gtsam::print(satClkBias_, "sat clock bias (s): ");
   gtsam::print(Vector(bL_), "lever arm (body frame meters): ");
@@ -268,7 +268,7 @@ bool DifferentialPseudorangeFactorArm::equals(
     const NonlinearFactor& expected, double tol) const {
   const This* e = dynamic_cast<const This*>(&expected);
   if (e == nullptr || !Base::equals(*e, tol)) return false;
-  if (!traits<double>::Equals(pseudorange_, e->pseudorange_, tol)) return false;
+  if (!traits<double>::Equals(measurement_, e->measurement_, tol)) return false;
   if (!traits<Point3>::Equals(satPos_, e->satPos_, tol)) return false;
   if (!traits<double>::Equals(satClkBias_, e->satClkBias_, tol)) return false;
   if (!traits<Point3>::Equals(bL_, e->bL_, tol)) return false;
@@ -295,7 +295,7 @@ Vector DifferentialPseudorangeFactorArm::evaluateError(
   const Vector3 position_difference = antennaPos - satPos_;
   const double range = position_difference.norm();
   const double rho = range + C_LIGHT * (receiverClockBias - satClkBias_);
-  const double error = rho - pseudorange_ - differentialCorrection;
+  const double error = rho - measurement_ - differentialCorrection;
 
   if (H_pose) {
     H_pose->resize(1, 6);

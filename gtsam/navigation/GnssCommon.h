@@ -6,11 +6,27 @@
 #pragma once
 
 #include <gtsam/base/OptionalJacobian.h>
+#include <gtsam/dllexport.h>
 #include <gtsam/geometry/Point3.h>
 
-#include <limits>
-
 namespace gtsam {
+
+/**
+ * Base class storing common members for GNSS measurement factors.
+ *
+ * Shared by pseudorange and carrier phase factors.  The measurement field is
+ * in meters (i.e. for carrier phase factors it is already multiplied by the
+ * wavelength, `lambda * phi_cycles`).
+ */
+struct GnssMeasurementBase {
+  /// Measurement in meters (pseudorange, or carrier phase * wavelength).
+  double measurement_;
+  /// Satellite position in WGS84 ECEF meters.
+  Point3 satPos_;
+  /// Satellite clock bias in seconds.
+  double satClkBias_;
+};
+
 namespace gnss {
 
 /// Speed of light in a vacuum (m/s).
@@ -35,27 +51,8 @@ constexpr double OMGE = 7.2921151467e-5;
  *                   Includes the contribution from the Sagnac term.
  * @return     Geometric range with Sagnac correction (m).
  */
-inline double geodist(const Point3& sat, const Point3& rcv, Point3& e,
-                      OptionalJacobian<1, 3> H_rcv = {}) {
-  const Point3 dr = sat - rcv;
-  const double r = dr.norm();
-  const double sagnac =
-      OMGE * (sat.x() * rcv.y() - sat.y() * rcv.x()) / C_LIGHT;
-  if (r < std::numeric_limits<double>::epsilon()) {
-    e = Point3::Zero();
-    if (H_rcv) H_rcv->setZero();
-    return sagnac;
-  }
-  e = dr / r;
-  if (H_rcv) {
-    // d(||sat - rcv||)/d(rcv) = -e^T (1x3)
-    // d(sagnac)/d(rcv)        = OMGE / C_LIGHT * [-sat.y(), sat.x(), 0]
-    (*H_rcv)(0, 0) = -e.x() - OMGE * sat.y() / C_LIGHT;
-    (*H_rcv)(0, 1) = -e.y() + OMGE * sat.x() / C_LIGHT;
-    (*H_rcv)(0, 2) = -e.z();
-  }
-  return r + sagnac;
-}
+GTSAM_EXPORT double geodist(const Point3& sat, const Point3& rcv, Point3& e,
+                            OptionalJacobian<1, 3> H_rcv = {});
 
 }  // namespace gnss
 }  // namespace gtsam
