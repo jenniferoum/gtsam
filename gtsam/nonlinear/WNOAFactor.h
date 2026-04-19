@@ -326,7 +326,7 @@ class WNOAMotionFactor
    * @param deltaT Time interval
    * @return Matrix2N Transition matrix
    */
-  static Matrix2N transitionFunction(double deltaT) {
+  static Matrix2N TransitionFunction(double deltaT) {
     // Construct the transition matrix for the WNOA factor
     Matrix2N F;
     F << kIdentity, deltaT * kIdentity, kZero, kIdentity;
@@ -346,7 +346,7 @@ class WNOAMotionFactor
    * @param deltaT Time interval
    * @return Matrix2N Jacobian block w.r.t. previous state
    */
-  static Matrix2N computeJacobianPrev(const std::pair<Pose, Velocity>& pv1,
+  static Matrix2N ComputeJacobianPrev(const std::pair<Pose, Velocity>& pv1,
                                       const std::pair<Pose, Velocity>& pv2,
                                       double deltaT) {
     // corresponds to F in (11.20) in SER
@@ -379,7 +379,7 @@ class WNOAMotionFactor
    * @param deltaT Time interval
    * @return Matrix2N Jacobian block w.r.t. next state
    */
-  static Matrix2N computeJacobianNext(const std::pair<Pose, Velocity>& pv1,
+  static Matrix2N ComputeJacobianNext(const std::pair<Pose, Velocity>& pv1,
                                       const std::pair<Pose, Velocity>& pv2,
                                       double deltaT) {
     // corresponds to E in (11.21) in SER
