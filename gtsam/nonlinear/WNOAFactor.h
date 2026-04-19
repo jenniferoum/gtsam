@@ -78,8 +78,8 @@ class WNOAMotionFactor
   using MatrixNx2N = Eigen::Matrix<double, dim, 2 * dim>;
   typedef NoiseModelFactorN<Pose, Velocity, Pose, Velocity> Base;
   typedef WNOAMotionFactor This;
-  // Time between the two states
-  double deltaT_;
+
+  double deltaT_;  ///< Time between the two states
 
   inline static const MatrixN kIdentity = MatrixN::Identity();
   inline static const MatrixN kZero = MatrixN::Zero();
@@ -101,40 +101,21 @@ class WNOAMotionFactor
    * @param dxi_dT2 Optional output dxi/dT2
    * @param dvErr_dxi Optional output d(velocity error)/dxi
    */
-  static void computeRelativePose(const Pose& p1, const Pose& p2,
-                                   const Velocity& v2, VectorN* xi,
-                                   MatrixN* invJr, MatrixN* dxi_dT1,
-                                   MatrixN* dxi_dT2, MatrixN* dvErr_dxi) {
-    assert(xi && "Output xi pointer must be valid");
-    assert(invJr && "Output invJr pointer must be valid");
-
-    const bool compute_dxi_dT1 = (dxi_dT1 != nullptr);
-    const bool compute_dxi_dT2 = (dxi_dT2 != nullptr);
-    const bool compute_dvErr_dxi = (dvErr_dxi != nullptr);
-
+  static void ComputeRelativePose(const Pose& p1, const Pose& p2,
+                                  const Velocity& v2, VectorN& xi,
+                                  MatrixN& invJr, MatrixN* dxi_dT1,
+                                  MatrixN* dxi_dT2, MatrixN* dvErr_dxi) {
     // Local variable for the relative pose in the tangent space
     // Note that p1 = T(t_k), p2 = T(t_{k+1})
     // compute xi = log(T_k^-1 T_{k+1})^check
-    if (compute_dxi_dT1 || compute_dxi_dT2) {
-      MatrixN dbetween_p1;
-      MatrixN dbetween_p2;
-      *xi = traits<Pose>::Logmap(
-          traits<Pose>::Between(p1, p2,
-                                compute_dxi_dT1 ? &dbetween_p1 : nullptr,
-                                compute_dxi_dT2 ? &dbetween_p2 : nullptr),
-          invJr);
-      if (compute_dxi_dT1) {
-        *dxi_dT1 = (*invJr) * dbetween_p1;
-      }
-      if (compute_dxi_dT2) {
-        *dxi_dT2 = (*invJr) * dbetween_p2;
-      }
-    } else {
-      *xi = traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), invJr);
-    }
+    MatrixN dBetween_p1;
+    auto p12 = traits<Pose>::Between(p1, p2, dxi_dT1 ? &dBetween_p1 : nullptr);
+    xi = traits<Pose>::Logmap(p12, &invJr);
+    if (dxi_dT1) *dxi_dT1 = invJr * dBetween_p1;
+    if (dxi_dT2) *dxi_dT2 = invJr;
 
     // Derivative of velocity error wrt xi
-    if (compute_dvErr_dxi) {
+    if (dvErr_dxi) {
       // Zero for vector spaces, use an approximation for Lie groups
       if constexpr (std::is_same_v<typename traits<Pose>::structure_category,
                                    vector_space_tag>) {
@@ -142,9 +123,9 @@ class WNOAMotionFactor
       } else {
         // For Lie groups
         auto ad_v2 = Pose::adjointMap(v2);
-        auto ad_xi = Pose::adjointMap(*xi);
+        auto ad_xi = Pose::adjointMap(xi);
         *dvErr_dxi = -ad_v2 / 2.0 -
-              (Pose::adjointMap(ad_xi * v2) + ad_xi * ad_v2) / 12.0;
+                     (Pose::adjointMap(ad_xi * v2) + ad_xi * ad_v2) / 12.0;
       }
     }
   }
@@ -177,7 +158,7 @@ class WNOAMotionFactor
     assert(this->deltaT_ > 0.0 &&
            "Time difference between input states must be positive.");
     // define noise model
-    this->noiseModel_ = This::buildWNOANoiseModel(this->deltaT_, q_psd_diag);
+    this->noiseModel_ = BuildWNOANoiseModel(this->deltaT_, q_psd_diag);
   }
 
   /**
@@ -192,7 +173,7 @@ class WNOAMotionFactor
    */
   WNOAMotionFactor(Key poseKey0, Key velKey0, Key poseKey1, Key velKey1,
                    const double deltaT, const VectorN& q_psd_diag)
-      : Base(This::buildWNOANoiseModel(deltaT, q_psd_diag), poseKey0, velKey0,
+      : Base(BuildWNOANoiseModel(deltaT, q_psd_diag), poseKey0, velKey0,
              poseKey1, velKey1),
         deltaT_(deltaT) {}
 
@@ -204,10 +185,9 @@ class WNOAMotionFactor
   void print(
       const std::string& s = "",
       const KeyFormatter& keyFormatter = DefaultKeyFormatter) const override {
-    std::cout << s << "WNOAMotionFactor(" << keyFormatter(this->key1())
-              << "," << keyFormatter(this->key2()) << ","
-              << keyFormatter(this->key3()) << ","
-              << keyFormatter(this->key4()) << ")\n";
+    std::cout << s << "WNOAMotionFactor(" << keyFormatter(this->key1()) << ","
+              << keyFormatter(this->key2()) << "," << keyFormatter(this->key3())
+              << "," << keyFormatter(this->key4()) << ")\n";
     this->noiseModel_->print("  noise model: ");
   }
 
@@ -247,14 +227,13 @@ class WNOAMotionFactor
     MatrixN dxi_dT2;
     MatrixN dvErr_dxi;
     if (Hp1 || Hp2) {
-      computeRelativePose(p1, p2, v2, &xi, &invJr, &dxi_dT1, &dxi_dT2,
-                           &dvErr_dxi);
+      ComputeRelativePose(p1, p2, v2, xi, invJr, &dxi_dT1, &dxi_dT2,
+                          &dvErr_dxi);
     } else {
-      computeRelativePose(p1, p2, v2, &xi, &invJr, nullptr, nullptr, nullptr);
+      ComputeRelativePose(p1, p2, v2, xi, invJr, nullptr, nullptr, nullptr);
     }
 
-    // Compute error for local state vector (pose, velocity) in the tangent
-    // space
+    // Compute error for local state vector (pose, velocity) in tangent space
     Vector2N err;
     err << xi - deltaT_ * v1, invJr * v2 - v1;
 
@@ -292,14 +271,14 @@ class WNOAMotionFactor
    * @param q_psd_diag Diagonal PSD vector
    * @return Matrix2N Process covariance
    */
-  static Matrix2N buildWNOACovariance(double timestep,
+  static Matrix2N BuildWNOACovariance(double timestep,
                                       const VectorN& q_psd_diag) {
     //
     Matrix2N covariance;
     const MatrixN Q_diag = q_psd_diag.asDiagonal();
     covariance << (1.0 / 3.0 * std::pow(timestep, 3)) * Q_diag,
-        (1.0 / 2.0 * std::pow(timestep, 2)) * Q_diag,
-        (1.0 / 2.0 * pow(timestep, 2)) * Q_diag, timestep * Q_diag;
+        (0.5 * std::pow(timestep, 2)) * Q_diag,
+        (0.5 * pow(timestep, 2)) * Q_diag, timestep * Q_diag;
     return covariance;
   }
 
@@ -310,16 +289,14 @@ class WNOAMotionFactor
    * @param q_psd_diag Diagonal PSD vector
    * @return Matrix2N Inverse process covariance matrix
    */
-  static Matrix2N buildInverseWNOACovariance(double timestep,
+  static Matrix2N BuildInverseWNOACovariance(double dt,
                                              const VectorN& q_psd_diag) {
     // construct the inverse covariance matrix for the WNOA factor
     Matrix2N inverse_covariance;
     const MatrixN Q_inv_diag = q_psd_diag.cwiseInverse().asDiagonal();
-    inverse_covariance << (12.0 / (timestep * timestep * timestep)) *
-                              Q_inv_diag,
-        (-6.0 / (timestep * timestep)) * Q_inv_diag,
-        (-6.0 / (timestep * timestep)) * Q_inv_diag,
-        (4.0 / timestep) * Q_inv_diag;
+    const double dt2 = dt * dt, dt3 = dt2 * dt;
+    inverse_covariance << (12.0 / dt3) * Q_inv_diag, (-6.0 / dt2) * Q_inv_diag,
+        (-6.0 / dt2) * Q_inv_diag, (4.0 / dt) * Q_inv_diag;
 
     return inverse_covariance;
   }
@@ -328,16 +305,16 @@ class WNOAMotionFactor
    * @brief Convenience helper to construct a Gaussian noise model from
    * `q_psd_diag`.
    *
-   * The noise model uses the covariance produced by `buildWNOACovariance`.
+   * The noise model uses the covariance produced by `BuildWNOACovariance`.
    *
    * @param timestep Time interval
    * @param q_psd_diag Diagonal PSD vector
    * @return noiseModel::Gaussian::shared_ptr Noise model built from covariance
    */
-  static inline noiseModel::Gaussian::shared_ptr buildWNOANoiseModel(
+  static inline noiseModel::Gaussian::shared_ptr BuildWNOANoiseModel(
       double timestep, const VectorN& q_psd_diag) {
     return noiseModel::Gaussian::Covariance(
-        buildWNOACovariance(timestep, q_psd_diag));
+        BuildWNOACovariance(timestep, q_psd_diag));
   }
 
   /**
@@ -381,8 +358,7 @@ class WNOAMotionFactor
     MatrixN invJr;
     MatrixN dxi_dT1;
     MatrixN dvErr_dxi;
-    computeRelativePose(p1, p2, v2, &xi, &invJr, &dxi_dT1, nullptr,
-                         &dvErr_dxi);
+    ComputeRelativePose(p1, p2, v2, xi, invJr, &dxi_dT1, nullptr, &dvErr_dxi);
 
     Matrix2N F;
     // first column is pose, second column is velocity
@@ -415,8 +391,7 @@ class WNOAMotionFactor
     MatrixN invJr;
     MatrixN dxi_dT2;
     MatrixN dvErr_dxi;
-    computeRelativePose(p1, p2, v2, &xi, &invJr, nullptr, &dxi_dT2,
-                         &dvErr_dxi);
+    ComputeRelativePose(p1, p2, v2, xi, invJr, nullptr, &dxi_dT2, &dvErr_dxi);
 
     Matrix2N E;
     // First column is pose, second column is velocity
