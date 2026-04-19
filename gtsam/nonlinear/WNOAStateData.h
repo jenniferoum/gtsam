@@ -37,14 +37,9 @@ namespace gtsam {
  * constructing interpolation queries.
  */
 struct GTSAM_EXPORT StateData {
-  /// Key of the pose variable
-  Key pose;
-
-  /// Key of the velocity variable
-  Key velocity;
-
-  /// Timestamp (seconds) associated with this state
-  double time;
+  Key pose;      ///< Key of the pose variable
+  Key velocity;  ///< Key of the velocity variable
+  double time;   ///< Timestamp (seconds) associated with this state
 
   /// Default constructor.
   StateData() = default;
