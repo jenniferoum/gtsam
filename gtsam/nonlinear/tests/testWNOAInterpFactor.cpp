@@ -197,8 +197,7 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   // CHECK(assert_equal(residual2, res_actual, 1e-12));
 }
 
-/* *************************************************************************
- */
+/* *********************************************************************** */
 #ifdef GTSAM_ROT3_EXPMAP
 TEST(WNOAInterp, EvalErrorSE3UnaryPose) {
   // Model
@@ -225,8 +224,7 @@ TEST(WNOAInterp, EvalErrorSE3UnaryPose) {
 }
 #endif
 
-/* *************************************************************************
- */
+/* *********************************************************************** */
 
 #ifdef GTSAM_ROT3_EXPMAP
 TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
@@ -254,8 +252,7 @@ TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
   auto res_interp = factor.unwhitenedError(values);               // new
   CHECK(assert_equal(res_btwn, res_interp, 1e-12));
 }
-/* *************************************************************************
- */
+/* *********************************************************************** */
 TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
   // Same as between above, but using two interpolated states with different
   // boundaries
@@ -291,8 +288,7 @@ TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
   CHECK(assert_equal(res_btwn, res_btwn_interp, 1e-12));
 }
 #endif
-/* *************************************************************************
- */
+/* *********************************************************************** */
 TEST(WNOAInterp, JacobianPoint3UnaryPose) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
@@ -352,8 +348,91 @@ TEST(WNOAInterp, JacobianPoint3UnaryPose) {
   EXPECT(assert_equal(Jacs[V(2)], J_v2_num, tol));
 }
 
-/* *************************************************************************
- */
+/* *********************************************************************** */
+template <class PoseType>
+typename WNOAInterpFactor<PoseType>::PassedInterpData makePassedInterpData(
+    const WNOAInterpFactor<PoseType>& factor, const Values& values,
+    const Eigen::Matrix<double, traits<PoseType>::dimension, 1>& q_psd_diag) {
+  using VelocityType = typename traits<PoseType>::TangentVector;
+  using PassedInterpData =
+      typename WNOAInterpFactor<PoseType>::PassedInterpData;
+
+  PassedInterpData data;
+  Interpolator<PoseType> interpolator(q_psd_diag);
+
+  for (const auto& [interp_state, border_states] :
+       factor.getInterpToBorders()) {
+    const auto& [left, right] = border_states;
+
+    const auto state_left = TimestampedPoseVelocity<PoseType>(
+        values.at<PoseType>(left.pose), values.at<VelocityType>(left.velocity),
+        left.time);
+    const auto state_right = TimestampedPoseVelocity<PoseType>(
+        values.at<PoseType>(right.pose),
+        values.at<VelocityType>(right.velocity), right.time);
+
+    vector<Matrix> H(8);
+    const auto result = interpolator.interpolatePoseAndVelocity(
+        state_left, state_right, interp_state.time, &H);
+
+    data.values.insert(interp_state.pose, result.pose);
+    data.values.insert(interp_state.velocity, result.vel);
+    data.jacobians[interp_state.pose] = {H[0], H[1], H[2], H[3]};
+    data.jacobians[interp_state.velocity] = {H[4], H[5], H[6], H[7]};
+
+    const auto state_tau =
+        TimestampedPoseVelocity<PoseType>(result, interp_state.time);
+    data.condCovs[interp_state] =
+        interpolator.computeConditionalCov(state_left, state_right, state_tau);
+  }
+
+  return data;
+}
+
+TEST(WNOAInterp, PassedInterpDataPoint3Unary) {
+  // Model
+  const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
+  const auto prior_factor =
+      std::make_shared<PriorFactor<Point3>>(P(1), p1_p3, model);
+  const auto factor = WNOAInterpFactor<Point3>(prior_factor, estimatedStates,
+                                               interpolatedStates, Q_p3);
+  const auto factor_fixed = WNOAInterpFactor<Point3>(
+      prior_factor, estimatedStates, interpolatedStates, Q_p3, true);
+
+  // Set up values
+  Values values;
+  values.insert(P(0), p0_p3);
+  values.insert(P(2), p2_p3);
+  values.insert(V(0), v0_p3);
+  values.insert(V(2), v2_p3);
+
+  auto passed_interp_data = makePassedInterpData(factor, values, Vector3(Q_p3));
+
+  // Check error overload parity
+  DOUBLES_EQUAL(factor.error(values), factor.error(values, &passed_interp_data),
+                1e-12);
+  DOUBLES_EQUAL(factor_fixed.error(values),
+                factor_fixed.error(values, &passed_interp_data), 1e-12);
+
+  // Check linearize overload parity
+  const auto linearized =
+      dynamic_pointer_cast<JacobianFactor>(factor.linearize(values));
+  const auto linearized_passed = dynamic_pointer_cast<JacobianFactor>(
+      factor.linearize(values, &passed_interp_data));
+  const auto linearized_fixed =
+      dynamic_pointer_cast<JacobianFactor>(factor_fixed.linearize(values));
+  const auto linearized_fixed_passed = dynamic_pointer_cast<JacobianFactor>(
+      factor_fixed.linearize(values, &passed_interp_data));
+
+  CHECK(linearized);
+  CHECK(linearized_passed);
+  CHECK(linearized_fixed);
+  CHECK(linearized_fixed_passed);
+  CHECK(linearized->equals(*linearized_passed, 1e-12));
+  CHECK(linearized_fixed->equals(*linearized_fixed_passed, 1e-12));
+}
+
+/* *********************************************************************** */
 #ifdef GTSAM_ROT3_EXPMAP
 TEST(WNOAInterp, JacobianSE3UnaryPose) {
   // Model
@@ -413,8 +492,7 @@ TEST(WNOAInterp, JacobianSE3UnaryPose) {
   EXPECT(assert_equal(Jacs[P(2)], J_p2_num, tol));
   EXPECT(assert_equal(Jacs[V(2)], J_v2_num, tol));
 }
-/* *************************************************************************
- */
+/* *********************************************************************** */
 TEST(WNOAInterp, PrecomputeLambdaPsiUnarySe3) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
@@ -451,8 +529,7 @@ TEST(WNOAInterp, PrecomputeLambdaPsiUnarySe3) {
 }
 #endif
 
-/* *************************************************************************
- */
+/* *********************************************************************** */
 
 TEST(WNOAInterp, Interpolator) {
   // Create Interpolator
@@ -496,8 +573,7 @@ TEST(WNOAInterp, Interpolator) {
   EXPECT(assert_equal(H[3], J_v2_num, tol));
 }
 
-/* *************************************************************************
- */
+/* *********************************************************************** */
 #ifdef GTSAM_ROT3_EXPMAP
 TEST(WNOAInterp, NoiseModelSE3Unary) {
   // Model
@@ -524,8 +600,7 @@ TEST(WNOAInterp, NoiseModelSE3Unary) {
   EXPECT(assert_equal(cov_fixed, cov_prior));
   EXPECT(assert_inequal(cov, cov_prior));
 }
-/* *************************************************************************
- */
+/* *********************************************************************** */
 
 TEST(WNOAInterp, NoiseModelSE3Btwn) {
   // Same as between above, but using two interpolated states with different
@@ -566,8 +641,7 @@ TEST(WNOAInterp, NoiseModelSE3Btwn) {
 }
 #endif
 
-/* *************************************************************************
- */
+/* *********************************************************************** */
 
 TEST(WNOAInterp, NoiseModelP3Btwn) {
   // Same as between above, but using two interpolated states with different
@@ -612,8 +686,7 @@ TEST(WNOAInterp, NoiseModelP3Btwn) {
   EXPECT(assert_equal(cov_diff, 2 * Sigma_tau.block<3, 3>(0, 0)));
 }
 
-/* *************************************************************************
- */
+/* *********************************************************************** */
 #ifdef GTSAM_ROT3_EXPMAP
 
 TEST(WNOAInterp, LinearizeSE3Btwn) {
@@ -651,8 +724,7 @@ TEST(WNOAInterp, LinearizeSE3Btwn) {
   EXPECT(assert_equal(error, Vector6::Zero().eval()));
 }
 
-/* *************************************************************************
- */
+/* *********************************************************************** */
 
 TEST(WNOAInterp, SE3OptimTest) {
   // Define optimization:

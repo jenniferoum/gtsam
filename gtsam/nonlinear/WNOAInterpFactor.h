@@ -385,39 +385,14 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * interpolated conditional covariances.
    */
   std::shared_ptr<GaussianFactor> linearize(const Values& x) const override {
-    // if noise model fixed, just use the NonlinearFactor linearize approach.
-    if (fixed_noise_model_) {
-      return Base::linearize(x);
-    }
-
     // Only linearize if the factor is active
     if (!active(x)) return std::shared_ptr<JacobianFactor>();
 
-    // Call evaluate error to get Jacobians and RHS vector b
+    // Compute residual and effective noise model.
     std::vector<Matrix> A(size());
-    std::vector<Matrix> JacInner(inner_factor_->size());
-    std::unordered_map<StateData, Matrix2N> InterpCondCovs;
-    Vector b = -computeInterpolatedError(x, &A, &JacInner, &InterpCondCovs);
-    // get interpolated noise model
-    auto noise_model = getInterpolatedNoiseModel(JacInner, InterpCondCovs);
-    // Whiten the corresponding system now
-    noise_model->WhitenSystem(A, b);
-
-    // Fill in terms, needed to create JacobianFactor below
-    std::vector<std::pair<Key, Matrix>> terms(size());
-    for (size_t j = 0; j < size(); ++j) {
-      terms[j].first = keys()[j];
-      terms[j].second.swap(A[j]);
-    }
-    // Build final Guassian Factor
-    using noiseModel::Constrained;
-    if (noiseModel_ && noiseModel_->isConstrained())
-      return GaussianFactor::shared_ptr(new JacobianFactor(
-          terms, b,
-          std::static_pointer_cast<Constrained>(noiseModel_)->unit()));
-    else {
-      return GaussianFactor::shared_ptr(new JacobianFactor(terms, b));
-    }
+    Vector b;
+    auto noise_model = eval(x, nullptr, b, &A);
+    return makeJacobianFactor(A, b, noise_model);
   }
 
   /**
@@ -433,43 +408,11 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // Only linearize if the factor is active
     if (!active(x)) return std::shared_ptr<JacobianFactor>();
 
-    // Call evaluate error to get Jacobians and RHS vector b
+    // Compute residual and effective noise model.
     std::vector<Matrix> A(size());
-    std::vector<Matrix> JacInner(inner_factor_->size());
-    std::unordered_map<StateData, Matrix2N>* InterpCondCovs =
-        nullptr;  // Store a pointer so we don't copy the passed data
     Vector b;
-    noiseModel::Gaussian::shared_ptr noise_model;
-    if (fixed_noise_model_) {
-      b = -computeInterpolatedError(x, &A, nullptr, nullptr, passedInterpData);
-      noise_model =
-          std::dynamic_pointer_cast<noiseModel::Gaussian>(Base::noiseModel());
-    } else {
-      b = -computeInterpolatedError(x, &A, &JacInner, nullptr,
-                                    passedInterpData);
-      InterpCondCovs =
-          &passedInterpData->condCovs;  // set directly from passed data
-      noise_model = getInterpolatedNoiseModel(JacInner, *InterpCondCovs);
-    }
-    // Whiten the corresponding system now
-    noise_model->WhitenSystem(A, b);
-
-    // Fill in terms, needed to create JacobianFactor below
-    std::vector<std::pair<Key, Matrix>> terms(size());
-    for (size_t j = 0; j < size(); ++j) {
-      terms[j].first = keys()[j];
-      terms[j].second.swap(A[j]);
-    }
-
-    // Build final Guassian Factor
-    using noiseModel::Constrained;
-    if (noiseModel_ && noiseModel_->isConstrained())
-      return GaussianFactor::shared_ptr(new JacobianFactor(
-          terms, b,
-          std::static_pointer_cast<Constrained>(noiseModel_)->unit()));
-    else {
-      return GaussianFactor::shared_ptr(new JacobianFactor(terms, b));
-    }
+    auto noise_model = eval(x, passedInterpData, b, &A);
+    return makeJacobianFactor(A, b, noise_model);
   }
 
   /**
@@ -479,30 +422,11 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * evaluating the (possibly augmented) noise model.
    */
   double error(const Values& c) const override {
-    if (active(c)) {
-      Vector b;
-      noiseModel::Gaussian::shared_ptr noise_model;
-      std::vector<Matrix> JacInner(inner_factor_->size());
-      if (fixed_noise_model_) {
-        b = -computeInterpolatedError(c, nullptr, nullptr, nullptr);
-        // if noise model is fixed, just use the base factor's noise model (no
-        // augmentation)
-        noise_model =
-            std::dynamic_pointer_cast<noiseModel::Gaussian>(Base::noiseModel());
-      } else {
-        std::unordered_map<StateData, Matrix2N> InterpCondCovs;
-        b = -computeInterpolatedError(c, nullptr, &JacInner, &InterpCondCovs);
-        // get interpolated noise model that accounts for interpolation
-        // uncertainty
-        noise_model = getInterpolatedNoiseModel(JacInner, InterpCondCovs);
-      }
-      if (noise_model)
-        return noise_model->loss(noise_model->squaredMahalanobisDistance(b));
-      else
-        return 0.5 * b.squaredNorm();
-    } else {
-      return 0.0;
-    }
+    if (!active(c)) return 0.0;
+
+    Vector b;
+    auto noise_model = eval(c, nullptr, b, nullptr);
+    return loss(b, noise_model);
   }
 
   /**
@@ -512,31 +436,11 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * covariances from `passedInterpData` to avoid recomputation.
    */
   double error(const Values& c, PassedInterpData* passedInterpData) const {
-    if (active(c)) {
-      Vector b;
-      noiseModel::Gaussian::shared_ptr noise_model;
-      std::vector<Matrix> JacInner(inner_factor_->size());
-      if (fixed_noise_model_) {
-        b = -computeInterpolatedError(c, nullptr, nullptr, nullptr,
-                                      passedInterpData);
-        noise_model =
-            std::dynamic_pointer_cast<noiseModel::Gaussian>(Base::noiseModel());
-      } else {
-        std::unordered_map<StateData, Matrix2N>* InterpCondCovs =
-            nullptr;  // Store a pointer so we don't copy the passed data
-        b = -computeInterpolatedError(c, nullptr, &JacInner, nullptr,
-                                      passedInterpData);
-        InterpCondCovs =
-            &passedInterpData->condCovs;  // set directly from passed data
-        noise_model = getInterpolatedNoiseModel(JacInner, *InterpCondCovs);
-      }
-      if (noise_model)
-        return noise_model->loss(noise_model->squaredMahalanobisDistance(b));
-      else
-        return 0.5 * b.squaredNorm();
-    } else {
-      return 0.0;
-    }
+    if (!active(c)) return 0.0;
+
+    Vector b;
+    auto noise_model = eval(c, passedInterpData, b, nullptr);
+    return loss(b, noise_model);
   }
 
   /**
@@ -582,6 +486,72 @@ class WNOAInterpFactor : public NoiseModelFactor {
   }
 
  private:
+  /// Compute unwhitened residual and matching Gaussian noise model.
+  noiseModel::Gaussian::shared_ptr eval(const Values& values,
+                                        PassedInterpData* passedInterpData,
+                                        Vector& b,
+                                        std::vector<Matrix>* A) const {
+    if (A && (A->size() != size())) A->resize(size());
+
+    return fixed_noise_model_ ? evalFixed(values, A, passedInterpData, b)
+                              : evalInterp(values, A, passedInterpData, b);
+  }
+
+  /// Compute residual/noise model for fixed-noise mode.
+  noiseModel::Gaussian::shared_ptr evalFixed(const Values& values,
+                                             std::vector<Matrix>* A,
+                                             PassedInterpData* passedInterpData,
+                                             Vector& b) const {
+    b = -computeInterpolatedError(values, A, nullptr, nullptr,
+                                  passedInterpData);
+    return std::dynamic_pointer_cast<noiseModel::Gaussian>(Base::noiseModel());
+  }
+
+  /// Compute residual/noise model for interpolation-augmented noise.
+  noiseModel::Gaussian::shared_ptr evalInterp(
+      const Values& values, std::vector<Matrix>* A,
+      PassedInterpData* passedInterpData, Vector& b) const {
+    std::vector<Matrix> jacInner(inner_factor_->size());
+
+    if (passedInterpData) {
+      b = -computeInterpolatedError(values, A, &jacInner, nullptr,
+                                    passedInterpData);
+      return getInterpolatedNoiseModel(jacInner, passedInterpData->condCovs);
+    }
+
+    std::unordered_map<StateData, Matrix2N> localInterpCondCovs;
+    b = -computeInterpolatedError(values, A, &jacInner, &localInterpCondCovs);
+    return getInterpolatedNoiseModel(jacInner, localInterpCondCovs);
+  }
+
+  /// Build a JacobianFactor from outer Jacobians and residual.
+  std::shared_ptr<GaussianFactor> makeJacobianFactor(
+      std::vector<Matrix>& A, Vector& b,
+      const noiseModel::Gaussian::shared_ptr& noise_model) const {
+    noise_model->WhitenSystem(A, b);
+
+    std::vector<std::pair<Key, Matrix>> terms(size());
+    for (size_t j = 0; j < size(); ++j) {
+      terms[j].first = keys()[j];
+      terms[j].second.swap(A[j]);
+    }
+
+    using noiseModel::Constrained;
+    if (noiseModel_ && noiseModel_->isConstrained()) {
+      return std::make_shared<JacobianFactor>(
+          terms, b, std::static_pointer_cast<Constrained>(noiseModel_)->unit());
+    }
+    return std::make_shared<JacobianFactor>(terms, b);
+  }
+
+  /// Compute scalar error from residual and Gaussian noise model.
+  double loss(const Vector& b,
+              const noiseModel::Gaussian::shared_ptr& noise_model) const {
+    if (noise_model)
+      return noise_model->loss(noise_model->squaredMahalanobisDistance(b));
+    return 0.5 * b.squaredNorm();
+  }
+
   /**
    * @brief Core routine that evaluates the inner factor on interpolated states
    * and maps results to the outer state ordering.
