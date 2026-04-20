@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    testWNOAFactor.cpp
+ * @file    testWnoaFactor.cpp
  * @brief   Unit test for WNOA Factor
  * @author  Connor Holmes
  */
@@ -22,7 +22,7 @@
 #include <gtsam/nonlinear/NonlinearEquality.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
-#include <gtsam/nonlinear/WNOAFactor.h>
+#include <gtsam/nonlinear/WnoaFactor.h>
 
 using namespace std;
 using namespace gtsam;

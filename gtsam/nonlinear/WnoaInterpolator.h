@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file WNOAInterpolator.h
+ * @file WnoaInterpolator.h
  * @brief Interpolator class implementation for interpolating poses and
  * velocities between two bordering states, either during or after a factor
  * graph solve. Interpolator assumes the WNOA motion prior by default.
@@ -22,8 +22,8 @@
 #pragma once
 
 #include <gtsam/nonlinear/Marginals.h>
-#include <gtsam/nonlinear/WNOAFactor.h>
-#include <gtsam/nonlinear/WNOAStateData.h>
+#include <gtsam/nonlinear/WnoaFactor.h>
+#include <gtsam/nonlinear/WnoaStateData.h>
 
 #include <algorithm>
 #include <fstream>

@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    testWNOAInterpFactor.cpp
+ * @file    testWnoaInterpFactor.cpp
  * @brief   Unit test for WNOA Interpolation Factor
  * @author  Connor Holmes
  */
@@ -22,9 +22,9 @@
 #include <gtsam/nonlinear/NonlinearEquality.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
-#include <gtsam/nonlinear/WNOAFactor.h>
-#include <gtsam/nonlinear/WNOAInterpFactor.h>
-#include <gtsam/nonlinear/WNOAInterpolator.h>
+#include <gtsam/nonlinear/WnoaFactor.h>
+#include <gtsam/nonlinear/WnoaInterpFactor.h>
+#include <gtsam/nonlinear/WnoaInterpolator.h>
 #include <gtsam/slam/BetweenFactor.h>
 
 #include <set>

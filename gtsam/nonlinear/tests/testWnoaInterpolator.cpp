@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    testWNOAInterpolator.cpp
+ * @file    testWnoaInterpolator.cpp
  * @brief   Unit tests for post-solve interpolator
  * @author  Zi Cong Guo
  */
@@ -22,8 +22,8 @@
 #include <gtsam/nonlinear/NonlinearEquality.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
-#include <gtsam/nonlinear/WNOAFactor.h>
-#include <gtsam/nonlinear/WNOAInterpolator.h>
+#include <gtsam/nonlinear/WnoaFactor.h>
+#include <gtsam/nonlinear/WnoaInterpolator.h>
 
 using namespace std;
 using namespace gtsam;

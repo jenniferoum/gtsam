@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file WNOAStateData.h
+ * @file WnoaStateData.h
  * @brief Introduces a lightweight struct for identifying states in
  * continuous-time estimation and interpolation.
  * @author Connor Holmes

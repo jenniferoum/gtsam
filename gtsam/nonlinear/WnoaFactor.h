@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    WNOAFactor.h
+ * @file    WnoaFactor.h
  * @brief   White-Noise-On-Acceleration (WNOA) motion prior factor between two
  * states (pose and velocity at times t_k and t_{k+1})
  * @author  Connor Holmes
@@ -28,7 +28,7 @@
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
-#include <gtsam/nonlinear/WNOAStateData.h>
+#include <gtsam/nonlinear/WnoaStateData.h>
 
 #include <cassert>
 

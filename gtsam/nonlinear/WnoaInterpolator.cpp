@@ -1,12 +1,12 @@
 /* ----------------------------------------------------------------------------
- * @file WNOAInterpolator.cpp
+ * @file WnoaInterpolator.cpp
  *
  * Note: References to (Barfoot 2024) refer to the following textbook:
  * Barfoot, Timothy D. State estimation for robotics. Cambridge University
  * Press, 2024.
  * -------------------------------------------------------------------------- */
 
-#include "WNOAInterpolator.h"
+#include "WnoaInterpolator.h"
 
 namespace gtsam {
 

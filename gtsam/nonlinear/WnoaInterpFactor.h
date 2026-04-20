@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    WNOAInterpFactor.h
+ * @file    WnoaInterpFactor.h
  * @brief   White-Noise-On-Acceleration (WNOA) continuous time interpolation
  * wrapper factor and functions to automatically update a given graph by
  * interpolating some variables (removing them from the optimization).
@@ -32,8 +32,8 @@
 #include <gtsam/inference/Key.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
 #include <gtsam/nonlinear/Values.h>
-#include <gtsam/nonlinear/WNOAInterpolator.h>
-#include <gtsam/nonlinear/WNOAStateData.h>
+#include <gtsam/nonlinear/WnoaInterpolator.h>
+#include <gtsam/nonlinear/WnoaStateData.h>
 
 #include <algorithm>
 #include <array>
