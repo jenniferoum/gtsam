@@ -108,6 +108,13 @@ class WNOAInterpFactor : public NoiseModelFactor {
   using MatrixN = Eigen::Matrix<double, dim, dim>;
   using LambdaPsiMats = typename Interpolator<PoseType>::LambdaPsiMats;
 
+  // Tell the compiler to import the base class's version of error
+  // Note: this is required because we don't define error( const HybridValues& )
+  // in this class, and without this line, the base class's error(const
+  // HybridValues&) is hidden by the error(const Values&, OptionalMatrixVecType)
+  // defined in this class.
+  using Base::error;
+
   // Inner factor that is called on interpolated values
   const NoiseModelFactor::shared_ptr inner_factor_;
   // Interpolator object for the given PoseType
