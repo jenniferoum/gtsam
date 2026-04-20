@@ -821,10 +821,12 @@ TEST(WNOAInterp, SE3InterpGraph) {
 
   // Define nominal factors
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
-  const auto between_factor =
-      BetweenFactor<Pose3>(P(1), P(3), p1_se3.inverse() * p3_se3, model);
-  const auto prior_pose_factor = PriorFactor<Pose3>(P(1), p1_se3, model);
-  const auto prior_vel_factor = PriorFactor<Vector6>(V(1), v0_se3, model);
+  const auto between_factor = std::make_shared<BetweenFactor<Pose3>>(
+      P(1), P(3), p1_se3.inverse() * p3_se3, model);
+  const auto prior_pose_factor =
+      std::make_shared<PriorFactor<Pose3>>(P(1), p1_se3, model);
+  const auto prior_vel_factor =
+      std::make_shared<PriorFactor<Vector6>>(V(1), v0_se3, model);
 
   // Generate original graph
   NonlinearFactorGraph graph;
