@@ -878,9 +878,20 @@ void JacobianFactor::gradientAtZero(double* d) const {
 
 /* ************************************************************************* */
 Vector JacobianFactor::gradient(Key key, const VectorValues& x) const {
-  // TODO: optimize it for JacobianFactor without converting to a HessianFactor
-  HessianFactor hessian(*this);
-  return hessian.gradient(key, x);
+  // Compute A*x - b (unwhitened residual)
+  Vector e = -getb();
+  for (size_t pos = 0; pos < size(); ++pos)
+    e.noalias() += Ab_(pos) * x.at(keys_[pos]);
+
+  // Apply Sigma^{-1} (double whiten)
+  if (model_) {
+    model_->whitenInPlace(e);
+    model_->whitenInPlace(e);
+  }
+
+  // Return A_k' * Sigma^{-1} * (A*x - b) for the requested key
+  const Factor::const_iterator it = find(key);
+  return Ab_(it - begin()).transpose() * e;
 }
 
 /* ************************************************************************* */
