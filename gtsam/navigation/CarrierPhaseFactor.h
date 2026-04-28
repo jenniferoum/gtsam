@@ -119,7 +119,7 @@ struct traits<CarrierPhaseFactor> : public Testable<CarrierPhaseFactor> {};
  * receiver state variable, allowing compensation for a lever arm offset.
  *
  * The antenna position is computed as:
- *   antenna_pos = ecef_T_body.translation() + ecef_R_body * bL_
+ *   antenna_pos = ecef_T_body.translation() + ecef_R_body * leverArm
  *
  * The error model is:
  *   error = ||antenna_pos - satPos|| + c*(dt_u - dt_s) + ambiguity - phi
@@ -136,8 +136,7 @@ class GTSAM_EXPORT CarrierPhaseFactorArm
  private:
   typedef NoiseModelFactorN<Pose3, double, double> Base;
 
-  Point3 bL_;  ///< Lever arm from body origin to antenna in body frame.
-  std::optional<Pose3> ecef_T_nav_;  ///< Optional ECEF-from-nav transform.
+  gnss::LeverArm arm_;
 
  public:
   using Base::evaluateError;
@@ -146,8 +145,7 @@ class GTSAM_EXPORT CarrierPhaseFactorArm
   typedef CarrierPhaseFactorArm This;
 
   /** default constructor - only use for serialization */
-  CarrierPhaseFactorArm()
-      : CarrierPhaseBase{0.0, Point3(0, 0, 0), 0.0}, bL_(0, 0, 0) {}
+  CarrierPhaseFactorArm() : CarrierPhaseBase{0.0, Point3(0, 0, 0), 0.0} {}
 
   virtual ~CarrierPhaseFactorArm() = default;
 
@@ -193,10 +191,10 @@ class GTSAM_EXPORT CarrierPhaseFactorArm
                        OptionalMatrixType Hambiguity) const override;
 
   /// return the lever arm
-  inline const Point3& leverArm() const { return bL_; }
+  inline const Point3& leverArm() const { return arm_.b; }
 
   /// return the optional ecef_T_nav transform
-  inline const std::optional<Pose3>& ecefTnav() const { return ecef_T_nav_; }
+  inline const std::optional<Pose3>& ecefTnav() const { return arm_.ecef_T_nav; }
 
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION  ///
@@ -207,8 +205,8 @@ class GTSAM_EXPORT CarrierPhaseFactorArm
     ar& BOOST_SERIALIZATION_NVP(measurement_);
     ar& BOOST_SERIALIZATION_NVP(satPos_);
     ar& BOOST_SERIALIZATION_NVP(satClkBias_);
-    ar& BOOST_SERIALIZATION_NVP(bL_);
-    ar& BOOST_SERIALIZATION_NVP(ecef_T_nav_);
+    ar& boost::serialization::make_nvp("bL_", arm_.b);
+    ar& boost::serialization::make_nvp("ecef_T_nav_", arm_.ecef_T_nav);
   }
 #endif
 };
@@ -254,16 +252,8 @@ class GTSAM_EXPORT DoubleDifferenceCarrierPhaseFactor
  private:
   typedef NoiseModelFactorN<Point3, double, double> Base;
 
-  double cpRovRef_;
-  double cpBaseRef_;
-  double cpRovTarget_;
-  double cpBaseTarget_;
-  Point3 satRefRov_;
-  Point3 satTargetRov_;
-  Point3 satRefBase_;
-  Point3 satTargetBase_;
-  Point3 basePos_;
-  double lam_;
+  gnss::DoubleDifferenceData dd_;
+  double lam_ = 0;
 
  public:
   // Expose the convenience evaluateError overloads from NoiseModelFactorN
@@ -272,21 +262,18 @@ class GTSAM_EXPORT DoubleDifferenceCarrierPhaseFactor
   typedef std::shared_ptr<DoubleDifferenceCarrierPhaseFactor> shared_ptr;
   typedef DoubleDifferenceCarrierPhaseFactor This;
 
-  DoubleDifferenceCarrierPhaseFactor()
-      : cpRovRef_(0), cpBaseRef_(0), cpRovTarget_(0), cpBaseTarget_(0),
-        satRefRov_(0,0,0), satTargetRov_(0,0,0),
-        satRefBase_(0,0,0), satTargetBase_(0,0,0),
-        basePos_(0,0,0), lam_(0) {}
+  DoubleDifferenceCarrierPhaseFactor() = default;
 
   virtual ~DoubleDifferenceCarrierPhaseFactor() = default;
 
-  DoubleDifferenceCarrierPhaseFactor(Key positionKey, Key ambRefKey, Key ambTargetKey,
-                       double cpRovRefMeters, double cpBaseRefMeters,
-                       double cpRovTargetMeters, double cpBaseTargetMeters,
-                       const Point3& satRefRov, const Point3& satTargetRov,
-                       const Point3& satRefBase, const Point3& satTargetBase,
-                       const Point3& basePos, double lam,
-                       const SharedNoiseModel& model = noiseModel::Unit::Create(1));
+  DoubleDifferenceCarrierPhaseFactor(
+      Key positionKey, Key ambRefKey, Key ambTargetKey,
+      double cpRovRefMeters, double cpBaseRefMeters,
+      double cpRovTargetMeters, double cpBaseTargetMeters,
+      const Point3& satRefRov, const Point3& satTargetRov,
+      const Point3& satRefBase, const Point3& satTargetBase,
+      const Point3& basePos, double lam,
+      const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
   gtsam::NonlinearFactor::shared_ptr clone() const override {
     return std::static_pointer_cast<gtsam::NonlinearFactor>(
@@ -310,29 +297,31 @@ class GTSAM_EXPORT DoubleDifferenceCarrierPhaseFactor
   friend class boost::serialization::access;
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
-    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(DoubleDifferenceCarrierPhaseFactor::Base);
-    ar& BOOST_SERIALIZATION_NVP(cpRovRef_);
-    ar& BOOST_SERIALIZATION_NVP(cpBaseRef_);
-    ar& BOOST_SERIALIZATION_NVP(cpRovTarget_);
-    ar& BOOST_SERIALIZATION_NVP(cpBaseTarget_);
-    ar& BOOST_SERIALIZATION_NVP(satRefRov_);
-    ar& BOOST_SERIALIZATION_NVP(satTargetRov_);
-    ar& BOOST_SERIALIZATION_NVP(satRefBase_);
-    ar& BOOST_SERIALIZATION_NVP(satTargetBase_);
-    ar& BOOST_SERIALIZATION_NVP(basePos_);
+    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(
+        DoubleDifferenceCarrierPhaseFactor::Base);
+    ar& boost::serialization::make_nvp("cpRovRef_", dd_.rovRef);
+    ar& boost::serialization::make_nvp("cpBaseRef_", dd_.baseRef);
+    ar& boost::serialization::make_nvp("cpRovTarget_", dd_.rovTarget);
+    ar& boost::serialization::make_nvp("cpBaseTarget_", dd_.baseTarget);
+    ar& boost::serialization::make_nvp("satRefRov_", dd_.satRefRov);
+    ar& boost::serialization::make_nvp("satTargetRov_", dd_.satTargetRov);
+    ar& boost::serialization::make_nvp("satRefBase_", dd_.satRefBase);
+    ar& boost::serialization::make_nvp("satTargetBase_", dd_.satTargetBase);
+    ar& boost::serialization::make_nvp("basePos_", dd_.basePos);
     ar& BOOST_SERIALIZATION_NVP(lam_);
   }
 #endif
 };
 
 template <>
-struct traits<DoubleDifferenceCarrierPhaseFactor> : public Testable<DoubleDifferenceCarrierPhaseFactor> {};
+struct traits<DoubleDifferenceCarrierPhaseFactor>
+    : public Testable<DoubleDifferenceCarrierPhaseFactor> {};
 
 /**
  * Double-difference carrier phase factor with lever arm correction.
  *
- * Like DoubleDifferenceCarrierPhaseFactor but uses Pose3 (position + attitude) with
- * lever arm offset. Optional ecef_T_nav for local navigation frame.
+ * Like DoubleDifferenceCarrierPhaseFactor but uses Pose3 (position + attitude)
+ * with lever arm offset. Optional ecef_T_nav for local navigation frame.
  *
  * @ingroup navigation
  */
@@ -341,18 +330,9 @@ class GTSAM_EXPORT DoubleDifferenceCarrierPhaseFactorArm
  private:
   typedef NoiseModelFactorN<Pose3, double, double> Base;
 
-  double cpRovRef_;
-  double cpBaseRef_;
-  double cpRovTarget_;
-  double cpBaseTarget_;
-  Point3 satRefRov_;
-  Point3 satTargetRov_;
-  Point3 satRefBase_;
-  Point3 satTargetBase_;
-  Point3 basePos_;
-  double lam_;
-  Point3 bL_;
-  std::optional<Pose3> ecef_T_nav_;
+  gnss::DoubleDifferenceData dd_;
+  double lam_ = 0;
+  gnss::LeverArm arm_;
 
  public:
   // Expose the convenience evaluateError overloads from NoiseModelFactorN
@@ -361,31 +341,29 @@ class GTSAM_EXPORT DoubleDifferenceCarrierPhaseFactorArm
   typedef std::shared_ptr<DoubleDifferenceCarrierPhaseFactorArm> shared_ptr;
   typedef DoubleDifferenceCarrierPhaseFactorArm This;
 
-  DoubleDifferenceCarrierPhaseFactorArm()
-      : cpRovRef_(0), cpBaseRef_(0), cpRovTarget_(0), cpBaseTarget_(0),
-        satRefRov_(0,0,0), satTargetRov_(0,0,0),
-        satRefBase_(0,0,0), satTargetBase_(0,0,0),
-        basePos_(0,0,0), lam_(0), bL_(0,0,0) {}
+  DoubleDifferenceCarrierPhaseFactorArm() = default;
 
   virtual ~DoubleDifferenceCarrierPhaseFactorArm() = default;
 
-  DoubleDifferenceCarrierPhaseFactorArm(Key poseKey, Key ambRefKey, Key ambTargetKey,
-                          double cpRovRefMeters, double cpBaseRefMeters,
-                          double cpRovTargetMeters, double cpBaseTargetMeters,
-                          const Point3& satRefRov, const Point3& satTargetRov,
-                          const Point3& satRefBase, const Point3& satTargetBase,
-                          const Point3& basePos, double lam,
-                          const Point3& leverArm,
-                          const SharedNoiseModel& model = noiseModel::Unit::Create(1));
+  DoubleDifferenceCarrierPhaseFactorArm(
+      Key poseKey, Key ambRefKey, Key ambTargetKey,
+      double cpRovRefMeters, double cpBaseRefMeters,
+      double cpRovTargetMeters, double cpBaseTargetMeters,
+      const Point3& satRefRov, const Point3& satTargetRov,
+      const Point3& satRefBase, const Point3& satTargetBase,
+      const Point3& basePos, double lam,
+      const Point3& leverArm,
+      const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
-  DoubleDifferenceCarrierPhaseFactorArm(Key poseKey, Key ambRefKey, Key ambTargetKey,
-                          double cpRovRefMeters, double cpBaseRefMeters,
-                          double cpRovTargetMeters, double cpBaseTargetMeters,
-                          const Point3& satRefRov, const Point3& satTargetRov,
-                          const Point3& satRefBase, const Point3& satTargetBase,
-                          const Point3& basePos, double lam,
-                          const Point3& leverArm, const Pose3& ecef_T_nav,
-                          const SharedNoiseModel& model = noiseModel::Unit::Create(1));
+  DoubleDifferenceCarrierPhaseFactorArm(
+      Key poseKey, Key ambRefKey, Key ambTargetKey,
+      double cpRovRefMeters, double cpBaseRefMeters,
+      double cpRovTargetMeters, double cpBaseTargetMeters,
+      const Point3& satRefRov, const Point3& satTargetRov,
+      const Point3& satRefBase, const Point3& satTargetBase,
+      const Point3& basePos, double lam,
+      const Point3& leverArm, const Pose3& ecef_T_nav,
+      const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
   gtsam::NonlinearFactor::shared_ptr clone() const override {
     return std::static_pointer_cast<gtsam::NonlinearFactor>(
@@ -404,32 +382,34 @@ class GTSAM_EXPORT DoubleDifferenceCarrierPhaseFactorArm
                        OptionalMatrixType HambRef,
                        OptionalMatrixType HambTarget) const override;
 
-  inline const Point3& leverArm() const { return bL_; }
-  inline const std::optional<Pose3>& ecefTnav() const { return ecef_T_nav_; }
+  inline const Point3& leverArm() const { return arm_.b; }
+  inline const std::optional<Pose3>& ecefTnav() const { return arm_.ecef_T_nav; }
 
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
   friend class boost::serialization::access;
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
-    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(DoubleDifferenceCarrierPhaseFactorArm::Base);
-    ar& BOOST_SERIALIZATION_NVP(cpRovRef_);
-    ar& BOOST_SERIALIZATION_NVP(cpBaseRef_);
-    ar& BOOST_SERIALIZATION_NVP(cpRovTarget_);
-    ar& BOOST_SERIALIZATION_NVP(cpBaseTarget_);
-    ar& BOOST_SERIALIZATION_NVP(satRefRov_);
-    ar& BOOST_SERIALIZATION_NVP(satTargetRov_);
-    ar& BOOST_SERIALIZATION_NVP(satRefBase_);
-    ar& BOOST_SERIALIZATION_NVP(satTargetBase_);
-    ar& BOOST_SERIALIZATION_NVP(basePos_);
+    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(
+        DoubleDifferenceCarrierPhaseFactorArm::Base);
+    ar& boost::serialization::make_nvp("cpRovRef_", dd_.rovRef);
+    ar& boost::serialization::make_nvp("cpBaseRef_", dd_.baseRef);
+    ar& boost::serialization::make_nvp("cpRovTarget_", dd_.rovTarget);
+    ar& boost::serialization::make_nvp("cpBaseTarget_", dd_.baseTarget);
+    ar& boost::serialization::make_nvp("satRefRov_", dd_.satRefRov);
+    ar& boost::serialization::make_nvp("satTargetRov_", dd_.satTargetRov);
+    ar& boost::serialization::make_nvp("satRefBase_", dd_.satRefBase);
+    ar& boost::serialization::make_nvp("satTargetBase_", dd_.satTargetBase);
+    ar& boost::serialization::make_nvp("basePos_", dd_.basePos);
     ar& BOOST_SERIALIZATION_NVP(lam_);
-    ar& BOOST_SERIALIZATION_NVP(bL_);
-    ar& BOOST_SERIALIZATION_NVP(ecef_T_nav_);
+    ar& boost::serialization::make_nvp("bL_", arm_.b);
+    ar& boost::serialization::make_nvp("ecef_T_nav_", arm_.ecef_T_nav);
   }
 #endif
 };
 
 template <>
-struct traits<DoubleDifferenceCarrierPhaseFactorArm> : public Testable<DoubleDifferenceCarrierPhaseFactorArm> {};
+struct traits<DoubleDifferenceCarrierPhaseFactorArm>
+    : public Testable<DoubleDifferenceCarrierPhaseFactorArm> {};
 
 }  // namespace gtsam

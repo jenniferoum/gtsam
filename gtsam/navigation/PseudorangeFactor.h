@@ -209,10 +209,10 @@ struct traits<DifferentialPseudorangeFactor>
  * between the body frame origin and the GNSS antenna location.
  *
  * The antenna position is computed as:
- *   antenna_pos = ecef_T_body.translation() + ecef_R_body * bL_
+ *   antenna_pos = ecef_T_body.translation() + ecef_R_body * leverArm
  *
- * where bL_ is the lever arm from the body origin to the antenna in the body
- * frame. The error model is:
+ * where leverArm is the body-frame translation from the body origin to the
+ * antenna. The error model is:
  *   error = ||antenna_pos - satPos|| + c*(dt_u - dt_s) - pseudorange
  *
  * When the optional ecef_T_nav transform is provided, the pose key is
@@ -228,8 +228,7 @@ class GTSAM_EXPORT PseudorangeFactorArm
  private:
   typedef NoiseModelFactorN<Pose3, double> Base;
 
-  Point3 bL_;  ///< Lever arm from body origin to antenna in body frame.
-  std::optional<Pose3> ecef_T_nav_;  ///< Optional ECEF-from-nav transform.
+  gnss::LeverArm arm_;  ///< Lever arm + optional ecef_T_nav.
 
  public:
   // Provide access to the Matrix& version of evaluateError:
@@ -242,7 +241,7 @@ class GTSAM_EXPORT PseudorangeFactorArm
   typedef PseudorangeFactorArm This;
 
   /** default constructor - only use for serialization */
-  PseudorangeFactorArm() : PseudorangeBase{0.0, Point3(0, 0, 0), 0.0}, bL_(0, 0, 0) {}
+  PseudorangeFactorArm() : PseudorangeBase{0.0, Point3(0, 0, 0), 0.0} {}
 
   virtual ~PseudorangeFactorArm() = default;
 
@@ -303,10 +302,10 @@ class GTSAM_EXPORT PseudorangeFactorArm
                        OptionalMatrixType HreceiverClockBias) const override;
 
   /// return the lever arm, a position in the body frame
-  inline const Point3& leverArm() const { return bL_; }
+  inline const Point3& leverArm() const { return arm_.b; }
 
   /// return the optional ecef_T_nav transform
-  inline const std::optional<Pose3>& ecefTnav() const { return ecef_T_nav_; }
+  inline const std::optional<Pose3>& ecefTnav() const { return arm_.ecef_T_nav; }
 
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION  ///
@@ -318,8 +317,8 @@ class GTSAM_EXPORT PseudorangeFactorArm
     ar& BOOST_SERIALIZATION_NVP(measurement_);
     ar& BOOST_SERIALIZATION_NVP(satPos_);
     ar& BOOST_SERIALIZATION_NVP(satClkBias_);
-    ar& BOOST_SERIALIZATION_NVP(bL_);
-    ar& BOOST_SERIALIZATION_NVP(ecef_T_nav_);
+    ar& boost::serialization::make_nvp("bL_", arm_.b);
+    ar& boost::serialization::make_nvp("ecef_T_nav_", arm_.ecef_T_nav);
   }
 #endif
 };
@@ -350,15 +349,15 @@ class GTSAM_EXPORT DifferentialPseudorangeFactorArm
       private PseudorangeBase {
  private:
   typedef NoiseModelFactorN<Pose3, double, double> Base;
-  Point3 bL_;
-  std::optional<Pose3> ecef_T_nav_;
+  gnss::LeverArm arm_;
 
  public:
   using Base::evaluateError;
   typedef std::shared_ptr<DifferentialPseudorangeFactorArm> shared_ptr;
   typedef DifferentialPseudorangeFactorArm This;
 
-  DifferentialPseudorangeFactorArm() : PseudorangeBase{0.0, Point3(0, 0, 0), 0.0}, bL_(0, 0, 0) {}
+  DifferentialPseudorangeFactorArm()
+      : PseudorangeBase{0.0, Point3(0, 0, 0), 0.0} {}
   virtual ~DifferentialPseudorangeFactorArm() = default;
 
   DifferentialPseudorangeFactorArm(
@@ -390,8 +389,8 @@ class GTSAM_EXPORT DifferentialPseudorangeFactorArm
                        OptionalMatrixType HreceiverClockBias,
                        OptionalMatrixType HdifferentialCorrection) const override;
 
-  inline const Point3& leverArm() const { return bL_; }
-  inline const std::optional<Pose3>& ecefTnav() const { return ecef_T_nav_; }
+  inline const Point3& leverArm() const { return arm_.b; }
+  inline const std::optional<Pose3>& ecefTnav() const { return arm_.ecef_T_nav; }
 
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
@@ -403,8 +402,8 @@ class GTSAM_EXPORT DifferentialPseudorangeFactorArm
     ar& BOOST_SERIALIZATION_NVP(measurement_);
     ar& BOOST_SERIALIZATION_NVP(satPos_);
     ar& BOOST_SERIALIZATION_NVP(satClkBias_);
-    ar& BOOST_SERIALIZATION_NVP(bL_);
-    ar& BOOST_SERIALIZATION_NVP(ecef_T_nav_);
+    ar& boost::serialization::make_nvp("bL_", arm_.b);
+    ar& boost::serialization::make_nvp("ecef_T_nav_", arm_.ecef_T_nav);
   }
 #endif
 };
@@ -442,19 +441,12 @@ struct traits<DifferentialPseudorangeFactorArm>
  *
  * @ingroup navigation
  */
-class GTSAM_EXPORT DoubleDifferencePseudorangeFactor : public NoiseModelFactorN<Point3> {
+class GTSAM_EXPORT DoubleDifferencePseudorangeFactor
+    : public NoiseModelFactorN<Point3> {
  private:
   typedef NoiseModelFactorN<Point3> Base;
 
-  double prRovRef_;         ///< Rover pseudorange for ref satellite [m]
-  double prBaseRef_;        ///< Base pseudorange for ref satellite [m]
-  double prRovTarget_;      ///< Rover pseudorange for target satellite [m]
-  double prBaseTarget_;     ///< Base pseudorange for target satellite [m]
-  Point3 satRefRov_;        ///< Ref satellite ECEF at rover time [m]
-  Point3 satTargetRov_;     ///< Target satellite ECEF at rover time [m]
-  Point3 satRefBase_;       ///< Ref satellite ECEF at base time [m]
-  Point3 satTargetBase_;    ///< Target satellite ECEF at base time [m]
-  Point3 basePos_;          ///< Base station ECEF position [m]
+  gnss::DoubleDifferenceData dd_;  ///< Shared DD observation/geometry data.
 
  public:
   // Expose the convenience evaluateError overloads from NoiseModelFactorN
@@ -463,10 +455,7 @@ class GTSAM_EXPORT DoubleDifferencePseudorangeFactor : public NoiseModelFactorN<
   typedef std::shared_ptr<DoubleDifferencePseudorangeFactor> shared_ptr;
   typedef DoubleDifferencePseudorangeFactor This;
 
-  DoubleDifferencePseudorangeFactor()
-      : prRovRef_(0), prBaseRef_(0), prRovTarget_(0), prBaseTarget_(0),
-        satRefRov_(0,0,0), satTargetRov_(0,0,0),
-        satRefBase_(0,0,0), satTargetBase_(0,0,0), basePos_(0,0,0) {}
+  DoubleDifferencePseudorangeFactor() = default;
 
   virtual ~DoubleDifferencePseudorangeFactor() = default;
 
@@ -483,13 +472,14 @@ class GTSAM_EXPORT DoubleDifferencePseudorangeFactor : public NoiseModelFactorN<
    * @param basePos       Base station ECEF position [m].
    * @param model         1-D noise model.
    */
-  DoubleDifferencePseudorangeFactor(Key positionKey,
-                      double prRovRef, double prBaseRef,
-                      double prRovTarget, double prBaseTarget,
-                      const Point3& satRefRov, const Point3& satTargetRov,
-                      const Point3& satRefBase, const Point3& satTargetBase,
-                      const Point3& basePos,
-                      const SharedNoiseModel& model = noiseModel::Unit::Create(1));
+  DoubleDifferencePseudorangeFactor(
+      Key positionKey,
+      double prRovRef, double prBaseRef,
+      double prRovTarget, double prBaseTarget,
+      const Point3& satRefRov, const Point3& satTargetRov,
+      const Point3& satRefBase, const Point3& satTargetBase,
+      const Point3& basePos,
+      const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
   gtsam::NonlinearFactor::shared_ptr clone() const override {
     return std::static_pointer_cast<gtsam::NonlinearFactor>(
@@ -510,46 +500,40 @@ class GTSAM_EXPORT DoubleDifferencePseudorangeFactor : public NoiseModelFactorN<
   friend class boost::serialization::access;
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
-    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(DoubleDifferencePseudorangeFactor::Base);
-    ar& BOOST_SERIALIZATION_NVP(prRovRef_);
-    ar& BOOST_SERIALIZATION_NVP(prBaseRef_);
-    ar& BOOST_SERIALIZATION_NVP(prRovTarget_);
-    ar& BOOST_SERIALIZATION_NVP(prBaseTarget_);
-    ar& BOOST_SERIALIZATION_NVP(satRefRov_);
-    ar& BOOST_SERIALIZATION_NVP(satTargetRov_);
-    ar& BOOST_SERIALIZATION_NVP(satRefBase_);
-    ar& BOOST_SERIALIZATION_NVP(satTargetBase_);
-    ar& BOOST_SERIALIZATION_NVP(basePos_);
+    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(
+        DoubleDifferencePseudorangeFactor::Base);
+    ar& boost::serialization::make_nvp("prRovRef_", dd_.rovRef);
+    ar& boost::serialization::make_nvp("prBaseRef_", dd_.baseRef);
+    ar& boost::serialization::make_nvp("prRovTarget_", dd_.rovTarget);
+    ar& boost::serialization::make_nvp("prBaseTarget_", dd_.baseTarget);
+    ar& boost::serialization::make_nvp("satRefRov_", dd_.satRefRov);
+    ar& boost::serialization::make_nvp("satTargetRov_", dd_.satTargetRov);
+    ar& boost::serialization::make_nvp("satRefBase_", dd_.satRefBase);
+    ar& boost::serialization::make_nvp("satTargetBase_", dd_.satTargetBase);
+    ar& boost::serialization::make_nvp("basePos_", dd_.basePos);
   }
 #endif
 };
 
 template <>
-struct traits<DoubleDifferencePseudorangeFactor> : public Testable<DoubleDifferencePseudorangeFactor> {};
+struct traits<DoubleDifferencePseudorangeFactor>
+    : public Testable<DoubleDifferencePseudorangeFactor> {};
 
 /**
  * Double-difference pseudorange factor with lever arm correction.
  *
- * Like DoubleDifferencePseudorangeFactor but uses Pose3 (position + attitude) with
- * lever arm offset. Optional ecef_T_nav for local navigation frame.
+ * Like DoubleDifferencePseudorangeFactor but uses Pose3 (position + attitude)
+ * with lever arm offset. Optional ecef_T_nav for local navigation frame.
  *
  * @ingroup navigation
  */
-class GTSAM_EXPORT DoubleDifferencePseudorangeFactorArm : public NoiseModelFactorN<Pose3> {
+class GTSAM_EXPORT DoubleDifferencePseudorangeFactorArm
+    : public NoiseModelFactorN<Pose3> {
  private:
   typedef NoiseModelFactorN<Pose3> Base;
 
-  double prRovRef_;
-  double prBaseRef_;
-  double prRovTarget_;
-  double prBaseTarget_;
-  Point3 satRefRov_;
-  Point3 satTargetRov_;
-  Point3 satRefBase_;
-  Point3 satTargetBase_;
-  Point3 basePos_;
-  Point3 bL_;
-  std::optional<Pose3> ecef_T_nav_;
+  gnss::DoubleDifferenceData dd_;
+  gnss::LeverArm arm_;
 
  public:
   // Expose the convenience evaluateError overloads from NoiseModelFactorN
@@ -558,30 +542,28 @@ class GTSAM_EXPORT DoubleDifferencePseudorangeFactorArm : public NoiseModelFacto
   typedef std::shared_ptr<DoubleDifferencePseudorangeFactorArm> shared_ptr;
   typedef DoubleDifferencePseudorangeFactorArm This;
 
-  DoubleDifferencePseudorangeFactorArm()
-      : prRovRef_(0), prBaseRef_(0), prRovTarget_(0), prBaseTarget_(0),
-        satRefRov_(0,0,0), satTargetRov_(0,0,0),
-        satRefBase_(0,0,0), satTargetBase_(0,0,0),
-        basePos_(0,0,0), bL_(0,0,0) {}
+  DoubleDifferencePseudorangeFactorArm() = default;
 
   virtual ~DoubleDifferencePseudorangeFactorArm() = default;
 
-  DoubleDifferencePseudorangeFactorArm(Key poseKey,
-                         double prRovRef, double prBaseRef,
-                         double prRovTarget, double prBaseTarget,
-                         const Point3& satRefRov, const Point3& satTargetRov,
-                         const Point3& satRefBase, const Point3& satTargetBase,
-                         const Point3& basePos, const Point3& leverArm,
-                         const SharedNoiseModel& model = noiseModel::Unit::Create(1));
+  DoubleDifferencePseudorangeFactorArm(
+      Key poseKey,
+      double prRovRef, double prBaseRef,
+      double prRovTarget, double prBaseTarget,
+      const Point3& satRefRov, const Point3& satTargetRov,
+      const Point3& satRefBase, const Point3& satTargetBase,
+      const Point3& basePos, const Point3& leverArm,
+      const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
-  DoubleDifferencePseudorangeFactorArm(Key poseKey,
-                         double prRovRef, double prBaseRef,
-                         double prRovTarget, double prBaseTarget,
-                         const Point3& satRefRov, const Point3& satTargetRov,
-                         const Point3& satRefBase, const Point3& satTargetBase,
-                         const Point3& basePos, const Point3& leverArm,
-                         const Pose3& ecef_T_nav,
-                         const SharedNoiseModel& model = noiseModel::Unit::Create(1));
+  DoubleDifferencePseudorangeFactorArm(
+      Key poseKey,
+      double prRovRef, double prBaseRef,
+      double prRovTarget, double prBaseTarget,
+      const Point3& satRefRov, const Point3& satTargetRov,
+      const Point3& satRefBase, const Point3& satTargetBase,
+      const Point3& basePos, const Point3& leverArm,
+      const Pose3& ecef_T_nav,
+      const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
   gtsam::NonlinearFactor::shared_ptr clone() const override {
     return std::static_pointer_cast<gtsam::NonlinearFactor>(
@@ -597,31 +579,33 @@ class GTSAM_EXPORT DoubleDifferencePseudorangeFactorArm : public NoiseModelFacto
   Vector evaluateError(const Pose3& pose,
                        OptionalMatrixType H_pose) const override;
 
-  inline const Point3& leverArm() const { return bL_; }
-  inline const std::optional<Pose3>& ecefTnav() const { return ecef_T_nav_; }
+  inline const Point3& leverArm() const { return arm_.b; }
+  inline const std::optional<Pose3>& ecefTnav() const { return arm_.ecef_T_nav; }
 
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
   friend class boost::serialization::access;
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
-    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(DoubleDifferencePseudorangeFactorArm::Base);
-    ar& BOOST_SERIALIZATION_NVP(prRovRef_);
-    ar& BOOST_SERIALIZATION_NVP(prBaseRef_);
-    ar& BOOST_SERIALIZATION_NVP(prRovTarget_);
-    ar& BOOST_SERIALIZATION_NVP(prBaseTarget_);
-    ar& BOOST_SERIALIZATION_NVP(satRefRov_);
-    ar& BOOST_SERIALIZATION_NVP(satTargetRov_);
-    ar& BOOST_SERIALIZATION_NVP(satRefBase_);
-    ar& BOOST_SERIALIZATION_NVP(satTargetBase_);
-    ar& BOOST_SERIALIZATION_NVP(basePos_);
-    ar& BOOST_SERIALIZATION_NVP(bL_);
-    ar& BOOST_SERIALIZATION_NVP(ecef_T_nav_);
+    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(
+        DoubleDifferencePseudorangeFactorArm::Base);
+    ar& boost::serialization::make_nvp("prRovRef_", dd_.rovRef);
+    ar& boost::serialization::make_nvp("prBaseRef_", dd_.baseRef);
+    ar& boost::serialization::make_nvp("prRovTarget_", dd_.rovTarget);
+    ar& boost::serialization::make_nvp("prBaseTarget_", dd_.baseTarget);
+    ar& boost::serialization::make_nvp("satRefRov_", dd_.satRefRov);
+    ar& boost::serialization::make_nvp("satTargetRov_", dd_.satTargetRov);
+    ar& boost::serialization::make_nvp("satRefBase_", dd_.satRefBase);
+    ar& boost::serialization::make_nvp("satTargetBase_", dd_.satTargetBase);
+    ar& boost::serialization::make_nvp("basePos_", dd_.basePos);
+    ar& boost::serialization::make_nvp("bL_", arm_.b);
+    ar& boost::serialization::make_nvp("ecef_T_nav_", arm_.ecef_T_nav);
   }
 #endif
 };
 
 template <>
-struct traits<DoubleDifferencePseudorangeFactorArm> : public Testable<DoubleDifferencePseudorangeFactorArm> {};
+struct traits<DoubleDifferencePseudorangeFactorArm>
+    : public Testable<DoubleDifferencePseudorangeFactorArm> {};
 
 }  // namespace gtsam
