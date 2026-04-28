@@ -760,9 +760,9 @@ virtual class SmartStereoProjectionFactor : gtsam::NonlinearFactor {
   bool isFarPoint() const;
 
   gtsam::GaussianFactor linearizeDamped(const gtsam::CameraSet<gtsam::StereoCamera>& cameras,
-      const double lambda) const;
+      const double _lambda) const;
   gtsam::GaussianFactor linearizeDamped(const gtsam::Values& values,
-      const double lambda) const;
+      const double _lambda) const;
 };
 
 #include <gtsam_unstable/slam/SmartStereoProjectionPoseFactor.h>
@@ -815,6 +815,7 @@ virtual class ProjectionFactorRollingShutter : gtsam::NoiseModelFactor {
   void serialize() const;
 };
 
+<<<<<<< feature/eqf-impl
 //*************************************************************************
 // navigation (EqVIO)
 //*************************************************************************
@@ -877,5 +878,23 @@ class EqVIOFilter {
 };
 
 }  // namespace eqvio
+=======
+#include <gtsam_unstable/slam/LocalOrientedPlane3Factor.h>
+
+virtual class LocalOrientedPlane3Factor : gtsam::NoiseModelFactor {
+  LocalOrientedPlane3Factor(const gtsam::Vector4& z,
+                            const gtsam::noiseModel::Base* noiseModel,
+                            gtsam::Key poseKey,
+                            gtsam::Key anchorPoseKey,
+                            gtsam::Key landmarkKey);
+  LocalOrientedPlane3Factor(const gtsam::OrientedPlane3& z,
+                            const gtsam::noiseModel::Base* noiseModel,
+                            gtsam::Key poseKey,
+                            gtsam::Key anchorPoseKey,
+                            gtsam::Key landmarkKey);
+  void serialize() const;
+};
+
+>>>>>>> develop
 
 } //\namespace gtsam

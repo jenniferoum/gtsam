@@ -241,7 +241,7 @@ namespace so3 {
   };
 
   virtual class DexpFunctor : gtsam::so3::ExpmapFunctor {
-    gtsam::Vector3 omega;
+    const gtsam::Vector3 omega;
 
     DexpFunctor(const gtsam::Vector3& omega);
     DexpFunctor(const gtsam::Vector3& omega, double nearZeroThresholdSq, double nearPiThresholdSq);
@@ -578,6 +578,10 @@ class Pose2 {
   // Group Actions on Point2
   gtsam::Point2 transformFrom(const gtsam::Point2& p) const;
   gtsam::Point2 transformTo(const gtsam::Point2& p) const;
+  gtsam::Point2 transformFrom(const gtsam::Point2& p,
+    Eigen::Ref<Eigen::MatrixXd> H1, Eigen::Ref<Eigen::MatrixXd> H2) const;
+  gtsam::Point2 transformTo(const gtsam::Point2& p,
+    Eigen::Ref<Eigen::MatrixXd> H1, Eigen::Ref<Eigen::MatrixXd> H2) const;
 
   // gtsam::Matrix versions
   gtsam::Matrix transformFrom(const gtsam::Matrix& points) const;
@@ -588,7 +592,11 @@ class Pose2 {
   double y() const;
   double theta() const;
   gtsam::Rot2 bearing(const gtsam::Point2& point) const;
+  gtsam::Rot2 bearing(const gtsam::Point2& point,
+    Eigen::Ref<Eigen::MatrixXd> H1, Eigen::Ref<Eigen::MatrixXd> H2) const;
   double range(const gtsam::Point2& point) const;
+  double range(const gtsam::Point2& point,
+    Eigen::Ref<Eigen::MatrixXd> H1, Eigen::Ref<Eigen::MatrixXd> H2) const;
   gtsam::Point2 translation() const;
   gtsam::Point2 translation(Eigen::Ref<Eigen::MatrixXd> Hself) const;
   gtsam::Rot2 rotation() const;
@@ -719,6 +727,7 @@ class Pose3 {
 };
 
 #include <gtsam/geometry/ExtendedPose3.h>
+// An alias Se23 for ExtendedPose3 with k=2 is defined in python/gtsam/__init__.py
 template <K = {2, 3, 4, 6}>
 class ExtendedPose3 {
   // Standard Constructors
@@ -1065,6 +1074,7 @@ class Similarity2 {
   // Standard Interface
   bool equals(const gtsam::Similarity2& sim, double tol) const;
   void print(string s = "") const;
+  gtsam::Matrix matrix() const;
   gtsam::Rot2& rotation();
   gtsam::Point2& translation();
   double scale() const;
@@ -1121,6 +1131,7 @@ class Similarity3 {
   // Standard Interface
   bool equals(const gtsam::Similarity3& sim, double tol) const;
   void print(string s = "") const;
+  gtsam::Matrix matrix() const;
   gtsam::Rot3& rotation();
   gtsam::Point3& translation();
   double scale() const;

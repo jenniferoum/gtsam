@@ -7,6 +7,8 @@ namespace gtsam {
 #include <gtsam/geometry/SO4.h>
 #include <gtsam/geometry/SL4.h>
 #include <gtsam/navigation/ImuBias.h>
+#include <gtsam/navigation/NavState.h>
+#include <gtsam/geometry/ExtendedPose3.h>
 #include <gtsam/geometry/Similarity2.h>
 #include <gtsam/geometry/Similarity3.h>
 #include <gtsam/geometry/Gal3.h>
@@ -19,7 +21,8 @@ namespace gtsam {
 #include <gtsam/slam/BetweenFactor.h>
 template <T = {double, gtsam::Vector, gtsam::Point2, gtsam::Point3, gtsam::Rot2, gtsam::SO3,
                gtsam::SO4, gtsam::SL4, gtsam::Rot3, gtsam::Pose2, gtsam::Pose3,
-               gtsam::Similarity2, gtsam::Similarity3, gtsam::imuBias::ConstantBias}>
+               gtsam::Similarity2, gtsam::Similarity3, gtsam::Gal3, gtsam::NavState,
+               gtsam::Se23, gtsam::ExtendedPose3d, gtsam::imuBias::ConstantBias}>
 virtual class BetweenFactor : gtsam::NoiseModelFactor {
   BetweenFactor(gtsam::Key key1, gtsam::Key key2, const T& relativePose,
                 const gtsam::noiseModel::Base* noiseModel = nullptr);
@@ -173,7 +176,7 @@ virtual class SmartFactorBase : gtsam::NonlinearFactor {
            const gtsam::KeyVector& cameraKeys);
   size_t dim() const;
   const CAMERA::MeasurementVector& measured() const;
-  std::vector<CAMERA> cameras(const gtsam::Values& values) const;
+  gtsam::CameraSet<CAMERA> cameras(const gtsam::Values& values) const;
 
   void print(const std::string& s = "", const gtsam::KeyFormatter& keyFormatter =
     gtsam::DefaultKeyFormatter) const;
@@ -223,24 +226,24 @@ virtual class SmartProjectionFactor : gtsam::SmartFactorBase<CAMERA> {
   bool triangulateForLinearize(const gtsam::CameraSet<CAMERA>& cameras) const;
 
   gtsam::HessianFactor* createHessianFactor(
-      const gtsam::CameraSet<CAMERA>& cameras, const double lambda = 0.0,
+      const gtsam::CameraSet<CAMERA>& cameras, const double _lambda = 0.0,
       bool diagonalDamping = false) const;
   gtsam::JacobianFactor* createJacobianQFactor(
-      const gtsam::CameraSet<CAMERA>& cameras, double lambda) const;
+      const gtsam::CameraSet<CAMERA>& cameras, double _lambda) const;
   gtsam::JacobianFactor* createJacobianQFactor(
-      const gtsam::Values& values, double lambda) const;
+      const gtsam::Values& values, double _lambda) const;
   gtsam::JacobianFactor* createJacobianSVDFactor(
-      const gtsam::CameraSet<CAMERA>& cameras, double lambda) const;
+      const gtsam::CameraSet<CAMERA>& cameras, double _lambda) const;
   gtsam::HessianFactor* linearizeToHessian(
-      const gtsam::Values& values, double lambda = 0.0) const;
+      const gtsam::Values& values, double _lambda = 0.0) const;
   gtsam::JacobianFactor* linearizeToJacobian(
-      const gtsam::Values& values, double lambda = 0.0) const;
+      const gtsam::Values& values, double _lambda = 0.0) const;
 
   gtsam::GaussianFactor* linearizeDamped(const gtsam::CameraSet<CAMERA>& cameras,
-      const double lambda = 0.0) const;
+      const double _lambda = 0.0) const;
 
   gtsam::GaussianFactor* linearizeDamped(const gtsam::Values& values,
-      const double lambda = 0.0) const;
+      const double _lambda = 0.0) const;
 
   gtsam::GaussianFactor* linearize(
       const gtsam::Values& values) const;
@@ -355,7 +358,7 @@ class ReferenceFrameFactor : gtsam::NoiseModelFactor {
   ReferenceFrameFactor(gtsam::Key globalKey, gtsam::Key transKey, 
                        gtsam::Key localKey, const gtsam::noiseModel::Base* model);
 
-  gtsam::Vector evaluateError(const LANDMARK& global, const POSE& trans, const LANDMARK& local);
+  gtsam::Vector evaluateError(const LANDMARK& _global, const POSE& trans, const LANDMARK& local);
 
   void print(const std::string& s="",
     const gtsam::KeyFormatter& keyFormatter = gtsam::DefaultKeyFormatter);

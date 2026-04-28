@@ -138,14 +138,26 @@ Vector DifferentialPseudorangeFactor::evaluateError(
 }
 //***************************************************************************
 PseudorangeFactorArm::PseudorangeFactorArm(
-    const Key ecefTbodyKey, const Key receiverClockBiasKey,
+    const Key poseKey, const Key receiverClockBiasKey,
     const double measuredPseudorange, const Point3& satellitePosition,
     const Point3& leverArm, const double satelliteClockBias,
     const SharedNoiseModel& model)
-    : Base(model, ecefTbodyKey, receiverClockBiasKey),
+    : Base(model, poseKey, receiverClockBiasKey),
       PseudorangeBase{measuredPseudorange, satellitePosition,
                       satelliteClockBias},
       bL_(leverArm) {}
+
+//***************************************************************************
+PseudorangeFactorArm::PseudorangeFactorArm(
+    const Key poseKey, const Key receiverClockBiasKey,
+    const double measuredPseudorange, const Point3& satellitePosition,
+    const Point3& leverArm, const Pose3& ecef_T_nav,
+    const double satelliteClockBias, const SharedNoiseModel& model)
+    : Base(model, poseKey, receiverClockBiasKey),
+      PseudorangeBase{measuredPseudorange, satellitePosition,
+                      satelliteClockBias},
+      bL_(leverArm),
+      ecef_T_nav_(ecef_T_nav) {}
 
 //***************************************************************************
 void PseudorangeFactorArm::print(const std::string& s,
@@ -155,24 +167,37 @@ void PseudorangeFactorArm::print(const std::string& s,
   gtsam::print(Vector(satPos_), "sat position (ECEF meters): ");
   gtsam::print(satClkBias_, "sat clock bias (s): ");
   gtsam::print(Vector(bL_), "lever arm (body frame meters): ");
+  if (ecef_T_nav_) {
+    ecef_T_nav_->print("ecef_T_nav: ");
+  }
 }
 
 //***************************************************************************
 bool PseudorangeFactorArm::equals(const NonlinearFactor& expected,
                                    double tol) const {
   const This* e = dynamic_cast<const This*>(&expected);
-  return e != nullptr && Base::equals(*e, tol) &&
-         traits<double>::Equals(pseudorange_, e->pseudorange_, tol) &&
-         traits<Point3>::Equals(satPos_, e->satPos_, tol) &&
-         traits<double>::Equals(satClkBias_, e->satClkBias_, tol) &&
-         traits<Point3>::Equals(bL_, e->bL_, tol);
+  if (e == nullptr || !Base::equals(*e, tol)) return false;
+  if (!traits<double>::Equals(pseudorange_, e->pseudorange_, tol)) return false;
+  if (!traits<Point3>::Equals(satPos_, e->satPos_, tol)) return false;
+  if (!traits<double>::Equals(satClkBias_, e->satClkBias_, tol)) return false;
+  if (!traits<Point3>::Equals(bL_, e->bL_, tol)) return false;
+  if (ecef_T_nav_.has_value() != e->ecef_T_nav_.has_value()) return false;
+  if (ecef_T_nav_ && !ecef_T_nav_->equals(*e->ecef_T_nav_, tol)) return false;
+  return true;
 }
 
 //***************************************************************************
 Vector PseudorangeFactorArm::evaluateError(
-    const Pose3& ecef_T_body, const double& receiverClockBias,
-    OptionalMatrixType H_ecef_T_body,
+    const Pose3& pose, const double& receiverClockBias,
+    OptionalMatrixType H_pose,
     OptionalMatrixType HreceiverClockBias) const {
+  // Convert from local nav frame to ECEF if ecef_T_nav is provided:
+  Matrix66 H_compose;
+  const bool has_nav = ecef_T_nav_.has_value();
+  const Pose3 ecef_T_body = has_nav
+      ? ecef_T_nav_->compose(pose, {}, H_pose ? &H_compose : nullptr)
+      : pose;
+
   // Compute antenna position in the ECEF frame:
   const Matrix3 ecef_R_body = ecef_T_body.rotation().matrix();
   const Point3 antennaPos = ecef_T_body.translation() + ecef_R_body * bL_;
@@ -184,16 +209,19 @@ Vector PseudorangeFactorArm::evaluateError(
   const double error = rho - pseudorange_;
 
   // Compute associated derivatives:
-  if (H_ecef_T_body) {
-    H_ecef_T_body->resize(1, 6);
+  if (H_pose) {
+    H_pose->resize(1, 6);
     if (range < std::numeric_limits<double>::epsilon()) {
-      H_ecef_T_body->setZero();
+      H_pose->setZero();
     } else {
       // u = unit vector from satellite to antenna
       const Matrix u = (position_difference / range).transpose();  // 1x3
-      H_ecef_T_body->block<1, 3>(0, 0) =
+      Matrix16 H_ecef;
+      H_ecef.block<1, 3>(0, 0) =
           u * (-ecef_R_body * skewSymmetric(bL_));
-      H_ecef_T_body->block<1, 3>(0, 3) = u * ecef_R_body;
+      H_ecef.block<1, 3>(0, 3) = u * ecef_R_body;
+      // Chain rule: if ecef_T_nav is set, multiply by compose Jacobian
+      *H_pose = has_nav ? H_ecef * H_compose : H_ecef;
     }
   }
 
@@ -206,14 +234,27 @@ Vector PseudorangeFactorArm::evaluateError(
 
 //***************************************************************************
 DifferentialPseudorangeFactorArm::DifferentialPseudorangeFactorArm(
-    const Key ecefTbodyKey, const Key receiverClockBiasKey,
+    const Key poseKey, const Key receiverClockBiasKey,
     const Key differentialCorrectionKey, const double measuredPseudorange,
     const Point3& satellitePosition, const Point3& leverArm,
     const double satelliteClockBias, const SharedNoiseModel& model)
-    : Base(model, ecefTbodyKey, receiverClockBiasKey, differentialCorrectionKey),
+    : Base(model, poseKey, receiverClockBiasKey, differentialCorrectionKey),
       PseudorangeBase{measuredPseudorange, satellitePosition,
                       satelliteClockBias},
       bL_(leverArm) {}
+
+//***************************************************************************
+DifferentialPseudorangeFactorArm::DifferentialPseudorangeFactorArm(
+    const Key poseKey, const Key receiverClockBiasKey,
+    const Key differentialCorrectionKey, const double measuredPseudorange,
+    const Point3& satellitePosition, const Point3& leverArm,
+    const Pose3& ecef_T_nav, const double satelliteClockBias,
+    const SharedNoiseModel& model)
+    : Base(model, poseKey, receiverClockBiasKey, differentialCorrectionKey),
+      PseudorangeBase{measuredPseudorange, satellitePosition,
+                      satelliteClockBias},
+      bL_(leverArm),
+      ecef_T_nav_(ecef_T_nav) {}
 
 //***************************************************************************
 void DifferentialPseudorangeFactorArm::print(
@@ -223,25 +264,38 @@ void DifferentialPseudorangeFactorArm::print(
   gtsam::print(Vector(satPos_), "sat position (ECEF meters): ");
   gtsam::print(satClkBias_, "sat clock bias (s): ");
   gtsam::print(Vector(bL_), "lever arm (body frame meters): ");
+  if (ecef_T_nav_) {
+    ecef_T_nav_->print("ecef_T_nav: ");
+  }
 }
 
 //***************************************************************************
 bool DifferentialPseudorangeFactorArm::equals(
     const NonlinearFactor& expected, double tol) const {
   const This* e = dynamic_cast<const This*>(&expected);
-  return e != nullptr && Base::equals(*e, tol) &&
-         traits<double>::Equals(pseudorange_, e->pseudorange_, tol) &&
-         traits<Point3>::Equals(satPos_, e->satPos_, tol) &&
-         traits<double>::Equals(satClkBias_, e->satClkBias_, tol) &&
-         traits<Point3>::Equals(bL_, e->bL_, tol);
+  if (e == nullptr || !Base::equals(*e, tol)) return false;
+  if (!traits<double>::Equals(pseudorange_, e->pseudorange_, tol)) return false;
+  if (!traits<Point3>::Equals(satPos_, e->satPos_, tol)) return false;
+  if (!traits<double>::Equals(satClkBias_, e->satClkBias_, tol)) return false;
+  if (!traits<Point3>::Equals(bL_, e->bL_, tol)) return false;
+  if (ecef_T_nav_.has_value() != e->ecef_T_nav_.has_value()) return false;
+  if (ecef_T_nav_ && !ecef_T_nav_->equals(*e->ecef_T_nav_, tol)) return false;
+  return true;
 }
 
 //***************************************************************************
 Vector DifferentialPseudorangeFactorArm::evaluateError(
-    const Pose3& ecef_T_body, const double& receiverClockBias,
-    const double& differentialCorrection, OptionalMatrixType H_ecef_T_body,
+    const Pose3& pose, const double& receiverClockBias,
+    const double& differentialCorrection, OptionalMatrixType H_pose,
     OptionalMatrixType HreceiverClockBias,
     OptionalMatrixType HdifferentialCorrection) const {
+  // Convert from local nav frame to ECEF if ecef_T_nav is provided:
+  Matrix66 H_compose;
+  const bool has_nav = ecef_T_nav_.has_value();
+  const Pose3 ecef_T_body = has_nav
+      ? ecef_T_nav_->compose(pose, {}, H_pose ? &H_compose : nullptr)
+      : pose;
+
   // Compute antenna position in the ECEF frame:
   const Matrix3 ecef_R_body = ecef_T_body.rotation().matrix();
   const Point3 antennaPos = ecef_T_body.translation() + ecef_R_body * bL_;
@@ -253,16 +307,19 @@ Vector DifferentialPseudorangeFactorArm::evaluateError(
   const double error = rho - pseudorange_ - differentialCorrection;
 
   // Compute associated derivatives:
-  if (H_ecef_T_body) {
-    H_ecef_T_body->resize(1, 6);
+  if (H_pose) {
+    H_pose->resize(1, 6);
     if (range < std::numeric_limits<double>::epsilon()) {
-      H_ecef_T_body->setZero();
+      H_pose->setZero();
     } else {
       // u = unit vector from satellite to antenna
       const Matrix u = (position_difference / range).transpose();  // 1x3
-      H_ecef_T_body->block<1, 3>(0, 0) =
+      Matrix16 H_ecef;
+      H_ecef.block<1, 3>(0, 0) =
           u * (-ecef_R_body * skewSymmetric(bL_));
-      H_ecef_T_body->block<1, 3>(0, 3) = u * ecef_R_body;
+      H_ecef.block<1, 3>(0, 3) = u * ecef_R_body;
+      // Chain rule: if ecef_T_nav is set, multiply by compose Jacobian
+      *H_pose = has_nav ? H_ecef * H_compose : H_ecef;
     }
   }
 

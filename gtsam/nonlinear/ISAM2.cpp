@@ -23,6 +23,7 @@
 #include <gtsam/base/debug.h>
 #include <gtsam/base/timing.h>
 #include <gtsam/inference/BayesTree-inst.h>
+#include <gtsam/linear/GaussianBayesTreeQueries.h>
 #include <gtsam/nonlinear/LinearContainerFactor.h>
 
 #include <algorithm>
@@ -199,8 +200,23 @@ void ISAM2::recalculateBatch(const ISAM2UpdateParams& updateParams,
   gttic(ordering);
   Ordering order;
   if (updateParams.constrainedKeys) {
-    order = Ordering::ColamdConstrained(affectedFactorsVarIndex,
-                                        *updateParams.constrainedKeys);
+    // Need to check for unusedKeys and filter them out from constrainedKeys
+    FastMap<Key, int> constraintGroups;
+    if (result->unusedKeys.empty()) {
+      // All keys being used, no need to filter
+      constraintGroups = *updateParams.constrainedKeys;
+    } else {
+      // Remove unused keys from the constraints
+      for (auto it = updateParams.constrainedKeys->begin(),
+                last = updateParams.constrainedKeys->end();
+           it != last; it++) {
+        if (result->unusedKeys.find(it->first) == result->unusedKeys.end()) {
+          constraintGroups.insert(*it);
+        }
+      }
+    }
+    order =
+        Ordering::ColamdConstrained(affectedFactorsVarIndex, constraintGroups);
   } else {
     if (theta_.size() > result->observedKeys.size()) {
       // Only if some variables are unconstrained
@@ -837,10 +853,30 @@ Values ISAM2::calculateBestEstimate() const {
 }
 
 /* ************************************************************************* */
+Matrix ISAM2::marginalInformation(Key key) const {
+  return internal::marginalInformation(*this, key,
+                                       params_.getEliminationFunction());
+}
+
+/* ************************************************************************* */
 Matrix ISAM2::marginalCovariance(Key key) const {
-  return marginalFactor(key, params_.getEliminationFunction())
-      ->information()
-      .inverse();
+  return internal::jointMarginalCovariance(*this, KeyVector{key},
+                                           params_.getEliminationFunction())
+      .fullMatrix();
+}
+
+/* ************************************************************************* */
+JointMarginal ISAM2::jointMarginalCovariance(
+    const KeyVector& queryKeys) const {
+  return internal::jointMarginalCovariance(*this, queryKeys,
+                                           params_.getEliminationFunction());
+}
+
+/* ************************************************************************* */
+JointMarginal ISAM2::jointMarginalInformation(
+    const KeyVector& queryKeys) const {
+  return internal::jointMarginalInformation(*this, queryKeys,
+                                            params_.getEliminationFunction());
 }
 
 /* ************************************************************************* */

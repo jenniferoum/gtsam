@@ -1013,6 +1013,30 @@ TEST(ISAM2, marginalCovariance)
 }
 
 /* ************************************************************************* */
+TEST(ISAM2, marginalInformation) {
+  ISAM2 isam = createSlamlikeISAM2();
+
+  Matrix expected = Marginals(isam.getFactorsUnsafe(), isam.getLinearizationPoint(),
+                              Marginals::CHOLESKY)
+                        .marginalInformation(5);
+  Matrix actual = isam.marginalInformation(5);
+  EXPECT(assert_equal(expected, actual));
+}
+
+/* ************************************************************************* */
+TEST(ISAM2, jointMarginals) {
+  ISAM2 isam = createSlamlikeISAM2();
+  const KeyVector query{101, 5, 100};
+  Marginals marginals(isam.getFactorsUnsafe(), isam.getLinearizationPoint(),
+                      Marginals::CHOLESKY);
+
+  EXPECT(assert_equal(marginals.jointMarginalCovariance(query).fullMatrix(),
+                      isam.jointMarginalCovariance(query).fullMatrix(), 1e-9));
+  EXPECT(assert_equal(marginals.jointMarginalInformation(query).fullMatrix(),
+                      isam.jointMarginalInformation(query).fullMatrix(), 1e-9));
+}
+
+/* ************************************************************************* */
 TEST(ISAM2, calculate_nnz)
 {
   ISAM2 isam = createSlamlikeISAM2();

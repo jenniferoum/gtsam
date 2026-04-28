@@ -11,7 +11,32 @@
 #include <gtsam/navigation/PseudorangeFactor.h>
 #include <gtsam/nonlinear/factorTesting.h>
 
+#include <cmath>
+
 using namespace gtsam;
+
+/// Test helper: compute ECEF-to-ENU transform from geodetic origin (WGS84).
+static Pose3 makeEcefTnav(double lat_deg, double lon_deg, double h) {
+  constexpr double deg2rad = M_PI / 180.0;
+  const double lat = lat_deg * deg2rad;
+  const double lon = lon_deg * deg2rad;
+  const double slat = std::sin(lat), clat = std::cos(lat);
+  const double slon = std::sin(lon), clon = std::cos(lon);
+
+  Matrix3 R;
+  R.col(0) = Vector3(-slon, clon, 0.0);
+  R.col(1) = Vector3(-slat * clon, -slat * slon, clat);
+  R.col(2) = Vector3(clat * clon, clat * slon, slat);
+
+  constexpr double a = 6378137.0;
+  constexpr double f = 1.0 / 298.257223563;
+  const double e2 = 2.0 * f - f * f;
+  const double N = a / std::sqrt(1.0 - e2 * slat * slat);
+  const Point3 t((N + h) * clat * clon,
+                 (N + h) * clat * slon,
+                 (N * (1.0 - e2) + h) * slat);
+  return Pose3(Rot3(R), t);
+}
 
 // *************************************************************************
 TEST(TestPseudorangeFactor, Constructor) {
@@ -463,6 +488,171 @@ TEST(TestDifferentialPseudorangeFactorArm, equals) {
   CHECK(!factor2.equals(factor4));
 
   factor2.print("factor2");
+}
+
+// *************************************************************************
+// ecef_T_nav tests for PseudorangeFactorArm
+// *************************************************************************
+TEST(TestPseudorangeFactorArm, EcefTnavIdentity) {
+  // With ecef_T_nav = identity, should produce the same result as without it.
+  const Point3 leverArm(0.5, -0.3, 1.0);
+  const Point3 satPos(0.0, 0.0, 3.0);
+  const double pseudorange = 4.0;
+
+  const auto factorEcef = PseudorangeFactorArm(
+      Key(0), Key(1), pseudorange, satPos, leverArm, 0.0);
+  const auto factorNav = PseudorangeFactorArm(
+      Key(0), Key(1), pseudorange, satPos, leverArm, Pose3::Identity(), 0.0);
+
+  const Pose3 pose(Rot3::RzRyRx(0.1, 0.2, 0.3), Point3(1.0, 2.0, 3.0));
+  const double clockBias = 1e-8;
+
+  const double errorEcef = factorEcef.evaluateError(pose, clockBias)[0];
+  const double errorNav = factorNav.evaluateError(pose, clockBias)[0];
+  EXPECT_DOUBLES_EQUAL(errorEcef, errorNav, 1e-9);
+}
+
+// *************************************************************************
+TEST(TestPseudorangeFactorArm, EcefTnavIdentityJacobians) {
+  const Point3 leverArm(0.5, -0.3, 1.0);
+  const auto factor = PseudorangeFactorArm(
+      Key(0), Key(1), 4.0, Vector3(0.0, 0.0, 3.0), leverArm,
+      Pose3::Identity(), 0.0);
+
+  Values values;
+  values.insert(Key(0), Pose3(Rot3::RzRyRx(0.1, 0.2, 0.3),
+                               Point3(1.0, 2.0, 3.0)));
+  values.insert(Key(1), 0.0);
+  EXPECT_CORRECT_FACTOR_JACOBIANS(factor, values, 1e-5, 1e-5);
+}
+
+// *************************************************************************
+TEST(TestPseudorangeFactorArm, EcefTnavENUJacobians) {
+  // Use a realistic ENU origin near Tokyo (lat=35.578, lon=139.749, h=80)
+  const Pose3 ecef_T_nav = makeEcefTnav(35.578, 139.749, 80.0);
+
+  const Point3 leverArm(0.1, 0.0, -0.5);
+  const Point3 satPos(-5824269.46342, -22935011.26952, -12195522.22428);
+  const auto factor = PseudorangeFactorArm(
+      Key(0), Key(1), 24874028.989, satPos, leverArm, ecef_T_nav,
+      -0.00022743876852667193);
+
+  // nav_T_body in ENU frame (small offsets from origin)
+  Values values;
+  values.insert(Key(0), Pose3(Rot3::RzRyRx(0.05, -0.03, 0.1),
+                               Point3(10.0, 20.0, 5.0)));
+  values.insert(Key(1), 5.377885093511699e-07);
+  EXPECT_CORRECT_FACTOR_JACOBIANS(factor, values, 1e-3, 1e-5);
+}
+
+// *************************************************************************
+TEST(TestPseudorangeFactorArm, EcefTnavConsistency) {
+  // Verify: factor with ecef_T_nav and nav_T_body should give the same error
+  // as factor without ecef_T_nav using ecef_T_body = ecef_T_nav * nav_T_body.
+  const Pose3 ecef_T_nav = makeEcefTnav(35.578, 139.749, 80.0);
+  const Pose3 nav_T_body(Rot3::RzRyRx(0.05, -0.03, 0.1),
+                          Point3(10.0, 20.0, 5.0));
+  const Pose3 ecef_T_body = ecef_T_nav.compose(nav_T_body);
+
+  const Point3 leverArm(0.1, 0.0, -0.5);
+  const Point3 satPos(-5824269.46342, -22935011.26952, -12195522.22428);
+  const double pseudorange = 24874028.989;
+  const double satClkBias = -0.00022743876852667193;
+  const double clockBias = 5.377885093511699e-07;
+
+  const auto factorEcef = PseudorangeFactorArm(
+      Key(0), Key(1), pseudorange, satPos, leverArm, satClkBias);
+  const auto factorNav = PseudorangeFactorArm(
+      Key(0), Key(1), pseudorange, satPos, leverArm, ecef_T_nav, satClkBias);
+
+  const double errorEcef = factorEcef.evaluateError(ecef_T_body, clockBias)[0];
+  const double errorNav = factorNav.evaluateError(nav_T_body, clockBias)[0];
+  EXPECT_DOUBLES_EQUAL(errorEcef, errorNav, 1e-6);
+}
+
+// *************************************************************************
+TEST(TestPseudorangeFactorArm, EcefTnavEquals) {
+  const Point3 leverArm(0.1, 0.2, 0.3);
+  const Pose3 ecef_T_nav = makeEcefTnav(35.578, 139.749, 80.0);
+
+  const auto factor1 = PseudorangeFactorArm(
+      1, 2, 0.0, Point3::Zero(), leverArm, 0.0);
+  const auto factor2 = PseudorangeFactorArm(
+      1, 2, 0.0, Point3::Zero(), leverArm, ecef_T_nav, 0.0);
+
+  // Different ecef_T_nav should not be equal
+  CHECK(!factor1.equals(factor2));
+  CHECK(factor2.equals(factor2));
+}
+
+// *************************************************************************
+// ecef_T_nav tests for DifferentialPseudorangeFactorArm
+// *************************************************************************
+TEST(TestDifferentialPseudorangeFactorArm, EcefTnavIdentity) {
+  const Point3 leverArm(0.5, -0.3, 1.0);
+  const Point3 satPos(0.0, 0.0, 3.0);
+  const double pseudorange = 4.0;
+
+  const auto factorEcef = DifferentialPseudorangeFactorArm(
+      Key(0), Key(1), Key(2), pseudorange, satPos, leverArm, 0.0);
+  const auto factorNav = DifferentialPseudorangeFactorArm(
+      Key(0), Key(1), Key(2), pseudorange, satPos, leverArm,
+      Pose3::Identity(), 0.0);
+
+  const Pose3 pose(Rot3::RzRyRx(0.1, 0.2, 0.3), Point3(1.0, 2.0, 3.0));
+  const double clockBias = 1e-8;
+  const double correction = 5.0;
+
+  const double errorEcef =
+      factorEcef.evaluateError(pose, clockBias, correction)[0];
+  const double errorNav =
+      factorNav.evaluateError(pose, clockBias, correction)[0];
+  EXPECT_DOUBLES_EQUAL(errorEcef, errorNav, 1e-9);
+}
+
+// *************************************************************************
+TEST(TestDifferentialPseudorangeFactorArm, EcefTnavENUJacobians) {
+  const Pose3 ecef_T_nav = makeEcefTnav(35.578, 139.749, 80.0);
+  const Point3 leverArm(0.1, 0.0, -0.5);
+  const Point3 satPos(-5824269.46342, -22935011.26952, -12195522.22428);
+
+  const auto factor = DifferentialPseudorangeFactorArm(
+      Key(0), Key(1), Key(2), 24874028.989, satPos, leverArm, ecef_T_nav,
+      -0.00022743876852667193);
+
+  Values values;
+  values.insert(Key(0), Pose3(Rot3::RzRyRx(0.05, -0.03, 0.1),
+                               Point3(10.0, 20.0, 5.0)));
+  values.insert(Key(1), 5.377885093511699e-07);
+  values.insert(Key(2), 10.0);
+  EXPECT_CORRECT_FACTOR_JACOBIANS(factor, values, 1e-3, 1e-5);
+}
+
+// *************************************************************************
+TEST(TestDifferentialPseudorangeFactorArm, EcefTnavConsistency) {
+  const Pose3 ecef_T_nav = makeEcefTnav(35.578, 139.749, 80.0);
+  const Pose3 nav_T_body(Rot3::RzRyRx(0.05, -0.03, 0.1),
+                          Point3(10.0, 20.0, 5.0));
+  const Pose3 ecef_T_body = ecef_T_nav.compose(nav_T_body);
+
+  const Point3 leverArm(0.1, 0.0, -0.5);
+  const Point3 satPos(-5824269.46342, -22935011.26952, -12195522.22428);
+  const double pseudorange = 24874028.989;
+  const double satClkBias = -0.00022743876852667193;
+  const double clockBias = 5.377885093511699e-07;
+  const double correction = 10.0;
+
+  const auto factorEcef = DifferentialPseudorangeFactorArm(
+      Key(0), Key(1), Key(2), pseudorange, satPos, leverArm, satClkBias);
+  const auto factorNav = DifferentialPseudorangeFactorArm(
+      Key(0), Key(1), Key(2), pseudorange, satPos, leverArm, ecef_T_nav,
+      satClkBias);
+
+  const double errorEcef =
+      factorEcef.evaluateError(ecef_T_body, clockBias, correction)[0];
+  const double errorNav =
+      factorNav.evaluateError(nav_T_body, clockBias, correction)[0];
+  EXPECT_DOUBLES_EQUAL(errorEcef, errorNav, 1e-6);
 }
 
 // *************************************************************************

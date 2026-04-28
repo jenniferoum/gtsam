@@ -45,13 +45,14 @@ class ExtendedPose3;
  * The manifold dimension is 3+3k and the homogeneous matrix size is 3+k.
  * Template parameter K can be fixed (K >= 1) or Eigen::Dynamic.
  */
-template <int K, class Derived>
-class ExtendedPose3
-    : public MatrixLieGroup<std::conditional_t<std::is_void_v<Derived>,
-                                               ExtendedPose3<K, void>, Derived>,
-                            (K == Eigen::Dynamic) ? Eigen::Dynamic : 3 + 3 * K,
-                            (K == Eigen::Dynamic) ? Eigen::Dynamic : 3 + K> {
+template <int K_, class Derived>
+class ExtendedPose3 : public MatrixLieGroup<
+                          std::conditional_t<std::is_void_v<Derived>,
+                                             ExtendedPose3<K_, void>, Derived>,
+                          (K_ == Eigen::Dynamic) ? Eigen::Dynamic : 3 + 3 * K_,
+                          (K_ == Eigen::Dynamic) ? Eigen::Dynamic : 3 + K_> {
  public:
+  static constexpr int K = K_;
   using This = std::conditional_t<std::is_void_v<Derived>,
                                   ExtendedPose3<K, void>, Derived>;
   inline constexpr static int dimension =
@@ -80,10 +81,10 @@ class ExtendedPose3
   Rot3 R_;      ///< Rotation component.
   Matrix3K t_;  ///< K translation-like columns in world frame.
 
-  template <int K_>
-  using IsDynamic = typename std::enable_if<K_ == Eigen::Dynamic, void>::type;
-  template <int K_>
-  using IsFixed = typename std::enable_if<K_ >= 1, void>::type;
+  template <int K__>
+  using IsDynamic = typename std::enable_if<K__ == Eigen::Dynamic, void>::type;
+  template <int K__>
+  using IsFixed = typename std::enable_if<K__ >= 1, void>::type;
 
  public:
   /// @name Constructors
@@ -95,7 +96,7 @@ class ExtendedPose3
    * For fixed K, this creates R=I and x_i=0 for i=1..k.
    * The manifold dimension is 3+3k and matrix size is (3+k)x(3+k).
    */
-  template <int K_ = K, typename = IsFixed<K_>>
+  template <int K__ = K_, typename = IsFixed<K__>>
   ExtendedPose3() : R_(Rot3::Identity()), t_(Matrix3K::Zero()) {}
 
   /**
@@ -105,7 +106,7 @@ class ExtendedPose3
    * Creates R=I and x_i=0 for i=1..k.
    * The manifold dimension is 3+3k and matrix size is (3+k)x(3+k).
    */
-  template <int K_ = K, typename = IsDynamic<K_>>
+  template <int K__ = K_, typename = IsDynamic<K__>>
   explicit ExtendedPose3(size_t k = 0)
       : R_(Rot3::Identity()), t_(3, static_cast<Eigen::Index>(k)) {
     t_.setZero();
@@ -225,7 +226,7 @@ class ExtendedPose3
    *
    * @return Identity with manifold dimension 3+3k and matrix size 3+k.
    */
-  template <int K_ = K, typename = IsFixed<K_>>
+  template <int K__ = K_, typename = IsFixed<K__>>
   static This Identity() {
     return MakeReturn(ExtendedPose3());
   }
@@ -236,7 +237,7 @@ class ExtendedPose3
    * @param k Number of R^3 blocks.
    * @return Identity with manifold dimension 3+3k and matrix size 3+k.
    */
-  template <int K_ = K, typename = IsDynamic<K_>>
+  template <int K__ = K_, typename = IsDynamic<K__>>
   static This Identity(size_t k = 0) {
     return MakeReturn(ExtendedPose3(k));
   }
@@ -407,6 +408,7 @@ class ExtendedPose3
 };
 
 /// Convenience typedef for dynamic-k ExtendedPose3.
+using Se23 = ExtendedPose3<2>;
 using ExtendedPose3d = ExtendedPose3<Eigen::Dynamic>;
 
 template <int K, class Derived>

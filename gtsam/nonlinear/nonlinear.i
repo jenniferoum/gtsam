@@ -173,13 +173,6 @@ class Marginals {
   void deleteCachedShortcuts();
 };
 
-class JointMarginal {
-  gtsam::Matrix at(size_t iVariable, size_t jVariable) const;
-  gtsam::Matrix fullMatrix() const;
-  void print(string s = "", gtsam::KeyFormatter keyFormatter =
-                                gtsam::DefaultKeyFormatter) const;
-};
-
 #include <gtsam/nonlinear/LinearContainerFactor.h>
 virtual class LinearContainerFactor : gtsam::NonlinearFactor {
   LinearContainerFactor(gtsam::GaussianFactor* factor,
@@ -536,8 +529,18 @@ class ISAM2 {
   bool equals(const gtsam::ISAM2& other, double tol) const;
   void print(string s = "", const gtsam::KeyFormatter& keyFormatter =
                                 gtsam::DefaultKeyFormatter) const;
+  size_t size() const;
+  bool empty() const;
+  size_t numCachedSeparatorMarginals() const;
   void printStats() const;
   void saveGraph(string s) const;
+  gtsam::GaussianConditional* marginalFactor(gtsam::Key key) const;
+  gtsam::GaussianFactorGraph* joint(gtsam::Key key1, gtsam::Key key2) const;
+  gtsam::GaussianFactorGraph* joint(const gtsam::KeyVector& queryKeys) const;
+  gtsam::GaussianBayesNet* jointBayesNet(gtsam::Key key1, gtsam::Key key2) const;
+  gtsam::GaussianBayesNet* jointBayesNet(
+      const gtsam::KeyVector& queryKeys) const;
+  void deleteCachedShortcuts();
 
   gtsam::ISAM2Result update();
   gtsam::ISAM2Result update(const gtsam::NonlinearFactorGraph& newFactors,
@@ -580,7 +583,12 @@ class ISAM2 {
                      gtsam::PinholeCamera<gtsam::Cal3Fisheye>,
                      gtsam::PinholeCamera<gtsam::Cal3Unified>, gtsam::Vector, gtsam::Matrix}>
   VALUE calculateEstimate(gtsam::Key key) const;
+  gtsam::Matrix marginalInformation(gtsam::Key key) const;
   gtsam::Matrix marginalCovariance(gtsam::Key key) const;
+  gtsam::JointMarginal jointMarginalCovariance(
+      const gtsam::KeyVector& queryKeys) const;
+  gtsam::JointMarginal jointMarginalInformation(
+      const gtsam::KeyVector& queryKeys) const;
   gtsam::Values calculateBestEstimate() const;
   gtsam::VectorValues getDelta() const;
   double error(const gtsam::VectorValues& x) const;
@@ -627,16 +635,19 @@ class NonlinearISAM {
 //*************************************************************************
 // Nonlinear factor types
 //*************************************************************************
+#include <gtsam/geometry/ExtendedPose3.h>
 #include <gtsam/nonlinear/PriorFactor.h>
-template <T = {double,
-               gtsam::Vector,
-               gtsam::Point2,
-               gtsam::StereoPoint2,
-               gtsam::Point3,
-               gtsam::Gal3,
-               gtsam::Rot2,
-               gtsam::SO3,
-               gtsam::SO4,
+  template <T = {double,
+                 gtsam::Vector,
+                 gtsam::Point2,
+                 gtsam::StereoPoint2,
+                 gtsam::Point3,
+                 gtsam::Gal3,
+                 gtsam::Se23,
+                 gtsam::ExtendedPose3d,
+                 gtsam::Rot2,
+                 gtsam::SO3,
+                 gtsam::SO4,
                gtsam::SOn,
                gtsam::SL4,
                gtsam::Rot3,

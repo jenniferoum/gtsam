@@ -3,6 +3,14 @@
 //*************************************************************************
 namespace gtsam {
 
+#include <gtsam/linear/JointMarginal.h>
+class JointMarginal {
+  gtsam::Matrix at(size_t iVariable, size_t jVariable) const;
+  gtsam::Matrix fullMatrix() const;
+  void print(string s = "", gtsam::KeyFormatter keyFormatter =
+                                gtsam::DefaultKeyFormatter) const;
+};
+
 namespace noiseModel {
 #include <gtsam/linear/NoiseModel.h>
 virtual class Base {
@@ -716,10 +724,18 @@ virtual class GaussianBayesTree {
   double error(const gtsam::VectorValues& x) const;
   double determinant() const;
   double logDeterminant() const;
+  gtsam::Matrix marginalInformation(gtsam::Key key) const;
   gtsam::Matrix marginalCovariance(gtsam::Key key) const;
+  gtsam::JointMarginal jointMarginalCovariance(
+      const gtsam::KeyVector& queryKeys) const;
+  gtsam::JointMarginal jointMarginalInformation(
+      const gtsam::KeyVector& queryKeys) const;
   gtsam::GaussianConditional* marginalFactor(gtsam::Key key) const;
   gtsam::GaussianFactorGraph* joint(gtsam::Key key1, gtsam::Key key2) const;
+  gtsam::GaussianFactorGraph* joint(const gtsam::KeyVector& queryKeys) const;
   gtsam::GaussianBayesNet* jointBayesNet(gtsam::Key key1, gtsam::Key key2) const;
+  gtsam::GaussianBayesNet* jointBayesNet(const gtsam::KeyVector& queryKeys) const;
+  void deleteCachedShortcuts();
 };
 
 #include <gtsam/linear/GaussianEliminationTree.h>
