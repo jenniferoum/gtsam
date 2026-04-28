@@ -815,7 +815,6 @@ virtual class ProjectionFactorRollingShutter : gtsam::NoiseModelFactor {
   void serialize() const;
 };
 
-<<<<<<< feature/eqf-impl
 //*************************************************************************
 // navigation (EqVIO)
 //*************************************************************************
@@ -878,7 +877,7 @@ class EqVIOFilter {
 };
 
 }  // namespace eqvio
-=======
+
 #include <gtsam_unstable/slam/LocalOrientedPlane3Factor.h>
 
 virtual class LocalOrientedPlane3Factor : gtsam::NoiseModelFactor {
@@ -895,6 +894,5 @@ virtual class LocalOrientedPlane3Factor : gtsam::NoiseModelFactor {
   void serialize() const;
 };
 
->>>>>>> develop
 
 } //\namespace gtsam
