@@ -127,6 +127,20 @@ class ExtendedPose3 : public MatrixLieGroup<
   ExtendedPose3(const Rot3& R, const Matrix3K& x);
 
   /**
+   * Construct a fixed-size state from rotation and K 3-vectors.
+   *
+   * The vectors are stored in order as x_1, ..., x_K.
+   *
+   * @param R Rotation in SO(3).
+   * @param xs K vector blocks in R^3.
+   */
+  template <int FixedK = K, typename = IsFixed<FixedK>, typename... Vecs,
+            typename = std::enable_if_t<
+                sizeof...(Vecs) == FixedK &&
+                (std::is_constructible_v<Point3, Vecs> && ...)>>
+  ExtendedPose3(const Rot3& R, const Vecs&... xs);
+
+  /**
    * Construct from homogeneous matrix representation.
    *
    * @param T Homogeneous matrix in R^((3+k)x(3+k)).

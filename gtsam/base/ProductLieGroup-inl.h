@@ -42,8 +42,7 @@ ProductLieGroup<G, H> ProductLieGroup<G, H>::retract(const TangentVector& v,
   const size_t secondDimension = secondDim();
   const size_t productDimension =
       combinedDimension(firstDimension, secondDimension);
-  if (static_cast<size_t>(v.size()) !=
-      productDimension) {
+  if (static_cast<size_t>(v.size()) != productDimension) {
     throw std::invalid_argument(
         "ProductLieGroup::retract tangent dimension does not match product "
         "dimension");
@@ -52,9 +51,21 @@ ProductLieGroup<G, H> ProductLieGroup<G, H>::retract(const TangentVector& v,
   Jacobian1 D_g_second;
   Jacobian2 D_h_first;
   Jacobian2 D_h_second;
-  G g = traits<G>::Retract(this->first, tangentSegment<G>(v, 0, firstDimension),
-                           H1 ? &D_g_first : nullptr,
-                           H2 ? &D_g_second : nullptr);
+  if (H1) {
+    D_g_first = Jacobian1::Zero(static_cast<int>(firstDimension),
+                                static_cast<int>(firstDimension));
+    D_h_first = Jacobian2::Zero(static_cast<int>(secondDimension),
+                                static_cast<int>(secondDimension));
+  }
+  if (H2) {
+    D_g_second = Jacobian1::Zero(static_cast<int>(firstDimension),
+                                 static_cast<int>(firstDimension));
+    D_h_second = Jacobian2::Zero(static_cast<int>(secondDimension),
+                                 static_cast<int>(secondDimension));
+  }
+  G g =
+      traits<G>::Retract(this->first, tangentSegment<G>(v, 0, firstDimension),
+                         H1 ? &D_g_first : nullptr, H2 ? &D_g_second : nullptr);
   H h = traits<H>::Retract(
       this->second, tangentSegment<H>(v, firstDimension, secondDimension),
       H1 ? &D_h_first : nullptr, H2 ? &D_h_second : nullptr);
@@ -87,12 +98,24 @@ ProductLieGroup<G, H>::localCoordinates(const ProductLieGroup& g,
   Jacobian1 D_g_second;
   Jacobian2 D_h_first;
   Jacobian2 D_h_second;
+  if (H1) {
+    D_g_first = Jacobian1::Zero(static_cast<int>(firstDimension),
+                                static_cast<int>(firstDimension));
+    D_h_first = Jacobian2::Zero(static_cast<int>(secondDimension),
+                                static_cast<int>(secondDimension));
+  }
+  if (H2) {
+    D_g_second = Jacobian1::Zero(static_cast<int>(firstDimension),
+                                 static_cast<int>(firstDimension));
+    D_h_second = Jacobian2::Zero(static_cast<int>(secondDimension),
+                                 static_cast<int>(secondDimension));
+  }
   typename traits<G>::TangentVector v1 =
       traits<G>::Local(this->first, g.first, H1 ? &D_g_first : nullptr,
                        H2 ? &D_g_second : nullptr);
-  typename traits<H>::TangentVector v2 = traits<H>::Local(
-      this->second, g.second, H1 ? &D_h_first : nullptr,
-      H2 ? &D_h_second : nullptr);
+  typename traits<H>::TangentVector v2 =
+      traits<H>::Local(this->second, g.second, H1 ? &D_h_first : nullptr,
+                       H2 ? &D_h_second : nullptr);
   if (H1) {
     *H1 = zeroJacobian(productDimension);
     H1->block(0, 0, firstDimension, firstDimension) = D_g_first;
@@ -118,6 +141,12 @@ ProductLieGroup<G, H> ProductLieGroup<G, H>::compose(
       combinedDimension(firstDimension, secondDimension);
   Jacobian1 D_g_first;
   Jacobian2 D_h_second;
+  if (H1) {
+    D_g_first = Jacobian1::Zero(static_cast<int>(firstDimension),
+                                static_cast<int>(firstDimension));
+    D_h_second = Jacobian2::Zero(static_cast<int>(secondDimension),
+                                 static_cast<int>(secondDimension));
+  }
   G g = traits<G>::Compose(this->first, other.first, H1 ? &D_g_first : nullptr);
   H h = traits<H>::Compose(this->second, other.second,
                            H1 ? &D_h_second : nullptr);
@@ -141,6 +170,12 @@ ProductLieGroup<G, H> ProductLieGroup<G, H>::between(
       combinedDimension(firstDimension, secondDimension);
   Jacobian1 D_g_first;
   Jacobian2 D_h_second;
+  if (H1) {
+    D_g_first = Jacobian1::Zero(static_cast<int>(firstDimension),
+                                static_cast<int>(firstDimension));
+    D_h_second = Jacobian2::Zero(static_cast<int>(secondDimension),
+                                 static_cast<int>(secondDimension));
+  }
   G g = traits<G>::Between(this->first, other.first, H1 ? &D_g_first : nullptr);
   H h = traits<H>::Between(this->second, other.second,
                            H1 ? &D_h_second : nullptr);
@@ -162,6 +197,12 @@ ProductLieGroup<G, H> ProductLieGroup<G, H>::inverse(ChartJacobian D) const {
       combinedDimension(firstDimension, secondDimension);
   Jacobian1 D_g_first;
   Jacobian2 D_h_second;
+  if (D) {
+    D_g_first = Jacobian1::Zero(static_cast<int>(firstDimension),
+                                static_cast<int>(firstDimension));
+    D_h_second = Jacobian2::Zero(static_cast<int>(secondDimension),
+                                 static_cast<int>(secondDimension));
+  }
   G g = traits<G>::Inverse(this->first, D ? &D_g_first : nullptr);
   H h = traits<H>::Inverse(this->second, D ? &D_h_second : nullptr);
   if (D) {
@@ -245,6 +286,14 @@ ProductLieGroup<G, H> ProductLieGroup<G, H>::Expmap(
       combinedDimension(firstDimension, secondDimension);
   Jacobian1 D_g_first;
   Jacobian2 D_h_second;
+  if (H1) {
+    D_g_first = Jacobian1::Zero(static_cast<int>(firstDimension),
+                                static_cast<int>(firstDimension));
+  }
+  if (H2) {
+    D_h_second = Jacobian2::Zero(static_cast<int>(secondDimension),
+                                 static_cast<int>(secondDimension));
+  }
   G g = traits<G>::Expmap(v1, H1 ? &D_g_first : nullptr);
   H h = traits<H>::Expmap(v2, H2 ? &D_h_second : nullptr);
   if (H1) {
@@ -265,19 +314,25 @@ typename ProductLieGroup<G, H>::TangentVector ProductLieGroup<G, H>::Logmap(
   const size_t secondDimension = p.secondDim();
   const size_t productDimension =
       combinedDimension(firstDimension, secondDimension);
-  Jacobian1 D_g_first;
-  Jacobian2 D_h_second;
-  typename traits<G>::TangentVector v1 =
-      traits<G>::Logmap(p.first, Hp ? &D_g_first : nullptr);
-  typename traits<H>::TangentVector v2 =
-      traits<H>::Logmap(p.second, Hp ? &D_h_second : nullptr);
-  TangentVector v = makeTangentVector(v1, v2, firstDimension, secondDimension);
-  if (Hp) {
-    *Hp = zeroJacobian(productDimension);
-    Hp->block(0, 0, firstDimension, firstDimension) = D_g_first;
-    Hp->block(firstDimension, firstDimension, secondDimension,
-              secondDimension) = D_h_second;
+  if (!Hp) {
+    typename traits<G>::TangentVector v1 = traits<G>::Logmap(p.first);
+    typename traits<H>::TangentVector v2 = traits<H>::Logmap(p.second);
+    return makeTangentVector(v1, v2, firstDimension, secondDimension);
   }
+
+  Jacobian1 D_g_first = Jacobian1::Zero(static_cast<int>(firstDimension),
+                                        static_cast<int>(firstDimension));
+  Jacobian2 D_h_second = Jacobian2::Zero(static_cast<int>(secondDimension),
+                                         static_cast<int>(secondDimension));
+  typename traits<G>::TangentVector v1 =
+      traits<G>::Logmap(p.first, &D_g_first);
+  typename traits<H>::TangentVector v2 =
+      traits<H>::Logmap(p.second, &D_h_second);
+  TangentVector v = makeTangentVector(v1, v2, firstDimension, secondDimension);
+  *Hp = zeroJacobian(productDimension);
+  Hp->block(0, 0, firstDimension, firstDimension) = D_g_first;
+  Hp->block(firstDimension, firstDimension, secondDimension, secondDimension) =
+      D_h_second;
   return v;
 }
 

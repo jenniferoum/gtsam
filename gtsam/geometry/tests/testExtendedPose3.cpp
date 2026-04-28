@@ -75,18 +75,24 @@ TEST(ExtendedPose3, Dimensions) {
 //******************************************************************************
 TEST(ExtendedPose3, ConstructorsAndAccess) {
   const ExtendedPose33 fixed(kR1, kX1);
+  const ExtendedPose33 fixedVariadic(kR1, Point3(kX1.col(0)),
+                                     Point3(kX1.col(1)), Point3(kX1.col(2)));
   const ExtendedPose3d dynamic(kR1, ExtendedPose3d::Matrix3K(kX1));
 
   EXPECT(assert_equal(kR1, fixed.rotation()));
+  EXPECT(assert_equal(kR1, fixedVariadic.rotation()));
   EXPECT(assert_equal(kR1, dynamic.rotation()));
 
   for (size_t i = 0; i < 3; ++i) {
     EXPECT(assert_equal(Point3(kX1.col(static_cast<Eigen::Index>(i))),
                         fixed.x(i)));
     EXPECT(assert_equal(Point3(kX1.col(static_cast<Eigen::Index>(i))),
+                        fixedVariadic.x(i)));
+    EXPECT(assert_equal(Point3(kX1.col(static_cast<Eigen::Index>(i))),
                         dynamic.x(i)));
   }
 
+  EXPECT(assert_equal(fixed.matrix(), fixedVariadic.matrix()));
   EXPECT(assert_equal(fixed.matrix(), dynamic.matrix()));
 }
 
