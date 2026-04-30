@@ -1234,8 +1234,8 @@ TEST(ISAM2, AdaptiveReorder_Triggered) {
     triggered = result.batchReorderTriggered;
   }
 
-  // At some point the reorder should have triggered
-  // (If not, the nnz didn't grow — which is also fine, means no fill-in)
+  // With threshold 1.01, any fill-in growth triggers a batch reorder
+  EXPECT(triggered);
   EXPECT(result.treeNnz > 0);
 }
 

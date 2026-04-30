@@ -166,6 +166,7 @@ void ISAM2::recalculate(const ISAM2UpdateParams& updateParams,
     if (affectedKeys.size() >= theta_.size() * kBatchThreshold) {
       // Do a batch step - reorder and relinearize all variables
       recalculateBatch(updateParams, &affectedKeysSet, result);
+      result->batchReorderTriggered = true;
     } else {
       recalculateIncremental(updateParams, relinKeys, affectedKeys,
                              &affectedKeysSet, &orphans, result);
@@ -503,9 +504,8 @@ ISAM2Result ISAM2::update(const NonlinearFactorGraph& newFactors,
   if (params_.enableAdaptiveReorder && nnzAfterLastReorder_ > 0 &&
       !roots_.empty()) {
     const size_t currentNnz = treeNnz();
-    if (currentNnz >
-        static_cast<size_t>(params_.adaptiveReorderThreshold *
-                            static_cast<double>(nnzAfterLastReorder_))) {
+    if (static_cast<double>(currentNnz) / static_cast<double>(nnzAfterLastReorder_)
+        > params_.adaptiveReorderThreshold) {
       for (const auto& [key, _] : variableIndex_) {
         result.markedKeys.insert(key);
       }
@@ -520,10 +520,9 @@ ISAM2Result ISAM2::update(const NonlinearFactorGraph& newFactors,
 
   // 10. Track fill-in: record nnz and update baseline after batch reorders.
   result.treeNnz = treeNnz();
-  // Update baseline when: first update, adaptive reorder fired, or the
-  // existing batch threshold was hit (variablesReeliminated == all vars).
-  if (nnzAfterLastReorder_ == 0 || result.batchReorderTriggered ||
-      result.variablesReeliminated >= theta_.size()) {
+  // Update baseline on first update or after any batch reorder (adaptive or
+  // the existing 65% affected-variables threshold).
+  if (nnzAfterLastReorder_ == 0 || result.batchReorderTriggered) {
     nnzAfterLastReorder_ = result.treeNnz;
   }
 
