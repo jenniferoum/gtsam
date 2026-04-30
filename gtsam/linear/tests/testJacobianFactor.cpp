@@ -560,6 +560,26 @@ TEST(JacobianFactor, gradient_no_noise)
 }
 
 /* ************************************************************************* */
+TEST(JacobianFactor, gradient_general_noise)
+{
+  // Non-diagonal covariance to verify R^T*R handling (not R^2)
+  Matrix cov = (Matrix(2, 2) << 4.0, 1.0, 1.0, 2.0).finished();
+  SharedNoiseModel noise = noiseModel::Gaussian::Covariance(cov);
+  Matrix A1 = (Matrix(2, 2) << 1, 2, 3, 4).finished();
+  Matrix A2 = (Matrix(2, 2) << 5, 6, 7, 8).finished();
+  Vector b = Vector2(1, 2);
+  JacobianFactor lf(1, A1, 2, A2, b, noise);
+
+  VectorValues x;
+  x.insert(1, Vector2(0.5, 1.0));
+  x.insert(2, Vector2(1.5, 2.0));
+
+  HessianFactor hf(lf);
+  EXPECT(assert_equal(hf.gradient(1, x), lf.gradient(1, x), 1e-9));
+  EXPECT(assert_equal(hf.gradient(2, x), lf.gradient(2, x), 1e-9));
+}
+
+/* ************************************************************************* */
 TEST(JacobianFactor, default_error )
 {
   JacobianFactor f;

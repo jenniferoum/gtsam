@@ -878,19 +878,22 @@ void JacobianFactor::gradientAtZero(double* d) const {
 
 /* ************************************************************************* */
 Vector JacobianFactor::gradient(Key key, const VectorValues& x) const {
+  const Factor::const_iterator it = find(key);
+  if (it == end())
+    throw std::invalid_argument("JacobianFactor::gradient: key not found");
+
   // Compute A*x - b (unwhitened residual)
   Vector e = -getb();
   for (size_t pos = 0; pos < size(); ++pos)
     e.noalias() += Ab_(pos) * x.at(keys_[pos]);
 
-  // Apply Sigma^{-1} (double whiten)
+  // gradient_k = A_k^T * Sigma^{-1} * e = (R*A_k)^T * (R*e)
   if (model_) {
     model_->whitenInPlace(e);
-    model_->whitenInPlace(e);
+    Matrix Ak = Ab_(it - begin());
+    model_->WhitenInPlace(Ak);
+    return Ak.transpose() * e;
   }
-
-  // Return A_k' * Sigma^{-1} * (A*x - b) for the requested key
-  const Factor::const_iterator it = find(key);
   return Ab_(it - begin()).transpose() * e;
 }
 
