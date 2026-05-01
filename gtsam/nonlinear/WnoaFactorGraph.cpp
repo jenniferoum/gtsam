@@ -10,14 +10,14 @@
  * -------------------------------------------------------------------------- */
 
 /**
- *  @file  WNOAFactorGraph.h
+ *  @file  WnoaFactorGraph.h
  *  @brief Factor graph that handles computation of interpolated states for WNOA
  *  @author Sven Lilge
  */
 
 #include <gtsam/config.h>  // for GTSAM_USE_TBB
-#include <gtsam/nonlinear/WNOAFactorGraph.h>
-#include <gtsam/nonlinear/WNOAInterpFactor.h>
+#include <gtsam/nonlinear/WnoaFactorGraph.h>
+#include <gtsam/nonlinear/WnoaInterpFactor.h>
 
 #include <Eigen/Core>  // for Eigen::setNbThreads
 
@@ -64,8 +64,9 @@ class _LinearizeOneFactor {
     for (size_t i = blocked_range.begin(); i != blocked_range.end(); ++i) {
       if (nonlinearGraph_[i] && nonlinearGraph_[i]->sendable()) {
         // Attempt dynamic cast to WNOAInterpFactor
-        auto wnoa_factor = std::dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(
-            nonlinearGraph_[i]);
+        auto wnoa_factor =
+            std::dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(
+                nonlinearGraph_[i]);
         if (wnoa_factor) {
           result_[i] =
               wnoa_factor->linearize(linearizationPoint_, &passedInterpData_);
@@ -84,60 +85,59 @@ class _LinearizeOneFactor {
 
 template <typename PoseType>
 WNOAFactorGraph<PoseType>::WNOAFactorGraph(
-      std::unordered_map<StateData, std::pair<StateData, StateData>> interp_map,
-      const Eigen::Vector<double, dim> Q_psd, bool fixed_noise_model)
-      : interpolator_(Q_psd),
-        interp_to_borders_map_(std::move(interp_map)),
-        fixed_noise_model_(fixed_noise_model) {
-    // Collect unique keys for boundary states to avoid repeated Values::at
-    // lookups.
-    border_pose_keys_.reserve(interp_to_borders_map_.size() * 2);
-    border_vel_keys_.reserve(interp_to_borders_map_.size() * 2);
-    for (const auto& kv : interp_to_borders_map_) {
-      const auto& border_states = kv.second;
-      const auto& left = border_states.first;
-      const auto& right = border_states.second;
-      border_pose_keys_.insert(left.pose);
-      border_pose_keys_.insert(right.pose);
-      border_vel_keys_.insert(left.vel);
-      border_vel_keys_.insert(right.vel);
+    std::unordered_map<StateData, std::pair<StateData, StateData>> interp_map,
+    const Eigen::Vector<double, dim> Q_psd, bool fixed_noise_model)
+    : interpolator_(Q_psd),
+      interp_to_borders_map_(std::move(interp_map)),
+      fixed_noise_model_(fixed_noise_model) {
+  // Collect unique keys for boundary states to avoid repeated Values::at
+  // lookups.
+  border_pose_keys_.reserve(interp_to_borders_map_.size() * 2);
+  border_vel_keys_.reserve(interp_to_borders_map_.size() * 2);
+  for (const auto& kv : interp_to_borders_map_) {
+    const auto& border_states = kv.second;
+    const auto& left = border_states.first;
+    const auto& right = border_states.second;
+    border_pose_keys_.insert(left.pose);
+    border_pose_keys_.insert(right.pose);
+    border_vel_keys_.insert(left.vel);
+    border_vel_keys_.insert(right.vel);
 
-      double tau = kv.first.time;
-      double t_k = left.time;
-      double t_kp1 = right.time;
-      interp_to_LambdaPsi_vec_.emplace_back(
-          kv.first, std::make_shared<LambdaPsiMats>(
-                        interpolator_.getLambdaPsi(t_k, t_kp1, tau)));
-    }
-
-    // Convert map to vector for optimal parallel access patterns
-    interp_to_borders_vec_ =
-        std::vector<std::pair<StateData, std::pair<StateData, StateData>>>(
-            interp_to_borders_map_.begin(), interp_to_borders_map_.end());
-
-    // Build compact batch vector: for each unique border pair, list indices of
-    // interp states
-    struct LocalBorderHash {
-      size_t operator()(
-          const std::pair<StateData, StateData>& p) const noexcept {
-        const size_t h1 = std::hash<StateData>{}(p.first);
-        const size_t h2 = std::hash<StateData>{}(p.second);
-        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
-      }
-    };
-    std::unordered_map<std::pair<StateData, StateData>, std::vector<size_t>,
-                       LocalBorderHash>
-        tmp;
-    tmp.reserve(interp_to_borders_vec_.size());
-    for (size_t idx = 0; idx < interp_to_borders_vec_.size(); ++idx) {
-      const auto& borders =
-          interp_to_borders_vec_[idx].second;  // pair<StateData, StateData>
-      tmp[borders].push_back(idx);
-    }
-    border_batches_.clear();
-    border_batches_.reserve(tmp.size());
-    for (auto& kv : tmp) border_batches_.emplace_back(std::move(kv));
+    double tau = kv.first.time;
+    double t_k = left.time;
+    double t_kp1 = right.time;
+    interp_to_LambdaPsi_vec_.emplace_back(
+        kv.first, std::make_shared<LambdaPsiMats>(
+                      interpolator_.getLambdaPsi(t_k, t_kp1, tau)));
   }
+
+  // Convert map to vector for optimal parallel access patterns
+  interp_to_borders_vec_ =
+      std::vector<std::pair<StateData, std::pair<StateData, StateData>>>(
+          interp_to_borders_map_.begin(), interp_to_borders_map_.end());
+
+  // Build compact batch vector: for each unique border pair, list indices of
+  // interp states
+  struct LocalBorderHash {
+    size_t operator()(const std::pair<StateData, StateData>& p) const noexcept {
+      const size_t h1 = std::hash<StateData>{}(p.first);
+      const size_t h2 = std::hash<StateData>{}(p.second);
+      return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+    }
+  };
+  std::unordered_map<std::pair<StateData, StateData>, std::vector<size_t>,
+                     LocalBorderHash>
+      tmp;
+  tmp.reserve(interp_to_borders_vec_.size());
+  for (size_t idx = 0; idx < interp_to_borders_vec_.size(); ++idx) {
+    const auto& borders =
+        interp_to_borders_vec_[idx].second;  // pair<StateData, StateData>
+    tmp[borders].push_back(idx);
+  }
+  border_batches_.clear();
+  border_batches_.reserve(tmp.size());
+  for (auto& kv : tmp) border_batches_.emplace_back(std::move(kv));
+}
 
 /* ************************************************************************* */
 template <typename PoseType>
@@ -212,13 +212,11 @@ std::shared_ptr<GaussianFactorGraph> WNOAFactorGraph<PoseType>::linearize(
 
 #endif
 
-
   return linearFG;
 }
 
 template <typename PoseType>
 double WNOAFactorGraph<PoseType>::error(const Values& values) const {
-
   double total_error = 0.;
 
   // Compute values, Jacobians and conditional covariances for all interpolated
@@ -255,16 +253,17 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
     const Values& values,
     std::unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians,
     std::unordered_map<StateData, Matrix2N>* InterpCondCovs) const {
-
 #ifdef GTSAM_USE_TBB
   // Parallelized version using TBB
   // We parallelize over border batches
-  // Each batch corresponds to a pair of bordering states the set of interpolated states that lie between them
-  // This allows us to compute interpolated values and Jacobians for all states in a batch together
-  // This is more efficient than parallelizing over individual interpolated states, due to shared border state computations
-  // We use TBB's parallel_for with a blocked range to process batches in parallel
-  // We use thread-local storage to accumulate results before merging them into the final output containers
-  
+  // Each batch corresponds to a pair of bordering states the set of
+  // interpolated states that lie between them This allows us to compute
+  // interpolated values and Jacobians for all states in a batch together This
+  // is more efficient than parallelizing over individual interpolated states,
+  // due to shared border state computations We use TBB's parallel_for with a
+  // blocked range to process batches in parallel We use thread-local storage to
+  // accumulate results before merging them into the final output containers
+
   TbbOpenMPMixedScope threadLimiter;
   // Cache boundary values
   std::unordered_map<Key, PoseType> border_pose_cache;
@@ -279,7 +278,8 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
   // Use precomputed border batches stored in the graph (built in constructor)
   auto& batches = this->border_batches_;
 
-  // Thread-local storage for accumulating interpolated values, Jacobians and conditional covariances before merging
+  // Thread-local storage for accumulating interpolated values, Jacobians and
+  // conditional covariances before merging
   struct TLS {
     Values local_values;
     std::vector<std::pair<Key, std::array<Matrix, 4>>> jacs;
@@ -288,11 +288,11 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
   };
   tbb::enumerable_thread_specific<TLS> tls;
 
-
   // Determine grain size for parallel_for
   // This controls the number of batches processed by each thread in one go.
   // We want to balance load and overhead.
-  // Might give a minimal performance boost compared to the default auto_partitioner
+  // Might give a minimal performance boost compared to the default
+  // auto_partitioner
   unsigned nt = std::thread::hardware_concurrency();
   unsigned phys = nt ? std::max<unsigned>(1u, nt / 2) : 1u;
   size_t grain = std::max<size_t>(1, batches.size() / (8 * phys));
@@ -300,18 +300,25 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
     tbb::parallel_for(
         tbb::blocked_range<size_t>(0, batches.size(), grain),
         [&](const tbb::blocked_range<size_t>& r) {
-
-          // Allocate space for variables based on number of batches and batch size to avoid dynamic resizing in the loop
+          // Allocate space for variables based on number of batches and batch
+          // size to avoid dynamic resizing in the loop
           auto& local = tls.local();
           if (local.H.empty()) local.H.resize(8);
           size_t expectedInterp = 0;
           for (size_t bi = r.begin(); bi != r.end(); ++bi)
-            expectedInterp += batches[bi].second.size(); // number of interpolated states in this batch
+            expectedInterp +=
+                batches[bi].second.size();  // number of interpolated states in
+                                            // this batch
           if (InterpJacobians)
-            local.jacs.reserve(local.jacs.size() + expectedInterp * 2); // 2 factors per interpolated state (pose and velocity)
+            local.jacs.reserve(
+                local.jacs.size() +
+                expectedInterp *
+                    2);  // 2 factors per interpolated state (pose and velocity)
           if (InterpCondCovs)
-            local.condcovs.reserve(local.condcovs.size() + expectedInterp); // 1 conditional covariance per interpolated state
-          
+            local.condcovs.reserve(local.condcovs.size() +
+                                   expectedInterp);  // 1 conditional covariance
+                                                     // per interpolated state
+
           // Process each batch in the assigned range
           for (size_t bi = r.begin(); bi != r.end(); ++bi) {
             // Get border states for this batch from cache
@@ -335,28 +342,40 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
                 std::make_shared<LocalStateVecs>();
 
             if (InterpJacobians) {
-              // If we're computing Jacobians, we need to compute the local state vectors (xi, xi_dot at the border) and local-global Jacobians (at the border) for this border pair
-              // We can be reuse those for all interpolated states in this batch (only xi_tau, xi_dot_tau and the interpolation Jacobians change between interpolated states in the same batch)
+              // If we're computing Jacobians, we need to compute the local
+              // state vectors (xi, xi_dot at the border) and local-global
+              // Jacobians (at the border) for this border pair We can be reuse
+              // those for all interpolated states in this batch (only xi_tau,
+              // xi_dot_tau and the interpolation Jacobians change between
+              // interpolated states in the same batch)
               *localStateVecsPreComp = interpolator_.computeLocalStateVecs(
                   state_left, state_right, localGlobalStateJacsPreComp.get());
             } else {
-              // If we're not computing Jacobians, we only need to compute the local state vectors (xi, xi_dot at the border) for this border pair once
-              // Again, we can reuse them for all interpolated states in this batch
+              // If we're not computing Jacobians, we only need to compute the
+              // local state vectors (xi, xi_dot at the border) for this border
+              // pair once Again, we can reuse them for all interpolated states
+              // in this batch
               *localStateVecsPreComp = interpolator_.computeLocalStateVecs(
                   state_left, state_right, nullptr);
             }
 
             // Run through all interpolated states in this batch
             for (size_t interpIdx : batches[bi].second) {
-              // Get the actual interpolated state data (time, keys) for this interpolated state index
+              // Get the actual interpolated state data (time, keys) for this
+              // interpolated state index
               const StateData& interp_state =
                   interp_to_borders_vec_[interpIdx].first;
               PoseVelocity<PoseType> result;
               if (InterpJacobians) {
-                // If we're computing Jacobians, we compute the interpolated state value and Jacobians for this interpolated state
-                // We can reuse the precomputed local state vectors and local-global Jacobians for the border states
-                // Only the interpolation Jacobians (xi_tau, xi_dot_tau) change between interpolated states in the same batch
-                // We can also rely on the precomputed Lambda and Psi interpolation matrices for this interpolated state that we stored in the graph during construction (only depends on tau and not the state values)
+                // If we're computing Jacobians, we compute the interpolated
+                // state value and Jacobians for this interpolated state We can
+                // reuse the precomputed local state vectors and local-global
+                // Jacobians for the border states Only the interpolation
+                // Jacobians (xi_tau, xi_dot_tau) change between interpolated
+                // states in the same batch We can also rely on the precomputed
+                // Lambda and Psi interpolation matrices for this interpolated
+                // state that we stored in the graph during construction (only
+                // depends on tau and not the state values)
                 result = interpolator_.interpolatePoseAndVelocity(
                     state_left, state_right, interp_state.time, &local.H,
                     nullptr, nullptr,
@@ -369,21 +388,27 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
                 local.jacs.emplace_back(interp_state.pose, std::move(Jpose));
                 local.jacs.emplace_back(interp_state.vel, std::move(Jvel));
               } else {
-                // If we're not computing Jacobians, we only compute the interpolated state value for this interpolated state
-                // We can reuse the precomputed local state vectors for the border states and the precomputed Lambda and Psi interpolation matrices for this interpolated state that we stored in the graph during construction
+                // If we're not computing Jacobians, we only compute the
+                // interpolated state value for this interpolated state We can
+                // reuse the precomputed local state vectors for the border
+                // states and the precomputed Lambda and Psi interpolation
+                // matrices for this interpolated state that we stored in the
+                // graph during construction
                 result = interpolator_.interpolatePoseAndVelocity(
                     state_left, state_right, interp_state.time, nullptr,
                     nullptr, nullptr,
                     interp_to_LambdaPsi_vec_[interpIdx].second,
                     localStateVecsPreComp, nullptr);
               }
-              // Insert the computed interpolated state value into the thread-local Values structure
+              // Insert the computed interpolated state value into the
+              // thread-local Values structure
               local.local_values.insert(interp_state.pose,
                                         std::move(result.pose));
               local.local_values.insert(interp_state.vel,
                                         std::move(result.vel));
               if (InterpCondCovs) {
-                // If we're computing conditional covariances, we also compute the conditional covariance for this interpolated state
+                // If we're computing conditional covariances, we also compute
+                // the conditional covariance for this interpolated state
                 auto state_tau = TimestampedPoseVelocity<PoseType>(
                     result, interp_state.time);
                 Matrix2N Sigma_tau = interpolator_.computeConditionalCov(
@@ -395,8 +420,10 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
         });
   }
 
-  // Now we need to merge the thread-local results into the final output containers
-  // We reserved space in the thread-local containers based on the expected number of interpolated states to minimize dynamic resizing during merging
+  // Now we need to merge the thread-local results into the final output
+  // containers We reserved space in the thread-local containers based on the
+  // expected number of interpolated states to minimize dynamic resizing during
+  // merging
   Values values_interp;
   if (InterpJacobians)
     InterpJacobians->reserve(interp_to_borders_vec_.size() * 2);
@@ -414,8 +441,9 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
   return values_interp;
 #else
   // Sequential version
-  // Logic is the same as in the parallel version, but we can directly insert results into the final output containers without needing thread-local storage or merging
-  // See comments above for more details on the logic
+  // Logic is the same as in the parallel version, but we can directly insert
+  // results into the final output containers without needing thread-local
+  // storage or merging See comments above for more details on the logic
   std::unordered_map<Key, PoseType> border_pose_cache;
   border_pose_cache.reserve(border_pose_keys_.size());
   std::unordered_map<Key, VelocityType> border_vel_cache;

@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- *  @file  WNOAFactorGraph.h
+ *  @file  WnoaFactorGraph.h
  *  @brief Factor graph that handles computation of interpolated states for WNOA
  *  @author Sven Lilge
  */
@@ -20,8 +20,8 @@
 #include <gtsam/linear/GaussianFactorGraph.h>
 #include <gtsam/nonlinear/ExpressionFactorGraph.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
-#include <gtsam/nonlinear/WNOAStateData.h>
-#include <gtsam/nonlinear/WNOAInterpolator.h>
+#include <gtsam/nonlinear/WnoaInterpolator.h>
+#include <gtsam/nonlinear/WnoaStateData.h>
 
 #include <array>
 #include <memory>
@@ -68,7 +68,8 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
       typename Interpolator<PoseType>::LocalGlobalStateJacs;
 
   // map interpolated state to border states
-  std::unordered_map<StateData, std::pair<StateData, StateData>> interp_to_borders_map_;
+  std::unordered_map<StateData, std::pair<StateData, StateData>>
+      interp_to_borders_map_;
   std::vector<std::pair<StateData, std::pair<StateData, StateData>>>
       interp_to_borders_vec_;
   std::vector<std::pair<StateData, std::shared_ptr<const LambdaPsiMats>>>
@@ -151,7 +152,6 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
   WNOAFactorGraph(
       std::unordered_map<StateData, std::pair<StateData, StateData>> interp_map,
       const Eigen::Vector<double, dim> Q_psd, bool fixed_noise_model = false);
-      
 };
 
 }  // namespace gtsam

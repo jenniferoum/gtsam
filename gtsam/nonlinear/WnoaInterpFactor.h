@@ -32,10 +32,9 @@
 #include <gtsam/inference/Key.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
 #include <gtsam/nonlinear/Values.h>
+#include <gtsam/nonlinear/WnoaFactorGraph.h>
 #include <gtsam/nonlinear/WnoaInterpolator.h>
 #include <gtsam/nonlinear/WnoaStateData.h>
-#include <gtsam/nonlinear/WNOAFactorGraph.h>
-
 
 #include <algorithm>
 #include <array>

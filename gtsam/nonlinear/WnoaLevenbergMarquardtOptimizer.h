@@ -10,18 +10,21 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    WNOALevenbergMarquardtOptimizer.h
- * @brief   A nonlinear optimizer that uses the Levenberg-Marquardt trust-region scheme for WNOAFactorGraphs (derived from standard LevenbergMarquardtOptimizer)
+ * @file    WnoaLevenbergMarquardtOptimizer.h
+ * @brief   A nonlinear optimizer that uses the Levenberg-Marquardt trust-region
+ * scheme for WNOAFactorGraphs (derived from standard
+ * LevenbergMarquardtOptimizer)
  * @author  Sven Lilge
  * @date    Dec 6, 2012
  */
 
 #pragma once
 
-#include <gtsam/nonlinear/NonlinearOptimizer.h>
-#include <gtsam/nonlinear/LevenbergMarquardtParams.h>
 #include <gtsam/linear/VectorValues.h>
-#include <gtsam/nonlinear/WNOAFactorGraph.h>
+#include <gtsam/nonlinear/LevenbergMarquardtParams.h>
+#include <gtsam/nonlinear/NonlinearOptimizer.h>
+#include <gtsam/nonlinear/WnoaFactorGraph.h>
+
 #include <chrono>
 
 class NonlinearOptimizerMoreOptimizationTest;
@@ -40,23 +43,24 @@ namespace gtsam {
  * @tparam PoseType Pose group/type used by the underlying WNOA graph
  * (e.g., `Pose2`, `Pose3`).
  */
-template<typename PoseType>
-class GTSAM_EXPORT WNOALevenbergMarquardtOptimizer: public NonlinearOptimizer {
-
-protected:
-  /// Reference to the specialized WNOA factor graph. Must outlive this optimizer.
+template <typename PoseType>
+class GTSAM_EXPORT WNOALevenbergMarquardtOptimizer : public NonlinearOptimizer {
+ protected:
+  /// Reference to the specialized WNOA factor graph. Must outlive this
+  /// optimizer.
   const WNOAFactorGraph<PoseType>& wnoa_graph_;
 
   /// Copied Levenberg-Marquardt parameters used by this optimizer.
-  const LevenbergMarquardtParams params_; ///< LM parameters
+  const LevenbergMarquardtParams params_;  ///< LM parameters
 
   /// Time point recording when the optimization started (for logging/timing).
-  std::chrono::time_point<std::chrono::high_resolution_clock> startTime_; ///< time when optimization started
+  std::chrono::time_point<std::chrono::high_resolution_clock>
+      startTime_;  ///< time when optimization started
 
   /// Initialize the `startTime_` to the current time.
   void initTime();
 
-public:
+ public:
   typedef std::shared_ptr<LevenbergMarquardtOptimizer> shared_ptr;
 
   /// @name Constructors/Destructor
@@ -69,8 +73,9 @@ public:
    * @param initialValues Initial variable assignments for the optimization.
    * @param params Levenberg-Marquardt configuration parameters (optional).
    */
-  WNOALevenbergMarquardtOptimizer(const WNOAFactorGraph<PoseType>& graph, const Values& initialValues,
-                              const LevenbergMarquardtParams& params = LevenbergMarquardtParams());
+  WNOALevenbergMarquardtOptimizer(
+      const WNOAFactorGraph<PoseType>& graph, const Values& initialValues,
+      const LevenbergMarquardtParams& params = LevenbergMarquardtParams());
 
   /**
    * @brief Construct optimizer with explicit variable ordering.
@@ -83,15 +88,15 @@ public:
    * @param ordering Variable ordering to use for elimination/linearization.
    * @param params Levenberg-Marquardt configuration parameters (optional).
    */
-  WNOALevenbergMarquardtOptimizer(const WNOAFactorGraph<PoseType>& graph, const Values& initialValues,
-                              const Ordering& ordering,
-                              const LevenbergMarquardtParams& params = LevenbergMarquardtParams());
+  WNOALevenbergMarquardtOptimizer(
+      const WNOAFactorGraph<PoseType>& graph, const Values& initialValues,
+      const Ordering& ordering,
+      const LevenbergMarquardtParams& params = LevenbergMarquardtParams());
 
   /**
    * @brief Virtual destructor.
    */
-  ~WNOALevenbergMarquardtOptimizer() override {
-  }
+  ~WNOALevenbergMarquardtOptimizer() override {}
 
   /// @}
 
@@ -131,7 +136,8 @@ public:
    * and attempts a step via the inner LM loop. Returns the linearized
    * `GaussianFactorGraph` produced during this iteration.
    *
-   * @return GaussianFactorGraph::shared_ptr Linearized Gaussian factor graph for this iteration.
+   * @return GaussianFactorGraph::shared_ptr Linearized Gaussian factor graph
+   * for this iteration.
    */
   GaussianFactorGraph::shared_ptr iterate() override;
 
@@ -139,9 +145,7 @@ public:
    * @brief Read-only access to the LM parameters used by this optimizer.
    * @return const LevenbergMarquardtParams& Reference to the stored parameters.
    */
-  const LevenbergMarquardtParams& params() const {
-    return params_;
-  }
+  const LevenbergMarquardtParams& params() const { return params_; }
 
   /**
    * @brief Append a log entry capturing the current optimizer progress.
@@ -152,7 +156,8 @@ public:
   /**
    * @brief Linearize the underlying nonlinear factor graph.
    *
-   * This method leverages the efficient linearization routine of WNOAFactor Graph (e.g., leveraging precomputed interpolation batches).
+   * This method leverages the efficient linearization routine of WNOAFactor
+   * Graph (e.g., leveraging precomputed interpolation batches).
    *
    * @return GaussianFactorGraph::shared_ptr Linearized Gaussian factor graph.
    */
@@ -165,11 +170,13 @@ public:
    * to a candidate `lambda` is applied (via `sqrtHessianDiagonal`).
    *
    * @param linear Linearized Gaussian factor graph
-   * @param sqrtHessianDiagonal Per-variable sqrt of the Hessian diagonal used for damping
+   * @param sqrtHessianDiagonal Per-variable sqrt of the Hessian diagonal used
+   * for damping
    * @return GaussianFactorGraph Damped Gaussian factor graph
    */
-  GaussianFactorGraph buildDampedSystem(const GaussianFactorGraph& linear,
-                                        const VectorValues& sqrtHessianDiagonal) const;
+  GaussianFactorGraph buildDampedSystem(
+      const GaussianFactorGraph& linear,
+      const VectorValues& sqrtHessianDiagonal) const;
 
   /**
    * @brief Inner LM loop: try a candidate lambda, apply or reject the step.
@@ -179,18 +186,17 @@ public:
    *
    * @param linear Linearized Gaussian factor graph
    * @param sqrtHessianDiagonal Per-variable sqrt of the Hessian diagonal
-   * @return bool True if the step was accepted (or algorithm terminates), false if rejected.
+   * @return bool True if the step was accepted (or algorithm terminates), false
+   * if rejected.
    */
-  bool tryLambda(const GaussianFactorGraph& linear, const VectorValues& sqrtHessianDiagonal);
+  bool tryLambda(const GaussianFactorGraph& linear,
+                 const VectorValues& sqrtHessianDiagonal);
 
   /// @}
 
-protected:
-
+ protected:
   /** Access the parameters (base class version) */
-  const NonlinearOptimizerParams& _params() const override {
-    return params_;
-  }
+  const NonlinearOptimizerParams& _params() const override { return params_; }
 };
 
-}
+}  // namespace gtsam
