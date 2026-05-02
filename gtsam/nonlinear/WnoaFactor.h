@@ -51,7 +51,7 @@ namespace gtsam {
  * @tparam Pose Pose group/type (Pose2, Pose3, etc.)
  */
 template <class Pose>
-class WNOAMotionFactor
+class WnoaMotionFactor
     : public NoiseModelFactorN<Pose, typename traits<Pose>::TangentVector, Pose,
                                typename traits<Pose>::TangentVector> {
   // Check that Pose type is a testable Lie group
@@ -77,7 +77,7 @@ class WNOAMotionFactor
   using Vector2N = Eigen::Matrix<double, 2 * dim, 1>;
   using MatrixNx2N = Eigen::Matrix<double, dim, 2 * dim>;
   typedef NoiseModelFactorN<Pose, Velocity, Pose, Velocity> Base;
-  typedef WNOAMotionFactor This;
+  typedef WnoaMotionFactor This;
 
   double deltaT_;  ///< Time between the two states
 
@@ -147,7 +147,7 @@ class WNOAMotionFactor
    * @param q_psd_diag Diagonal power spectral density vector used to form the
    * process noise.
    */
-  WNOAMotionFactor(const StateData& state_k, const StateData& state_kp1,
+  WnoaMotionFactor(const StateData& state_k, const StateData& state_kp1,
                    const VectorN& q_psd_diag)
       : Base() {
     // define keys
@@ -158,7 +158,7 @@ class WNOAMotionFactor
     assert(this->deltaT_ > 0.0 &&
            "Time difference between input states must be positive.");
     // define noise model
-    this->noiseModel_ = BuildWNOANoiseModel(this->deltaT_, q_psd_diag);
+    this->noiseModel_ = BuildWnoaNoiseModel(this->deltaT_, q_psd_diag);
   }
 
   /**
@@ -171,13 +171,13 @@ class WNOAMotionFactor
    * @param deltaT Time interval t_{k+1} - t_k (must be > 0)
    * @param q_psd_diag Diagonal PSD vector used to form the process noise.
    */
-  WNOAMotionFactor(Key poseKey0, Key velKey0, Key poseKey1, Key velKey1,
+  WnoaMotionFactor(Key poseKey0, Key velKey0, Key poseKey1, Key velKey1,
                    const double deltaT, const VectorN& q_psd_diag)
-      : Base(BuildWNOANoiseModel(deltaT, q_psd_diag), poseKey0, velKey0,
+      : Base(BuildWnoaNoiseModel(deltaT, q_psd_diag), poseKey0, velKey0,
              poseKey1, velKey1),
         deltaT_(deltaT) {}
 
-  ~WNOAMotionFactor() override {}
+  ~WnoaMotionFactor() override {}
 
   /// @name Testable
   /// @{
@@ -185,7 +185,7 @@ class WNOAMotionFactor
   void print(
       const std::string& s = "",
       const KeyFormatter& keyFormatter = DefaultKeyFormatter) const override {
-    std::cout << s << "WNOAMotionFactor(" << keyFormatter(this->key1()) << ","
+    std::cout << s << "WnoaMotionFactor(" << keyFormatter(this->key1()) << ","
               << keyFormatter(this->key2()) << "," << keyFormatter(this->key3())
               << "," << keyFormatter(this->key4()) << ")\n";
     this->noiseModel_->print("  noise model: ");
@@ -271,7 +271,7 @@ class WNOAMotionFactor
    * @param q_psd_diag Diagonal PSD vector
    * @return Matrix2N Process covariance
    */
-  static Matrix2N BuildWNOACovariance(double timestep,
+  static Matrix2N BuildWnoaCovariance(double timestep,
                                       const VectorN& q_psd_diag) {
     //
     Matrix2N covariance;
@@ -289,7 +289,7 @@ class WNOAMotionFactor
    * @param q_psd_diag Diagonal PSD vector
    * @return Matrix2N Inverse process covariance matrix
    */
-  static Matrix2N BuildInverseWNOACovariance(double dt,
+  static Matrix2N BuildInverseWnoaCovariance(double dt,
                                              const VectorN& q_psd_diag) {
     // construct the inverse covariance matrix for the WNOA factor
     Matrix2N inverse_covariance;
@@ -305,16 +305,16 @@ class WNOAMotionFactor
    * @brief Convenience helper to construct a Gaussian noise model from
    * `q_psd_diag`.
    *
-   * The noise model uses the covariance produced by `BuildWNOACovariance`.
+   * The noise model uses the covariance produced by `BuildWnoaCovariance`.
    *
    * @param timestep Time interval
    * @param q_psd_diag Diagonal PSD vector
    * @return noiseModel::Gaussian::shared_ptr Noise model built from covariance
    */
-  static inline noiseModel::Gaussian::shared_ptr BuildWNOANoiseModel(
+  static inline noiseModel::Gaussian::shared_ptr BuildWnoaNoiseModel(
       double timestep, const VectorN& q_psd_diag) {
     return noiseModel::Gaussian::Covariance(
-        BuildWNOACovariance(timestep, q_psd_diag));
+        BuildWnoaCovariance(timestep, q_psd_diag));
   }
 
   /**
@@ -402,7 +402,7 @@ class WNOAMotionFactor
 
 // Make factors testable
 template <class Pose>
-struct traits<WNOAMotionFactor<Pose>>
-    : public Testable<WNOAMotionFactor<Pose>> {};
+struct traits<WnoaMotionFactor<Pose>>
+    : public Testable<WnoaMotionFactor<Pose>> {};
 
 }  // namespace gtsam

@@ -35,11 +35,11 @@ Interpolator<PoseType>::Interpolator(
 
 template <typename PoseType>
 Interpolator<PoseType>::Interpolator(const VectorN& q_psd_diag)
-    : Interpolator(q_psd_diag, WNOAMotionFactor<PoseType>::TransitionFunction,
-                   WNOAMotionFactor<PoseType>::BuildWNOACovariance,
-                   WNOAMotionFactor<PoseType>::BuildInverseWNOACovariance,
-                   WNOAMotionFactor<PoseType>::ComputeJacobianPrev,
-                   WNOAMotionFactor<PoseType>::ComputeJacobianNext) {}
+    : Interpolator(q_psd_diag, WnoaMotionFactor<PoseType>::TransitionFunction,
+                   WnoaMotionFactor<PoseType>::BuildWnoaCovariance,
+                   WnoaMotionFactor<PoseType>::BuildInverseWnoaCovariance,
+                   WnoaMotionFactor<PoseType>::ComputeJacobianPrev,
+                   WnoaMotionFactor<PoseType>::ComputeJacobianNext) {}
 
 // ---- Member Functions ----
 template <typename PoseType>

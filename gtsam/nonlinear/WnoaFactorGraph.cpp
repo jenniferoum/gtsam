@@ -44,17 +44,17 @@ namespace {
 #ifdef GTSAM_USE_TBB
 template <typename PoseType>
 class _LinearizeOneFactor {
-  const WNOAFactorGraph<PoseType>& nonlinearGraph_;
+  const WnoaFactorGraph<PoseType>& nonlinearGraph_;
   const Values& linearizationPoint_;
   GaussianFactorGraph& result_;
-  typename WNOAInterpFactor<PoseType>::PassedInterpData& passedInterpData_;
+  typename WnoaInterpFactor<PoseType>::PassedInterpData& passedInterpData_;
 
  public:
   // Create functor with constant parameters
   _LinearizeOneFactor(
-      const WNOAFactorGraph<PoseType>& graph, const Values& linearizationPoint,
+      const WnoaFactorGraph<PoseType>& graph, const Values& linearizationPoint,
       GaussianFactorGraph& result,
-      typename WNOAInterpFactor<PoseType>::PassedInterpData& passedInterpData)
+      typename WnoaInterpFactor<PoseType>::PassedInterpData& passedInterpData)
       : nonlinearGraph_(graph),
         linearizationPoint_(linearizationPoint),
         result_(result),
@@ -63,9 +63,9 @@ class _LinearizeOneFactor {
   void operator()(const tbb::blocked_range<size_t>& blocked_range) const {
     for (size_t i = blocked_range.begin(); i != blocked_range.end(); ++i) {
       if (nonlinearGraph_[i] && nonlinearGraph_[i]->sendable()) {
-        // Attempt dynamic cast to WNOAInterpFactor
+        // Attempt dynamic cast to WnoaInterpFactor
         auto wnoa_factor =
-            std::dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(
+            std::dynamic_pointer_cast<WnoaInterpFactor<PoseType>>(
                 nonlinearGraph_[i]);
         if (wnoa_factor) {
           result_[i] =
@@ -84,7 +84,7 @@ class _LinearizeOneFactor {
 }  // namespace
 
 template <typename PoseType>
-WNOAFactorGraph<PoseType>::WNOAFactorGraph(
+WnoaFactorGraph<PoseType>::WnoaFactorGraph(
     std::unordered_map<StateData, std::pair<StateData, StateData>> interp_map,
     const Eigen::Vector<double, dim> q_psd_diag, bool fixed_noise_model)
     : interpolator_(q_psd_diag),
@@ -141,13 +141,13 @@ WNOAFactorGraph<PoseType>::WNOAFactorGraph(
 
 /* ************************************************************************* */
 template <typename PoseType>
-std::shared_ptr<GaussianFactorGraph> WNOAFactorGraph<PoseType>::linearize(
+std::shared_ptr<GaussianFactorGraph> WnoaFactorGraph<PoseType>::linearize(
     const Values& linearizationPoint) const {
   // Compute values, Jacobians and conditional covariances for all interpolated
   // states
 
   auto passedInterpData =
-      std::make_shared<typename WNOAInterpFactor<PoseType>::PassedInterpData>();
+      std::make_shared<typename WnoaInterpFactor<PoseType>::PassedInterpData>();
 
   if (fixed_noise_model_) {
     passedInterpData->values = getInterpolatedValues(
@@ -178,9 +178,9 @@ std::shared_ptr<GaussianFactorGraph> WNOAFactorGraph<PoseType>::linearize(
   for (size_t i = 0; i < size(); i++) {
     auto& factor = (*this)[i];
     if (factor && !(factor->sendable())) {
-      // Attempt dynamic cast to WNOAInterpFactor
+      // Attempt dynamic cast to WnoaInterpFactor
       auto wnoa_factor =
-          std::dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
+          std::dynamic_pointer_cast<WnoaInterpFactor<PoseType>>(factor);
       if (wnoa_factor) {
         (*linearFG)[i] =
             wnoa_factor->linearize(linearizationPoint, passedInterpData.get());
@@ -196,10 +196,10 @@ std::shared_ptr<GaussianFactorGraph> WNOAFactorGraph<PoseType>::linearize(
 
   // linearize all factors
   for (const sharedFactor& factor : factors_) {
-    // Attempt dynamic cast to WNOAInterpFactor
+    // Attempt dynamic cast to WnoaInterpFactor
     if (factor) {
       auto wnoa_factor =
-          std::dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
+          std::dynamic_pointer_cast<WnoaInterpFactor<PoseType>>(factor);
       if (wnoa_factor) {
         linearFG->push_back(
             wnoa_factor->linearize(linearizationPoint, passedInterpData.get()));
@@ -216,14 +216,14 @@ std::shared_ptr<GaussianFactorGraph> WNOAFactorGraph<PoseType>::linearize(
 }
 
 template <typename PoseType>
-double WNOAFactorGraph<PoseType>::error(const Values& values) const {
+double WnoaFactorGraph<PoseType>::error(const Values& values) const {
   double total_error = 0.;
 
   // Compute values, Jacobians and conditional covariances for all interpolated
   // states
 
   auto passedInterpData =
-      std::make_shared<typename WNOAInterpFactor<PoseType>::PassedInterpData>();
+      std::make_shared<typename WnoaInterpFactor<PoseType>::PassedInterpData>();
   if (fixed_noise_model_) {
     passedInterpData->values = getInterpolatedValues(values, nullptr, nullptr);
   } else {
@@ -235,7 +235,7 @@ double WNOAFactorGraph<PoseType>::error(const Values& values) const {
   for (const sharedFactor& factor : factors_) {
     if (factor) {
       auto wnoa_factor =
-          std::dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
+          std::dynamic_pointer_cast<WnoaInterpFactor<PoseType>>(factor);
       if (wnoa_factor) {
         total_error += wnoa_factor->error(values, passedInterpData.get());
       } else {
@@ -249,7 +249,7 @@ double WNOAFactorGraph<PoseType>::error(const Values& values) const {
 /* @brief Interpolate all interpolated states based on estimated states.
  * Put their values in a Values structure and compute their Jacobians.*/
 template <typename PoseType>
-Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
+Values WnoaFactorGraph<PoseType>::getInterpolatedValues(
     const Values& values,
     std::unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians,
     std::unordered_map<StateData, Matrix2N>* InterpCondCovs) const {
@@ -518,10 +518,10 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
 }
 
 // Explicit template instantiation
-template class WNOAFactorGraph<Point1>;
-template class WNOAFactorGraph<Point2>;
-template class WNOAFactorGraph<Point3>;
-template class WNOAFactorGraph<Pose2>;
-template class WNOAFactorGraph<Pose3>;
+template class WnoaFactorGraph<Point1>;
+template class WnoaFactorGraph<Point2>;
+template class WnoaFactorGraph<Point3>;
+template class WnoaFactorGraph<Pose2>;
+template class WnoaFactorGraph<Pose3>;
 
 }  // namespace gtsam

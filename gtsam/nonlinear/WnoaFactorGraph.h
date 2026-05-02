@@ -33,7 +33,7 @@ namespace gtsam {
 /**
  * @brief Factor graph specialized for WNOA interpolation-aware computation.
  *
- * `WNOAFactorGraph` wraps standard factor graph functionalities with utilities
+ * `WnoaFactorGraph` wraps standard factor graph functionalities with utilities
  * to compute interpolated pose/velocity states under a
  * White-Noise-on-Acceleration (WNOA) motion prior. It stores the mapping from
  * interpolated query times to their left/right bordering estimated states and
@@ -47,9 +47,9 @@ namespace gtsam {
  * interpolator.
  */
 template <typename PoseType>
-class WNOAFactorGraph : public ExpressionFactorGraph {
+class WnoaFactorGraph : public ExpressionFactorGraph {
  private:
-  using This = WNOAFactorGraph<PoseType>;
+  using This = WnoaFactorGraph<PoseType>;
   using Base = ExpressionFactorGraph;
   using VelocityType = typename gtsam::traits<PoseType>::TangentVector;
   static constexpr int dim = traits<PoseType>::dimension;
@@ -85,7 +85,7 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
   std::unordered_set<Key> border_pose_keys_;
   std::unordered_set<Key> border_vel_keys_;
 
-  // Efficient storage for indices of WNOAInterpFactors
+  // Efficient storage for indices of WnoaInterpFactors
   std::unordered_set<size_t> wnoa_interp_factor_indices_;
 
   /**
@@ -123,7 +123,7 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
    * graph.
    */
   std::shared_ptr<GaussianFactorGraph> linearize(
-      const Values& linearizationPoint) const;
+      const Values& linearizationPoint) const override;
 
   /**
    * @brief Compute the unnormalized graph error (sum of factor losses).
@@ -136,10 +136,15 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
    * @param values Current `Values` used to evaluate the error.
    * @return double Scalar unnormalized error (sum of factor losses).
    */
-  double error(const Values& values) const;
+  double error(const Values& values) const override;
+
+  /// Clone into a shared pointer while preserving WnoaFactorGraph behavior.
+  std::shared_ptr<const NonlinearFactorGraph> cloneShared() const override {
+    return std::make_shared<WnoaFactorGraph<PoseType>>(*this);
+  }
 
   /**
-   * @brief Construct a `WNOAFactorGraph` with interpolation metadata.
+   * @brief Construct a `WnoaFactorGraph` with interpolation metadata.
    *
    * @param interp_map Mapping from each interpolated `StateData` to its
    *        left/right bordering estimated `StateData`.
@@ -148,9 +153,10 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
    * @param fixed_noise_model If true, the graph will not augment measurement
    * noise for interpolation.
    */
-  WNOAFactorGraph(
+  WnoaFactorGraph(
       std::unordered_map<StateData, std::pair<StateData, StateData>> interp_map,
-      const Eigen::Vector<double, dim> q_psd_diag_diag, bool fixed_noise_model = false);
+      const Eigen::Vector<double, dim> q_psd_diag,
+      bool fixed_noise_model = false);
 };
 
 }  // namespace gtsam

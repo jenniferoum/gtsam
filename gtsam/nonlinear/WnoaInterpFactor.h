@@ -46,7 +46,7 @@
 namespace gtsam {
 
 /**
- * @class WNOAInterpFactor
+ * @class WnoaInterpFactor
  * @brief Wrapper factor that evaluates an inner NoiseModelFactor on states
  *        interpolated from neighboring estimated states using a WNOA
  *        (white-noise-on-acceleration) Gaussian process interpolator.
@@ -91,7 +91,7 @@ namespace gtsam {
  * compile time).
  */
 template <class PoseType>
-class WNOAInterpFactor : public NoiseModelFactor {
+class WnoaInterpFactor : public NoiseModelFactor {
  private:
 #ifndef GTSAM_ROT3_EXPMAP
   static_assert(
@@ -100,7 +100,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
       "Cayley chart. Please switch to EXPMAP coordinates mode.");
 #endif
   using Base = NoiseModelFactor;
-  using This = WNOAInterpFactor<PoseType>;
+  using This = WnoaInterpFactor<PoseType>;
   using VelocityType = typename gtsam::traits<PoseType>::TangentVector;
   static constexpr int dim = traits<PoseType>::dimension;
 
@@ -196,7 +196,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * @param precomp_interp_mats If true, precompute Lambda/Psi matrices for each
    * interpolated state.
    */
-  WNOAInterpFactor(const NoiseModelFactor::shared_ptr inner_factor,
+  WnoaInterpFactor(const NoiseModelFactor::shared_ptr inner_factor,
                    const std::set<StateData> estimated_states,
                    const std::set<StateData> interp_states,
                    const Eigen::Matrix<double, dim, 1> q_psd_diag,
@@ -339,7 +339,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
   /**
    * @brief Default destructor.
    */
-  ~WNOAInterpFactor() override {};
+  ~WnoaInterpFactor() override {};
 
   /** Implement functions needed for Testable */
   /**
@@ -351,7 +351,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
   void print(
       const std::string& s = "",
       const KeyFormatter& keyFormatter = DefaultKeyFormatter) const override {
-    std::cout << s << "WNOAInterpFactor on ";
+    std::cout << s << "WnoaInterpFactor on ";
     for (const auto& k : this->keys()) {
       std::cout << keyFormatter(k) << " ";  // raw numeric key
     }
@@ -859,8 +859,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
  *
  * @tparam PoseType Pose type used in the graph (e.g. `Pose2`, `Pose3`).
  * @tparam FactorGraphType Type of factor graph to return. Supports
- * NonlinearFactorGraph or WNOAFactorGraph. Note that the user is responsible
- * for ensuring that the WNOAFactorGraph is defined with the same PoseType as
+ * NonlinearFactorGraph or WnoaFactorGraph. Note that the user is responsible
+ * for ensuring that the WnoaFactorGraph is defined with the same PoseType as
  * the template parameter.
  * @param graph Input factor graph possibly containing factors on interpolated
  * states.
@@ -916,9 +916,9 @@ FactorGraphType interpolateFactorGraph(
     }
   }
   // Create new factor graph (we use a lambda to handle the case where we need
-  // to pass additional info to the constructor, e.g. for WNOAFactorGraph)
+  // to pass additional info to the constructor, e.g. for WnoaFactorGraph)
   FactorGraphType new_graph = [&]() {
-    if constexpr (std::is_same_v<FactorGraphType, WNOAFactorGraph<PoseType>>) {
+    if constexpr (std::is_same_v<FactorGraphType, WnoaFactorGraph<PoseType>>) {
       return FactorGraphType(interp_to_borders_, q_psd_diag, fixed_noise);
     } else {
       return FactorGraphType();
@@ -932,7 +932,7 @@ FactorGraphType interpolateFactorGraph(
     // get time diff
     double delta_t = state_kp1.time - state_k.time;
     // add factor
-    auto motion_factor = std::make_shared<WNOAMotionFactor<PoseType>>(
+    auto motion_factor = std::make_shared<WnoaMotionFactor<PoseType>>(
         state_k.pose, state_k.velocity, state_kp1.pose, state_kp1.velocity,
         delta_t, q_psd_diag);
     new_graph.add(motion_factor);
@@ -943,7 +943,7 @@ FactorGraphType interpolateFactorGraph(
     // handle null factor
     if (!factor) continue;
     // if the factor is a WNOA motion factor, do not add it
-    if (std::dynamic_pointer_cast<WNOAMotionFactor<PoseType>>(factor)) continue;
+    if (std::dynamic_pointer_cast<WnoaMotionFactor<PoseType>>(factor)) continue;
     // get ordered sets of interpolated and estimated states
     std::set<StateData> factor_interp_states;
     std::set<StateData> factor_estimated_states;
@@ -969,7 +969,7 @@ FactorGraphType interpolateFactorGraph(
              "Defined factors must be NoiseModelFactor or derivative class");
 
       // Define and add factor to new graph
-      const auto wrapped_factor = std::make_shared<WNOAInterpFactor<PoseType>>(
+      const auto wrapped_factor = std::make_shared<WnoaInterpFactor<PoseType>>(
           nmfactor, factor_estimated_states, factor_interp_states, q_psd_diag,
           fixed_noise);
       new_graph.add(wrapped_factor);
@@ -1028,7 +1028,7 @@ Values updateInterpValues(
 
 /// traits
 template <class POSE>
-struct traits<WNOAInterpFactor<POSE>>
-    : public Testable<WNOAInterpFactor<POSE>> {};
+struct traits<WnoaInterpFactor<POSE>>
+    : public Testable<WnoaInterpFactor<POSE>> {};
 
 }  // namespace gtsam
