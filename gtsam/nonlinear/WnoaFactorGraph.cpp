@@ -17,7 +17,6 @@
 
 #include <gtsam/config.h>  // for GTSAM_USE_TBB
 #include <gtsam/nonlinear/WnoaFactorGraph.h>
-#include <gtsam/nonlinear/WnoaInterpFactor.h>
 
 #include <Eigen/Core>  // for Eigen::setNbThreads
 

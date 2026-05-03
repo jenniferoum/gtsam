@@ -11,7 +11,7 @@
 
 /**
  * @file    testWnoaInterpFactor.cpp
- * @brief   Unit test for WNOA Interpolation Factor
+ * @brief   Unit test for WNOA Interpolation Factor and related Factor Graphs
  * @author  Connor Holmes
  */
 
