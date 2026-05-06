@@ -915,7 +915,7 @@ TEST(WnoaInterp, SE3UpdateInterpValues) {
   values.insert(V(2), v0_se3);
   values.insert(V(4), v0_se3);
 
-  auto covariance_map = std::make_shared<Interpolator<Pose3>::CovarianceMap>();
+  auto covariance_map = std::make_shared<InterpCovarianceMap>();
   Values result_interp = updateInterpValues<Pose3>(
       new_graph, values, estimatedStatesShuffled, interpolatedStatesShuffled,
       Q_se3, covariance_map);
@@ -991,7 +991,7 @@ TEST(WnoaInterp, SE3UpdateInterpValuesWnoaGraph) {
   values.insert(V(2), v0_se3);
   values.insert(V(4), v0_se3);
 
-  auto covariance_map = std::make_shared<Interpolator<Pose3>::CovarianceMap>();
+  auto covariance_map = std::make_shared<InterpCovarianceMap>();
   Values result_interp = updateInterpValues<Pose3>(
       new_graph, values, estimatedStatesShuffled, interpolatedStatesShuffled,
       Q_se3, covariance_map);

@@ -727,8 +727,15 @@ gtsam::Values updateInterpValues(
     const gtsam::Values& values, const std::set<gtsam::StateData>& estim_states,
     const std::set<gtsam::StateData>& interp_states,
     const gtsam::Vector q_psd_diag);
-    // std::shared_ptr<std::map<gtsam::Key, gtsam::Matrix>> covarianceMapOut =
-    //     nullptr);
+
+template <POSE = {gtsam::Point1, gtsam::Point2, gtsam::Point3, gtsam::Pose2,
+                  gtsam::Pose3}>
+std::pair<gtsam::Values, gtsam::InterpCovarianceMap>
+updateInterpValuesWithCovariance(
+    const gtsam::NonlinearFactorGraph& interp_graph,
+    const gtsam::Values& values, const std::set<gtsam::StateData>& estim_states,
+    const std::set<gtsam::StateData>& interp_states,
+    const gtsam::Vector q_psd_diag);
 
 //*************************************************************************
 // Nonlinear factor types
