@@ -27,6 +27,7 @@ from gtsam import WnoaMotionFactorPose3
 from gtsam import interpolateFactorGraphPose3
 from gtsam import interpolateWnoaFactorGraphPose3
 from gtsam import updateInterpValuesPose3
+from gtsam import updateInterpValuesWithCovariancePose3
 
 class TestStateData(GtsamTestCase):
     """Test StateData class."""
@@ -180,8 +181,7 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
 
         return timestep, q_psd_diag, keys, p0, p1, p2, p3, p4, v0
 
-    def test_se3_interp_graph(self):
-        """Test interpolateFactorGraphPose3 for SE3 graphs."""
+    def _make_se3_interp_graph(self, use_wnoa_graph=False):
         timestep, q_psd_diag, keys, p0, p1, p2, p3, p4, v0 = (
             self._make_se3_fixture()
         )
@@ -191,7 +191,6 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
             keys["p1"], keys["p3"], p1.between(p3), model
         )
         prior_pose_factor = gtsam.PriorFactorPose3(keys["p1"], p1, model)
-        # Note: Velocity Priors must be defined using a fixed size prior.
         prior_vel_factor = gtsam.PriorFactorVector6(keys["v1"], v0, model)
 
         graph = gtsam.NonlinearFactorGraph()
@@ -209,9 +208,14 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
             gtsam.StateData(keys["p1"], keys["v1"], timestep),
         }
 
-        new_graph = interpolateFactorGraphPose3(
-            graph, estimated_states, interpolated_states, q_psd_diag
-        )
+        if use_wnoa_graph:
+            new_graph = interpolateWnoaFactorGraphPose3(
+                graph, estimated_states, interpolated_states, q_psd_diag
+            )
+        else:
+            new_graph = interpolateFactorGraphPose3(
+                graph, estimated_states, interpolated_states, q_psd_diag
+            )
 
         values = gtsam.Values()
         values.insert(keys["p0"], p0)
@@ -221,20 +225,62 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
         values.insert(keys["v2"], v0)
         values.insert(keys["v4"], v0)
 
+        return (
+            timestep,
+            q_psd_diag,
+            keys,
+            p0,
+            p1,
+            p2,
+            p3,
+            p4,
+            v0,
+            new_graph,
+            values,
+            estimated_states,
+            interpolated_states,
+        )
+
+    def _assert_covariance_map(self, covariance_map, keys):
+        def is_positive_semidefinite(covariance):
+            symmetric = 0.5 * (covariance + covariance.T)
+            min_eigenvalue = np.min(np.linalg.eigvalsh(symmetric))
+            return min_eigenvalue >= -1e-9
+
+        self.assertIn(keys["p1"], covariance_map)
+        self.assertIn(keys["v1"], covariance_map)
+        self.assertIn(keys["p3"], covariance_map)
+        self.assertIn(keys["v3"], covariance_map)
+
+        for key in (keys["p1"], keys["v1"], keys["p3"], keys["v3"]):
+            covariance = covariance_map[key]
+            self.assertEqual(covariance.shape, (6, 6))
+            self.assertTrue(is_positive_semidefinite(covariance))
+
+    def test_se3_interp_graph(self):
+        """Test interpolateFactorGraphPose3 for SE3 graphs."""
+        (
+            _timestep,
+            _q_psd_diag,
+            keys,
+            p0,
+            _p1,
+            p2,
+            _p3,
+            p4,
+            v0,
+            new_graph,
+            values,
+            _estimated_states,
+            _interpolated_states,
+        ) = self._make_se3_interp_graph()
+
         optimizer = gtsam.GaussNewtonOptimizer(new_graph, values)
         self.assertAlmostEqual(optimizer.error(), 0.0, places=9)
         optimizer.iterate()
         self.assertAlmostEqual(optimizer.error(), 0.0, places=9)
-        result = optimizer.optimize()
+        optimizer.optimize()
         self.assertAlmostEqual(optimizer.error(), 0.0, places=6)
-
-        result_interp = updateInterpValuesPose3(
-            new_graph, result, estimated_states, interpolated_states, q_psd_diag
-        )
-        p3_est = result_interp.atPose3(keys["p3"])
-        p1_est = result_interp.atPose3(keys["p1"])
-        self.gtsamAssertEquals(p3, p3_est, 1e-6)
-        self.gtsamAssertEquals(p1, p1_est, 1e-6)
 
         perturb = np.array([0.001, 0.001, 0.001, 0.1, 0.1, 0.1])
         values_pert = gtsam.Values()
@@ -252,58 +298,28 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
 
     def test_se3_interp_wnoa_graph(self):
         """Test interpolateWnoaFactorGraphPose3 for SE3 graphs."""
-        timestep, q_psd_diag, keys, p0, p1, p2, p3, p4, v0 = (
-            self._make_se3_fixture()
-        )
-
-        model = gtsam.noiseModel.Isotropic.Sigma(6, 1.0)
-        between_factor = gtsam.BetweenFactorPose3(
-            keys["p1"], keys["p3"], p1.between(p3), model
-        )
-        prior_pose_factor = gtsam.PriorFactorPose3(keys["p1"], p1, model)
-        prior_vel_factor = gtsam.PriorFactorVector6(keys["v1"], v0, model)
-
-        graph = gtsam.NonlinearFactorGraph()
-        graph.add(between_factor)
-        graph.add(prior_pose_factor)
-        graph.add(prior_vel_factor)
-
-        estimated_states = {
-            gtsam.StateData(keys["p0"], keys["v0"], 0.0),
-            gtsam.StateData(keys["p4"], keys["v4"], 4.0 * timestep),
-            gtsam.StateData(keys["p2"], keys["v2"], 2.0 * timestep),
-        }
-        interpolated_states = {
-            gtsam.StateData(keys["p3"], keys["v3"], 3.0 * timestep),
-            gtsam.StateData(keys["p1"], keys["v1"], timestep),
-        }
-
-        new_graph = interpolateWnoaFactorGraphPose3(
-            graph, estimated_states, interpolated_states, q_psd_diag
-        )
-
-        values = gtsam.Values()
-        values.insert(keys["p0"], p0)
-        values.insert(keys["p2"], p2)
-        values.insert(keys["p4"], p4)
-        values.insert(keys["v0"], v0)
-        values.insert(keys["v2"], v0)
-        values.insert(keys["v4"], v0)
+        (
+            _timestep,
+            _q_psd_diag,
+            keys,
+            p0,
+            _p1,
+            p2,
+            _p3,
+            p4,
+            v0,
+            new_graph,
+            values,
+            _estimated_states,
+            _interpolated_states,
+        ) = self._make_se3_interp_graph(use_wnoa_graph=True)
 
         optimizer = gtsam.LevenbergMarquardtOptimizer(new_graph, values)
         self.assertAlmostEqual(optimizer.error(), 0.0, places=9)
         optimizer.iterate()
         self.assertAlmostEqual(optimizer.error(), 0.0, places=9)
-        result = optimizer.optimize()
+        optimizer.optimize()
         self.assertAlmostEqual(optimizer.error(), 0.0, places=6)
-
-        result_interp = updateInterpValuesPose3(
-            new_graph, result, estimated_states, interpolated_states, q_psd_diag
-        )
-        p3_est = result_interp.atPose3(keys["p3"])
-        p1_est = result_interp.atPose3(keys["p1"])
-        self.gtsamAssertEquals(p3, p3_est, 1e-6)
-        self.gtsamAssertEquals(p1, p1_est, 1e-6)
 
         perturb = np.array([0.001, 0.001, 0.001, 0.1, 0.1, 0.1])
         values_pert = gtsam.Values()
@@ -318,6 +334,71 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
         optimizer2 = gtsam.GaussNewtonOptimizer(new_graph, values_pert)
         optimizer2.optimize()
         self.assertAlmostEqual(optimizer2.error(), 0.0, places=4)
+
+    def test_se3_update_interp_values(self):
+        """Test updateInterpValuesPose3 for SE3 graphs."""
+        (
+            _timestep,
+            q_psd_diag,
+            keys,
+            _p0,
+            p1,
+            _p2,
+            p3,
+            _p4,
+            v0,
+            new_graph,
+            values,
+            estimated_states,
+            interpolated_states,
+        ) = self._make_se3_interp_graph()
+
+        result_interp = updateInterpValuesPose3(
+            new_graph, values, estimated_states, interpolated_states, q_psd_diag
+        )
+
+        p3_est = result_interp.atPose3(keys["p3"])
+        p1_est = result_interp.atPose3(keys["p1"])
+        v3_est = result_interp.atVector6(keys["v3"])
+        v1_est = result_interp.atVector6(keys["v1"])
+
+        self.gtsamAssertEquals(p3, p3_est, 1e-6)
+        self.gtsamAssertEquals(p1, p1_est, 1e-6)
+        np.testing.assert_allclose(v0, v3_est, rtol=1e-12, atol=1e-12)
+        np.testing.assert_allclose(v0, v1_est, rtol=1e-12, atol=1e-12)
+
+    def test_se3_update_interp_values_with_covariance(self):
+        """Test updateInterpValuesWithCovariancePose3 for SE3 graphs."""
+        (
+            _timestep,
+            q_psd_diag,
+            keys,
+            _p0,
+            p1,
+            _p2,
+            p3,
+            _p4,
+            v0,
+            new_graph,
+            values,
+            estimated_states,
+            interpolated_states,
+        ) = self._make_se3_interp_graph()
+
+        result_interp, covariance_map = updateInterpValuesWithCovariancePose3(
+            new_graph, values, estimated_states, interpolated_states, q_psd_diag
+        )
+
+        p3_est = result_interp.atPose3(keys["p3"])
+        p1_est = result_interp.atPose3(keys["p1"])
+        v3_est = result_interp.atVector6(keys["v3"])
+        v1_est = result_interp.atVector6(keys["v1"])
+
+        self.gtsamAssertEquals(p3, p3_est, 1e-6)
+        self.gtsamAssertEquals(p1, p1_est, 1e-6)
+        np.testing.assert_allclose(v0, v3_est, rtol=1e-12, atol=1e-12)
+        np.testing.assert_allclose(v0, v1_est, rtol=1e-12, atol=1e-12)
+        self._assert_covariance_map(covariance_map, keys)
 
         
 if __name__ == "__main__":
