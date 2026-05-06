@@ -29,6 +29,7 @@
 #include <gtsam/nonlinear/WnoaInterpolator.h>
 #include <gtsam/slam/BetweenFactor.h>
 
+#include <Eigen/Eigenvalues>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -476,10 +477,9 @@ TEST(WnoaInterp, CachedGraphMatchesPlainLoopPoint3) {
   graph.add(prior_pose);
   graph.add(prior_vel);
 
-  const set<StateData> estimatedStates = {
-      StateData(P(0), V(0), 0.0), StateData(P(2), V(2), 2 * timestep)};
-  const set<StateData> interpolatedStates = {
-      StateData(P(1), V(1), timestep)};
+  const set<StateData> estimatedStates = {StateData(P(0), V(0), 0.0),
+                                          StateData(P(2), V(2), 2 * timestep)};
+  const set<StateData> interpolatedStates = {StateData(P(1), V(1), timestep)};
 
   Values values;
   values.insert(P(0), p0_p3);
@@ -880,6 +880,158 @@ TEST(WnoaInterp, SE3OptimTest) {
   DOUBLES_EQUAL(0.0, optimizer2.error(), 1e-4);
 }
 
+TEST(WnoaInterp, SE3UpdateInterpValues) {
+  // Define nominal factors
+  const auto model = noiseModel::Isotropic::Sigma(6, 1.0);
+  const auto between_factor = std::make_shared<BetweenFactor<Pose3>>(
+      P(1), P(3), p1_se3.inverse() * p3_se3, model);
+  const auto prior_pose_factor =
+      std::make_shared<PriorFactor<Pose3>>(P(1), p1_se3, model);
+  const auto prior_vel_factor =
+      std::make_shared<PriorFactor<Vector6>>(V(1), v0_se3, model);
+
+  // Generate original graph
+  NonlinearFactorGraph graph;
+  graph.add(between_factor);
+  graph.add(prior_pose_factor);
+  graph.add(prior_vel_factor);
+
+  // Interpolate the graph
+  set<StateData> estimatedStatesShuffled = {
+      StateData(P(0), V(0), 0.0), StateData(P(4), V(4), 4 * timestep),
+      StateData(P(2), V(2), 2 * timestep)};
+  set<StateData> interpolatedStatesShuffled = {
+      StateData(P(3), V(3), 3 * timestep), StateData(P(1), V(1), timestep)};
+  NonlinearFactorGraph new_graph =
+      interpolateFactorGraph<Pose3, NonlinearFactorGraph>(
+          graph, estimatedStatesShuffled, interpolatedStatesShuffled, Q_se3);
+
+  // Ground truth values for estimated states
+  Values values;
+  values.insert(P(0), p0_se3);
+  values.insert(P(2), p2_se3);
+  values.insert(P(4), p4_se3);
+  values.insert(V(0), v0_se3);
+  values.insert(V(2), v0_se3);
+  values.insert(V(4), v0_se3);
+
+  auto covariance_map = std::make_shared<Interpolator<Pose3>::CovarianceMap>();
+  Values result_interp = updateInterpValues<Pose3>(
+      new_graph, values, estimatedStatesShuffled, interpolatedStatesShuffled,
+      Q_se3, covariance_map);
+
+  auto is_positive_semidefinite = [](const Matrix& covariance) {
+    const Matrix symmetric = 0.5 * (covariance + covariance.transpose());
+    Eigen::SelfAdjointEigenSolver<Matrix> solver(symmetric);
+    const double min_eigenvalue = solver.eigenvalues().minCoeff();
+    return min_eigenvalue >= -1e-9;
+  };
+
+  EXPECT(covariance_map);
+  EXPECT(covariance_map->count(P(1)) == 1);
+  EXPECT(covariance_map->count(V(1)) == 1);
+  EXPECT(covariance_map->count(P(3)) == 1);
+  EXPECT(covariance_map->count(V(3)) == 1);
+  EXPECT(covariance_map->at(P(1)).rows() == 6);
+  EXPECT(covariance_map->at(P(1)).cols() == 6);
+  EXPECT(covariance_map->at(V(1)).rows() == 6);
+  EXPECT(covariance_map->at(V(1)).cols() == 6);
+  EXPECT(covariance_map->at(P(3)).rows() == 6);
+  EXPECT(covariance_map->at(P(3)).cols() == 6);
+  EXPECT(covariance_map->at(V(3)).rows() == 6);
+  EXPECT(covariance_map->at(V(3)).cols() == 6);
+  EXPECT(is_positive_semidefinite(covariance_map->at(P(1))));
+  EXPECT(is_positive_semidefinite(covariance_map->at(V(1))));
+  EXPECT(is_positive_semidefinite(covariance_map->at(P(3))));
+  EXPECT(is_positive_semidefinite(covariance_map->at(V(3))));
+
+  auto p3_se3_est = result_interp.at<Pose3>(P(3));
+  auto p1_se3_est = result_interp.at<Pose3>(P(1));
+  auto v3_se3_est = result_interp.at<Vector6>(V(3));
+  auto v1_se3_est = result_interp.at<Vector6>(V(1));
+
+  EXPECT(assert_equal(p3_se3, p3_se3_est, 1e-6));
+  EXPECT(assert_equal(p1_se3, p1_se3_est, 1e-6));
+  EXPECT(assert_equal(v0_se3, v3_se3_est, 1e-12));
+  EXPECT(assert_equal(v0_se3, v1_se3_est, 1e-12));
+}
+
+TEST(WnoaInterp, SE3UpdateInterpValuesWnoaGraph) {
+  // Define nominal factors
+  const auto model = noiseModel::Isotropic::Sigma(6, 1.0);
+  const auto between_factor = std::make_shared<BetweenFactor<Pose3>>(
+      P(1), P(3), p1_se3.inverse() * p3_se3, model);
+  const auto prior_pose_factor =
+      std::make_shared<PriorFactor<Pose3>>(P(1), p1_se3, model);
+  const auto prior_vel_factor =
+      std::make_shared<PriorFactor<Vector6>>(V(1), v0_se3, model);
+
+  // Generate original graph
+  NonlinearFactorGraph graph;
+  graph.add(between_factor);
+  graph.add(prior_pose_factor);
+  graph.add(prior_vel_factor);
+
+  // Interpolate the graph
+  set<StateData> estimatedStatesShuffled = {
+      StateData(P(0), V(0), 0.0), StateData(P(4), V(4), 4 * timestep),
+      StateData(P(2), V(2), 2 * timestep)};
+  set<StateData> interpolatedStatesShuffled = {
+      StateData(P(3), V(3), 3 * timestep), StateData(P(1), V(1), timestep)};
+  WnoaFactorGraph<Pose3> new_graph =
+      interpolateFactorGraph<Pose3, WnoaFactorGraph<Pose3>>(
+          graph, estimatedStatesShuffled, interpolatedStatesShuffled, Q_se3);
+
+  // Ground truth values for estimated states
+  Values values;
+  values.insert(P(0), p0_se3);
+  values.insert(P(2), p2_se3);
+  values.insert(P(4), p4_se3);
+  values.insert(V(0), v0_se3);
+  values.insert(V(2), v0_se3);
+  values.insert(V(4), v0_se3);
+
+  auto covariance_map = std::make_shared<Interpolator<Pose3>::CovarianceMap>();
+  Values result_interp = updateInterpValues<Pose3>(
+      new_graph, values, estimatedStatesShuffled, interpolatedStatesShuffled,
+      Q_se3, covariance_map);
+
+  auto is_positive_semidefinite = [](const Matrix& covariance) {
+    const Matrix symmetric = 0.5 * (covariance + covariance.transpose());
+    Eigen::SelfAdjointEigenSolver<Matrix> solver(symmetric);
+    const double min_eigenvalue = solver.eigenvalues().minCoeff();
+    return min_eigenvalue >= -1e-9;
+  };
+
+  EXPECT(covariance_map);
+  EXPECT(covariance_map->count(P(1)) == 1);
+  EXPECT(covariance_map->count(V(1)) == 1);
+  EXPECT(covariance_map->count(P(3)) == 1);
+  EXPECT(covariance_map->count(V(3)) == 1);
+  EXPECT(covariance_map->at(P(1)).rows() == 6);
+  EXPECT(covariance_map->at(P(1)).cols() == 6);
+  EXPECT(covariance_map->at(V(1)).rows() == 6);
+  EXPECT(covariance_map->at(V(1)).cols() == 6);
+  EXPECT(covariance_map->at(P(3)).rows() == 6);
+  EXPECT(covariance_map->at(P(3)).cols() == 6);
+  EXPECT(covariance_map->at(V(3)).rows() == 6);
+  EXPECT(covariance_map->at(V(3)).cols() == 6);
+  EXPECT(is_positive_semidefinite(covariance_map->at(P(1))));
+  EXPECT(is_positive_semidefinite(covariance_map->at(V(1))));
+  EXPECT(is_positive_semidefinite(covariance_map->at(P(3))));
+  EXPECT(is_positive_semidefinite(covariance_map->at(V(3))));
+
+  auto p3_se3_est = result_interp.at<Pose3>(P(3));
+  auto p1_se3_est = result_interp.at<Pose3>(P(1));
+  auto v3_se3_est = result_interp.at<Vector6>(V(3));
+  auto v1_se3_est = result_interp.at<Vector6>(V(1));
+
+  EXPECT(assert_equal(p3_se3, p3_se3_est, 1e-6));
+  EXPECT(assert_equal(p1_se3, p1_se3_est, 1e-6));
+  EXPECT(assert_equal(v0_se3, v3_se3_est, 1e-12));
+  EXPECT(assert_equal(v0_se3, v1_se3_est, 1e-12));
+}
+
 TEST(WnoaInterp, SE3InterpGraph) {
   // Test automatic interpolation
   // Define optimization:
@@ -932,17 +1084,6 @@ TEST(WnoaInterp, SE3InterpGraph) {
   // Complete solution
   Values result = optimizer.optimize();
   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-6);
-
-  // Test value interpolation
-  Values result_interp =
-      updateInterpValues<Pose3>(new_graph, result, estimatedStatesShuffled,
-                                interpolatedStatesShuffled, Q_se3);
-
-  auto p3_se3_est = result_interp.at<Pose3>(P(3));
-  auto p1_se3_est = result_interp.at<Pose3>(P(1));
-
-  EXPECT(assert_equal(p3_se3, p3_se3_est, 1e-6));
-  EXPECT(assert_equal(p1_se3, p1_se3_est, 1e-6));
 
   // perturb solution and converge again
   Values values_pert;
@@ -1021,17 +1162,6 @@ TEST(WnoaInterp, SE3InterpWnoaGraph) {
   // Complete solution
   Values result = optimizer.optimize();
   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-6);
-
-  // Test value interpolation
-  Values result_interp =
-      updateInterpValues<Pose3>(new_graph, result, estimatedStatesShuffled,
-                                interpolatedStatesShuffled, Q_se3);
-
-  auto p3_se3_est = result_interp.at<Pose3>(P(3));
-  auto p1_se3_est = result_interp.at<Pose3>(P(1));
-
-  EXPECT(assert_equal(p3_se3, p3_se3_est, 1e-6));
-  EXPECT(assert_equal(p1_se3, p1_se3_est, 1e-6));
 
   // perturb solution and converge again
   Values values_pert;
