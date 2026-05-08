@@ -6,7 +6,7 @@ from scipy.sparse.linalg import inv
 import pyvista as pv
 import time
 import matplotlib.pyplot as plt
-from typing import List, Tuple, Any
+from typing import Dict, List, Tuple, Any
 
 import gtsam
 
@@ -148,8 +148,88 @@ def plot_poses(plotter: pv.Plotter,
     # Plot the posterior trajectory and covariances
     for k, pose in enumerate(poses):
         pose_inv = pose.inverse().matrix()
-        plot_se3(plotter, pose_inv, scale=0.15, color=color, opacity=opacity_frame)
+        plot_se3(plotter, pose_inv, scale=scale, color=color, opacity=opacity_frame)
         
         if covariances is not None:
             plot_covariance(plotter, pose_inv, covariances[k], nstd=nstd, color=color, opacity=opacity_cov)
+
+
+def plot_results(
+    poses: List[gtsam.Pose3],
+    poses_gt: List[gtsam.Pose3],
+    covariances: List[np.ndarray] | None = None,
+    meas_poses: List[gtsam.Pose3] | None = None,
+    poses_int: List[gtsam.Pose3] | None = None,
+    covariances_int: List[np.ndarray] | None = None,
+    poses_int_gt: List[gtsam.Pose3] | None = None,
+    zoom: float = 1.25,
+    jupyter_backend: str = 'static',
+):
+    """Create and render the standard trajectory visualization for this example."""
+    plotter = pv.Plotter()
+    # Plot estimated poses
+    plot_poses(plotter, poses, covariances)
+    # Plot measurements
+    if meas_poses is not None:
+        plot_poses(plotter, meas_poses, color='red')
+    # Plot groundtruth estimated poses
+    plot_poses(plotter, poses_gt, color='green')
+    # Plot Interpolated poses
+    if poses_int is not None:
+        plot_poses(
+            plotter,
+            poses_int,
+            covariances_int,
+            scale=0.1,
+            opacity_frame=0.1,
+            opacity_cov=0.05,
+        )
+    # Plot groundtruth interpolated poses
+    if poses_int_gt is not None:
+        plot_poses(
+            plotter,
+            poses_int_gt,
+            color='green',
+            scale=0.1,
+            opacity_frame=0.1,
+            opacity_cov=0.05,
+        )
+
+    plotter.set_scale(1, 1, 1)
+    plotter.camera.zoom(zoom)
+    plotter.show(jupyter_backend=jupyter_backend)
+
+
+def collect_estimated_plot_data(
+    result: gtsam.Values,
+    values_gt: gtsam.Values,
+    marginals: gtsam.Marginals,
+    est_states: List[gtsam.StateData],
+) -> Tuple[List[gtsam.Pose3], List[gtsam.Pose3], List[np.ndarray]]:
+    """Collect estimated poses, ground-truth poses, and covariances for plotting."""
+    poses, poses_gt, covariances = [], [], []
+    for state_data in est_states:
+        poses.append(result.atPose3(state_data.pose))
+        poses_gt.append(values_gt.atPose3(state_data.pose))
+        covariances.append(marginals.marginalCovariance(state_data.pose)[3:, 3:])
+    return poses, poses_gt, covariances
+
+
+def collect_interp_plot_data(
+    values_interp: gtsam.Values,
+    values_gt: gtsam.Values,
+    marginals: gtsam.Marginals,
+    interp_states: List[gtsam.StateData],
+    cov_interp: Dict[Any, np.ndarray],
+) -> Tuple[List[gtsam.Pose3], List[gtsam.Pose3], List[np.ndarray]]:
+    """Collect interpolated poses, ground-truth poses, and covariances for plotting."""
+    poses_int, poses_int_gt, covariances_int = [], [], []
+    for state_data in interp_states:
+        poses_int.append(values_interp.atPose3(state_data.pose))
+        poses_int_gt.append(values_gt.atPose3(state_data.pose))
+        if state_data.pose in cov_interp:
+            covariances_int.append(cov_interp[state_data.pose][3:, 3:])
+        else:
+            covariances_int.append(marginals.marginalCovariance(state_data.pose)[3:, 3:])
+    return poses_int, poses_int_gt, covariances_int
             
