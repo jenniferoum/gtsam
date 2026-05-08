@@ -562,9 +562,8 @@ TEST(JacobianFactor, gradient_no_noise)
 /* ************************************************************************* */
 TEST(JacobianFactor, gradient_general_noise)
 {
-  // Non-diagonal covariance to verify R^T*R handling (not R^2)
-  Matrix cov = (Matrix(2, 2) << 4.0, 1.0, 1.0, 2.0).finished();
-  SharedNoiseModel noise = noiseModel::Gaussian::Covariance(cov);
+  // Non-isotropic noise to verify whitening in gradient computation
+  SharedDiagonal noise = noiseModel::Diagonal::Sigmas(Vector2(0.5, 2.0));
   Matrix A1 = (Matrix(2, 2) << 1, 2, 3, 4).finished();
   Matrix A2 = (Matrix(2, 2) << 5, 6, 7, 8).finished();
   Vector b = Vector2(1, 2);
