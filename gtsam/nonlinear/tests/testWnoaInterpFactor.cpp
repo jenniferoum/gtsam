@@ -232,7 +232,6 @@ TEST(WnoaInterp, EvalErrorP3Unary) {
 }
 
 /* *********************************************************************** */
-#ifdef GTSAM_ROT3_EXPMAP
 TEST(WnoaInterp, EvalErrorSE3UnaryPose) {
   // Model
   const auto model = noiseModel::Isotropic::Sigma(6, 1.0);
@@ -256,11 +255,9 @@ TEST(WnoaInterp, EvalErrorSE3UnaryPose) {
   residual = prior_pose->evaluateError(p1_se3);  // original
   CHECK(assert_equal(residual, res_zero, 1e-12));
 }
-#endif
 
 /* *********************************************************************** */
 
-#ifdef GTSAM_ROT3_EXPMAP
 TEST(WnoaInterp, EvalErrorSE3BetweenPose) {
   // Model
   const auto model = noiseModel::Isotropic::Sigma(6, 1.0);
@@ -321,7 +318,6 @@ TEST(WnoaInterp, EvalErrorSE3BtwnInterp) {
   // Check that residuals match between
   CHECK(assert_equal(res_btwn, res_btwn_interp, 1e-12));
 }
-#endif
 /* *********************************************************************** */
 TEST(WnoaInterp, JacobianPoint3UnaryPose) {
   // Model
@@ -503,7 +499,6 @@ TEST(WnoaInterp, CachedGraphMatchesPlainLoopPoint3) {
 }
 
 /* *********************************************************************** */
-#ifdef GTSAM_ROT3_EXPMAP
 TEST(WnoaInterp, JacobianSE3UnaryPose) {
   // Model
   const auto model = noiseModel::Isotropic::Sigma(6, 1.0);
@@ -597,7 +592,6 @@ TEST(WnoaInterp, PrecomputeLambdaPsiUnarySe3) {
     index++;
   }
 }
-#endif
 
 /* *********************************************************************** */
 
@@ -644,7 +638,6 @@ TEST(WnoaInterp, Interpolator) {
 }
 
 /* *********************************************************************** */
-#ifdef GTSAM_ROT3_EXPMAP
 TEST(WnoaInterp, NoiseModelSE3Unary) {
   // Model
   const auto model = noiseModel::Isotropic::Sigma(6, 1.0);
@@ -709,7 +702,6 @@ TEST(WnoaInterp, NoiseModelSE3Btwn) {
   EXPECT(assert_equal(cov_fixed, cov_inner));
   EXPECT(assert_inequal(cov, cov_inner));
 }
-#endif
 
 /* *********************************************************************** */
 
@@ -757,7 +749,6 @@ TEST(WnoaInterp, NoiseModelP3Btwn) {
 }
 
 /* *********************************************************************** */
-#ifdef GTSAM_ROT3_EXPMAP
 
 TEST(WnoaInterp, LinearizeSE3Btwn) {
   // Same as between above, but using two interpolated states with different
@@ -1185,7 +1176,6 @@ TEST(WnoaInterp, SE3InterpWnoaGraph) {
   DOUBLES_EQUAL(0.0, optimizer2.error(), 1e-4);
 }
 
-#endif
 
 int main() {
   TestResult tr;
