@@ -11,7 +11,7 @@
 
 /**
  * @file GaussianProcessWnoaSE3Example.cpp
- * @brief Guassian Process interpolation example on SE(3) with WNOA factors.
+ * @brief Gaussian Process interpolation example on SE(3) with WNOA factors.
  * Based on the python example
  * python/examples/GaussianProcessWnoaInterpolationSE3.ipynb
  * @date May 9 2026

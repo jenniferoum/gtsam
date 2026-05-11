@@ -714,7 +714,7 @@ gtsam::NonlinearFactorGraph interpolateFactorGraph(
 
 template <POSE = {gtsam::Point1, gtsam::Point2, gtsam::Point3, gtsam::Pose2,
                   gtsam::Pose3}>
-gtsam::WnoaFactorGraph<Pose> interpolateWnoaFactorGraph(
+gtsam::WnoaFactorGraph<POSE> interpolateWnoaFactorGraph(
     const gtsam::NonlinearFactorGraph& graph,
     const std::set<gtsam::StateData>& estimated_states,
     const std::set<gtsam::StateData>& interp_states, gtsam::Vector q_psd_diag,

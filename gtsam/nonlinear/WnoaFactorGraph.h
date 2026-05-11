@@ -338,7 +338,7 @@ WnoaFactorGraph<PoseType> interpolateWnoaFactorGraph(
     const std::set<StateData>& interp_states, Vector q_psd_diag,
     bool fixed_noise = false) {
   return interpolateFactorGraph<PoseType, WnoaFactorGraph<PoseType>>(
-      graph, estimated_states, interp_states, q_psd_diag);
+      graph, estimated_states, interp_states, q_psd_diag, fixed_noise);
 }
 
 /**
