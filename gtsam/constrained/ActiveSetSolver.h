@@ -47,7 +47,6 @@ class GTSAM_EXPORT ActiveSetSolverParams {
   double feasibilityTolerance = 1e-7;
   double multiplierTolerance = 1e-7;
   double regularization = 1e-9;
-  double phaseOneRegularization = 1e-9;
   double phaseOneFeasibilityTolerance = 1e-6;
   QpSubproblemSolver qpSubproblemSolver = QpSubproblemSolver::Sparse;
 };

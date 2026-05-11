@@ -47,7 +47,6 @@ Values Values2(double first, double second) {
 
 ActiveSetSolverParams::shared_ptr DenseQpParams() {
   auto params = std::make_shared<ActiveSetSolverParams>();
-  params->regularization = 1e-6;
   params->qpSubproblemSolver = ActiveSetSolverParams::QpSubproblemSolver::Dense;
   return params;
 }
@@ -137,6 +136,34 @@ TEST(ActiveSetSolver, DenseEqualityConstrained) {
   CHECK(Values2Equal(result, -0.5, -0.5));
   CHECK_EQUAL(1, state.equalityMultipliers.size());
   CHECK_EQUAL(1, state.equalityMultipliers.front().size());
+}
+
+// Verifies dense QP mode applies the configured Hessian regularization.
+TEST(ActiveSetSolver, DenseRegularizationAffectsSolution) {
+  auto params = DenseQpParams();
+  params->regularization = 1.0;
+  QpProblem problem;
+  problem.addCost(HessianFactor(x1, Matrix1(1.0), Vector1D(2.0), 0.0));
+
+  Values initial;
+  initial.insert(x1, Vector1D(0.0));
+  const Values result = ActiveSetSolver(problem, params).optimize(initial);
+
+  EXPECT_DOUBLES_EQUAL(1.0, result.at<Vector>(x1)(0), 1e-7);
+}
+
+// Verifies dependent active constraints fail deterministically in dense mode.
+TEST(ActiveSetSolver, DenseDependentEqualityConstraintsThrow) {
+  QpProblem problem;
+  problem.addCost(HessianFactor(x1, Matrix1(1.0), Vector1D(0.0), 0.0));
+  const JacobianFactor equality(x1, Matrix1(1.0), Vector1D(1.0));
+  problem.addConstraint(LinearConstraint::Equal(equality));
+  problem.addConstraint(LinearConstraint::Equal(equality));
+
+  Values initial;
+  initial.insert(x1, Vector1D(1.0));
+  CHECK_EXCEPTION(ActiveSetSolver(problem, DenseQpParams()).optimize(initial),
+                  std::runtime_error);
 }
 
 // Verifies the Matlab QP example from the old solver tests.
@@ -253,7 +280,6 @@ Matrix Matrix1D(double value) { return (Matrix(1, 1) << value).finished(); }
 
 ActiveSetSolverParams::shared_ptr DenseQpParams() {
   auto params = std::make_shared<ActiveSetSolverParams>();
-  params->regularization = 1e-6;
   params->qpSubproblemSolver = ActiveSetSolverParams::QpSubproblemSolver::Dense;
   return params;
 }

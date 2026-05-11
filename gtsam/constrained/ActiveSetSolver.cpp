@@ -43,6 +43,8 @@ struct ActiveSetSolver::DenseQpWorkspace {
 
 namespace {
 
+constexpr double kMinimumDenseRegularization = 1e-6;
+
 /* ************************************************************************* */
 Vector DirectVectorOrMatrixValue(const Values& values, Key key) {
   const Value& value = values.at(key);
@@ -185,6 +187,22 @@ void AddRegularization(GaussianFactorGraph* graph,
   }
 }
 
+/* ************************************************************************* */
+bool DenseSchurComplementIsSingular(const Eigen::LDLT<Matrix>& ldlt,
+                                    const Matrix& schurComplement) {
+  if (ldlt.info() != Eigen::Success) {
+    return true;
+  }
+  const Vector diagonal = ldlt.vectorD();
+  if (diagonal.size() == 0) {
+    return false;
+  }
+  const double tolerance = std::numeric_limits<double>::epsilon() *
+                           static_cast<double>(diagonal.size()) *
+                           std::max(1.0, schurComplement.norm());
+  return diagonal.cwiseAbs().minCoeff() <= tolerance;
+}
+
 }  // namespace
 
 /* ************************************************************************* */
@@ -310,14 +328,32 @@ void ActiveSetSolver::initializeDenseQpWorkspace() {
     return graph.eliminateSequential(workspace.hessianOrdering);
   };
 
+  GaussianFactorGraph regularizedCostGraph = qpCostGraph_;
+  if (params_->regularization > 0.0) {
+    AddRegularization(&regularizedCostGraph, keyDims_, params_->regularization);
+  }
+
   try {
-    workspace.costBayesNet = eliminate(qpCostGraph_);
+    workspace.costBayesNet = eliminate(regularizedCostGraph);
   } catch (const IndeterminantLinearSystemException&) {
-    // Fall back to the same small diagonal regularization used by the sparse
-    // working graph path when the Hessian is singular or underconstrained.
-    GaussianFactorGraph regularized = qpCostGraph_;
-    AddRegularization(&regularized, keyDims_, params_->regularization);
-    workspace.costBayesNet = eliminate(regularized);
+    if (params_->regularization <= 0.0 ||
+        params_->regularization >= kMinimumDenseRegularization) {
+      throw std::runtime_error(
+          "ActiveSetSolver: dense QP Hessian factorization failed. Increase "
+          "regularization or use the sparse QP subproblem solver.");
+    }
+    // Very small positive regularization can still be treated as rank-deficient
+    // by elimination; retry with the dense-mode floor before failing.
+    GaussianFactorGraph fallbackCostGraph = qpCostGraph_;
+    AddRegularization(&fallbackCostGraph, keyDims_, kMinimumDenseRegularization);
+    try {
+      workspace.costBayesNet = eliminate(fallbackCostGraph);
+    } catch (const IndeterminantLinearSystemException&) {
+      throw std::runtime_error(
+          "ActiveSetSolver: dense QP Hessian factorization failed even after "
+          "minimum dense regularization. Increase regularization or use the "
+          "sparse QP subproblem solver.");
+    }
   }
 
   // Store the unconstrained minimizer x0. Constrained solves then only need the
@@ -350,8 +386,9 @@ void ActiveSetSolver::initializeConstraints() {
   constraints_.equalityDims.reserve(eqConstraints.size());
   for (size_t constraintIndex = 0; constraintIndex < eqConstraints.size();
        ++constraintIndex) {
+    const auto constraintFactor = eqConstraints.at(constraintIndex);
     const LinearConstraint& constraint =
-        RequireLinearConstraint(eqConstraints.at(constraintIndex));
+        RequireLinearConstraint(constraintFactor);
     const JacobianFactor& factor = constraint.factor();
     const double sign = ConstraintSign(constraint.sense());
     const size_t rows = static_cast<size_t>(factor.getb().size());
@@ -366,8 +403,9 @@ void ActiveSetSolver::initializeConstraints() {
   constraints_.inequalityDims.reserve(ineqConstraints.size());
   for (size_t constraintIndex = 0; constraintIndex < ineqConstraints.size();
        ++constraintIndex) {
+    const auto constraintFactor = ineqConstraints.at(constraintIndex);
     const LinearConstraint& constraint =
-        RequireLinearConstraint(ineqConstraints.at(constraintIndex));
+        RequireLinearConstraint(constraintFactor);
     const JacobianFactor& factor = constraint.factor();
     const double sign = ConstraintSign(constraint.sense());
     const size_t rows = static_cast<size_t>(factor.getb().size());
@@ -636,8 +674,20 @@ std::pair<VectorValues, VectorValues> ActiveSetSolver::solveDenseQpSubproblem(
   // where x0 is the unconstrained minimizer of the quadratic cost.
   const Matrix schurComplement = activeA * hessianInverseAT;
   Eigen::LDLT<Matrix> ldlt(schurComplement);
+  if (DenseSchurComplementIsSingular(ldlt, schurComplement)) {
+    throw std::runtime_error(
+        "ActiveSetSolver: dense QP Schur complement is singular or "
+        "ill-conditioned. Active constraints may be linearly dependent; "
+        "remove redundant constraints or use the sparse QP subproblem solver.");
+  }
   const Vector multipliers =
       ldlt.solve(activeB - activeA * workspace.unconstrainedMinimum);
+  if (!multipliers.allFinite()) {
+    throw std::runtime_error(
+        "ActiveSetSolver: dense QP Schur complement solve produced non-finite "
+        "multipliers. Active constraints may be ill-conditioned; use the "
+        "sparse QP subproblem solver.");
+  }
   const Vector values =
       workspace.unconstrainedMinimum + hessianInverseAT * multipliers;
 

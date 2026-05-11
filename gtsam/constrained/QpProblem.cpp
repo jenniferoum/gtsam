@@ -24,7 +24,6 @@ namespace {
 /* ************************************************************************* */
 ActiveSetSolverParams::shared_ptr DenseQpParams() {
   auto params = std::make_shared<ActiveSetSolverParams>();
-  params->regularization = 1e-6;
   params->qpSubproblemSolver = ActiveSetSolverParams::QpSubproblemSolver::Dense;
   return params;
 }
