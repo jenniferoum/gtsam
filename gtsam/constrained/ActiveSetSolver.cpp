@@ -31,6 +31,8 @@
 
 namespace gtsam {
 
+// Dense QP mode is allocated only when requested. It stores the reusable
+// Hessian factorization and the key-to-offset map needed by dense vectors.
 struct ActiveSetSolver::DenseQpWorkspace {
   Ordering hessianOrdering;
   GaussianBayesNet::shared_ptr costBayesNet;
@@ -111,6 +113,11 @@ const LinearConstraint& RequireLinearConstraint(
 
 /* ************************************************************************* */
 double ConstraintSign(LinearConstraint::Sense sense) {
+  // The solver normalizes every constraint row to A*x-b<=0. Equalities use the
+  // same row representation and always stay in the working set; inequalities
+  // enter and leave one row at a time after multi-row factors are split.
+  // GreaterEqual rows are multiplied by -1 so the active-set tests can use a
+  // single feasibility convention: residual A*x - b is non-positive.
   return sense == LinearConstraint::Sense::GreaterEqual ? -1.0 : 1.0;
 }
 
@@ -259,6 +266,8 @@ void ActiveSetSolver::initializeObjective() {
       const JacobianFactor& factor = cost.factor();
       for (auto it = factor.begin(); it != factor.end(); ++it) {
         const Key key = *it;
+        // LpCost stores each linear term as a Jacobian row. Summing the rows
+        // gives the constant objective gradient for that key.
         lpGradient_.at(key) += factor.getA(it).colwise().sum().transpose();
       }
     }
@@ -279,6 +288,8 @@ void ActiveSetSolver::initializeDenseQpWorkspace() {
   denseQpWorkspace_ = std::make_shared<DenseQpWorkspace>();
   DenseQpWorkspace& workspace = *denseQpWorkspace_;
 
+  // Reuse the same ordering for the Hessian factorization and for all dense
+  // vectors. This makes each key's offset stable across active-set iterations.
   workspace.hessianOrdering = Ordering::Colamd(VariableIndex(qpCostGraph_));
   size_t offset = 0;
   for (Key key : workspace.hessianOrdering) {
@@ -293,6 +304,8 @@ void ActiveSetSolver::initializeDenseQpWorkspace() {
   }
   workspace.totalDim = offset;
 
+  // The dense subproblem path assumes every constrained variable is present in
+  // the quadratic cost, because H^{-1} is applied through this Bayes net.
   auto eliminate = [&](const GaussianFactorGraph& graph) {
     return graph.eliminateSequential(workspace.hessianOrdering);
   };
@@ -300,11 +313,15 @@ void ActiveSetSolver::initializeDenseQpWorkspace() {
   try {
     workspace.costBayesNet = eliminate(qpCostGraph_);
   } catch (const IndeterminantLinearSystemException&) {
+    // Fall back to the same small diagonal regularization used by the sparse
+    // working graph path when the Hessian is singular or underconstrained.
     GaussianFactorGraph regularized = qpCostGraph_;
     AddRegularization(&regularized, keyDims_, params_->regularization);
     workspace.costBayesNet = eliminate(regularized);
   }
 
+  // Store the unconstrained minimizer x0. Constrained solves then only need the
+  // active constraint correction x = x0 + H^{-1} A^T lambda.
   workspace.unconstrainedMinimum = Vector::Zero(workspace.totalDim);
   const VectorValues minimum = workspace.costBayesNet->optimize();
   for (const auto& [key, vector] : minimum) {
@@ -327,6 +344,9 @@ void ActiveSetSolver::initializeConstraints() {
                                     ? qpProblem_->iConstraints()
                                     : lpProblem_->iConstraints();
 
+  // Assign synthetic keys to scalar Lagrange multipliers. Keeping one key per
+  // row lets the dual solve use ordinary GaussianFactorGraph machinery and lets
+  // the public state rebuild row-ordered multiplier vectors later.
   constraints_.equalityDims.reserve(eqConstraints.size());
   for (size_t constraintIndex = 0; constraintIndex < eqConstraints.size();
        ++constraintIndex) {
@@ -454,6 +474,9 @@ GaussianFactorGraph ActiveSetSolver::buildWorkingGraph(
       }
     }
   } else {
+    // For LPs, the subproblem is the projection of a unit negative-gradient
+    // step onto the current active constraint surface. This produces a descent
+    // direction; the line search below decides how far we can move.
     for (const auto& [key, dim] : keyDims_) {
       const Vector gradient = objectiveGradient(key, values);
       workingGraph.emplace_shared<JacobianFactor>(
@@ -478,6 +501,9 @@ GaussianFactorGraph ActiveSetSolver::buildDualGraph(
     const std::vector<bool>& activeInequalityRows,
     const VectorValues& values) const {
   GaussianFactorGraph dualGraph;
+  // Stationarity for the current working set is A_active^T * lambda = grad.
+  // With the normalized A*x-b<=0 convention, a positive active inequality
+  // multiplier indicates a row that should leave the active set.
   for (const auto& [key, _] : keyDims_) {
     std::vector<std::pair<Key, Matrix>> terms;
     for (const ConstraintRow& row : constraints.equalities) {
@@ -541,6 +567,9 @@ Vector ActiveSetSolver::applyInverseDenseHessian(const Vector& vector) const {
         "ActiveSetSolver: dense QP workspace has not been initialized.");
   }
   const DenseQpWorkspace& workspace = *denseQpWorkspace_;
+  // The Bayes net represents a square-root Hessian factorization. Applying
+  // H^{-1} is two triangular solves: first with the transpose, then with the
+  // factor itself.
   const VectorValues vectorValues = denseVectorToVectorValues(vector);
   const VectorValues result = workspace.costBayesNet->backSubstitute(
       workspace.costBayesNet->backSubstituteTranspose(vectorValues));
@@ -599,6 +628,12 @@ std::pair<VectorValues, VectorValues> ActiveSetSolver::solveDenseQpSubproblem(
         applyInverseDenseHessian(activeA.row(column).transpose());
   }
 
+  // Solve the equality-constrained QP through the Schur complement:
+  //
+  //     (A H^{-1} A^T) lambda = b - A*x0
+  //     x = x0 + H^{-1} A^T lambda
+  //
+  // where x0 is the unconstrained minimizer of the quadratic cost.
   const Matrix schurComplement = activeA * hessianInverseAT;
   Eigen::LDLT<Matrix> ldlt(schurComplement);
   const Vector multipliers =
@@ -711,6 +746,9 @@ ActiveSetSolver::InternalState ActiveSetSolver::iterate(
       useDenseQp ? denseQpStepIsSmall(candidateValues, state.values)
                  : candidateValues.equals(state.values, params_->stepTolerance);
   if (smallStep) {
+    // No primal movement is left for this working set. Check KKT multipliers:
+    // if every active inequality multiplier has the correct sign, we are done;
+    // otherwise remove the most offending row and solve the reduced set.
     if (useDenseQp) {
       next.duals = subproblemDuals;
     } else {
@@ -744,6 +782,9 @@ ActiveSetSolver::InternalState ActiveSetSolver::iterate(
   }
 
   const VectorValues direction = candidateValues - state.values;
+  // Move toward the working-set solution until an inactive inequality becomes
+  // tight. QPs can take the full step when nothing blocks; LPs use the same
+  // calculation to detect unbounded descent.
   double step = problemType_ == ProblemType::QP
                     ? 1.0
                     : std::numeric_limits<double>::infinity();
@@ -789,6 +830,8 @@ ActiveSetSolver::State ActiveSetSolver::buildPublicState(
   for (size_t dim : constraints_.equalityDims) {
     publicState.equalityMultipliers.push_back(Vector::Zero(dim));
   }
+  // Internal multipliers are scalar values keyed by synthetic multiplier keys;
+  // the public state restores the original constraint grouping and row order.
   for (const ConstraintRow& row : constraints_.equalities) {
     if (state.duals.exists(row.multiplierKey)) {
       publicState.equalityMultipliers[row.constraintIndex](row.row) =
@@ -866,6 +909,8 @@ Values ActiveSetSolver::findVectorFeasiblePoint() const {
   const Values zeroValues = zeroVectorValues();
   LpProblem phaseProblem;
   const Key slackKey = NextAvailableKey(keyDims_);
+  // Phase one minimizes a non-negative scalar slack s. If the optimum slack is
+  // zero within tolerance, the original variables satisfy all constraints.
   phaseProblem.addCost(
       JacobianFactor(slackKey, Matrix::Identity(1, 1), Vector::Zero(1)));
 
@@ -882,6 +927,7 @@ Values ActiveSetSolver::findVectorFeasiblePoint() const {
   double initialSlack = 1.0;
   for (const ConstraintRow& row : constraints_.equalities) {
     const double b = row.factor->getb()(0);
+    // Equality A*x=b is relaxed as both A*x-s<=b and -A*x-s<=-b.
     phaseProblem.addConstraint(LinearConstraint::LessEqual(
         JacobianFactor(rowTerms(row, 1.0), SingleValue(b))));
     phaseProblem.addConstraint(LinearConstraint::LessEqual(
