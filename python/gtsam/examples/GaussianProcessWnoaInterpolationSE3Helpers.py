@@ -1,11 +1,12 @@
 import numpy as np
 import numpy.linalg as npla
-from math import cos, sin, factorial
-from scipy.sparse import bmat
-from scipy.sparse.linalg import inv
-import pyvista as pv
-import time
-import matplotlib.pyplot as plt
+
+try:
+    import pyvista as pv
+except ImportError:
+    print("pyvista is not installed, but is required to run this example")
+    pv = None
+
 from typing import Dict, List, Tuple, Any
 
 import gtsam
