@@ -598,4 +598,3 @@ class GTSAM_EXPORT Interpolator {
 };
 
 }  // namespace gtsam
-

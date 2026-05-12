@@ -17,7 +17,7 @@ import gtsam
 import numpy as np
 from gtsam.utils.test_case import GtsamTestCase
 
-from gtsam import Symbol, WnoaInterpFactorPose3, WnoaMotionFactorPose3
+from gtsam import WnoaInterpFactorPose3, WnoaMotionFactorPose3
 from gtsam.symbol_shorthand import X, V
 
 
@@ -319,7 +319,7 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
         v0 = data_gt.values.atVector6(V(0))
         p3 = data_gt.values.atPose3(X(3))
         p1 = data_gt.values.atPose3(X(1))
-        
+
         self.gtsamAssertEquals(p3, p3Est, 1e-6)
         self.gtsamAssertEquals(p1, p1Est, 1e-6)
         np.testing.assert_allclose(v0, v3Est, rtol=1e-12, atol=1e-12)

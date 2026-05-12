@@ -194,7 +194,7 @@ def plot_results(
 ):
     """Create and render the standard trajectory visualization for this example."""
     if pv is None:
-        print("pyvista is not available, cannot plot results")
+        print("To visualize the results, please install pyvista with `pip install pyvista`.")
         return
 
     plotter = pv.Plotter()
