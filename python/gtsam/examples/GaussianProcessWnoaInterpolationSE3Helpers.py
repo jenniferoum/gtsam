@@ -212,7 +212,7 @@ def plot_results(
             poses_int,
             covariances_int,
             scale=0.1,
-            opacity_frame=0.1,
+            opacity_frame=0.5,
             opacity_cov=0.05,
         )
     # Plot groundtruth interpolated poses
@@ -222,7 +222,7 @@ def plot_results(
             poses_int_gt,
             color="green",
             scale=0.1,
-            opacity_frame=0.1,
+            opacity_frame=0.5,
             opacity_cov=0.05,
         )
 
